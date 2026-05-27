@@ -130,16 +130,6 @@ public final class EvCoordinatorController implements Controller {
             return;
         }
 
-        // External-pause respect: if the pause item is ON and we didn't set it
-        // recently (matched by dedupe), assume external (user / PeakShaving
-        // residual / manual) — don't fight it.
-        if (car.paused()) {
-            Double ours = lastSentAmps.get(car.carKey() + ".pause");
-            if (ours == null || ours < 0.5) {
-                return;
-            }
-        }
-
         // Mode resolution — anything but SNEL/OFF treated as ECO (matches DSC).
         CarSnapshot.Mode mode = car.mode();
         if (mode == CarSnapshot.Mode.OFF) {
@@ -147,6 +137,21 @@ public final class EvCoordinatorController implements Controller {
         }
         if (mode != CarSnapshot.Mode.SNEL) {
             mode = CarSnapshot.Mode.ECO;
+        }
+
+        // External-pause respect — ECO only. Don't fight a pause we didn't set
+        // (capacity-tariff residual / soft-shaving / manual): resuming would flap
+        // against whoever set it, since capacity-tariff pauses an ECO car once and
+        // then goes silent. SNEL is deliberately EXEMPT: capacity-tariff and
+        // soft-shaving never touch SNEL cars and hard-shaving is already handled by
+        // the deferral above, so a paused SNEL car here only carries a stale pause
+        // and MUST be resumed — otherwise flipping ECO→SNEL leaves the wallbox stuck
+        // paused with no controller ever waking it.
+        if (mode != CarSnapshot.Mode.SNEL && car.paused()) {
+            Double ours = lastSentAmps.get(car.carKey() + ".pause");
+            if (ours == null || ours < 0.5) {
+                return;
+            }
         }
 
         // Auto-RemoteStart when no transaction is open. Behaviour varies by
@@ -163,10 +168,15 @@ public final class EvCoordinatorController implements Controller {
             int desired = Math.min(CapabilityCheck.MAX_CHARGING_CURRENT_A, headroom);
             int ramped = rampLimit(car.carKey(), desired);
             int target = applyHysteresis(car.carKey(), ramped);
-            emitAmps(car, target, "SNEL → " + target + "A (headroom=" + headroom + "A)", out);
-            // Resume any prior pause we set.
+            // A paused / SuspendedEVSE car needs an explicit resume to wake — say so
+            // in the reason so the UI shows "resuming" rather than a silent setpoint.
+            boolean resuming = car.paused() || "SuspendedEVSE".equals(car.ocppStatus());
+            String note = "SNEL → " + target + "A (headroom=" + headroom + "A)"
+                    + (resuming ? " — hervat na pauze" : "");
+            emitAmps(car, target, note, out);
+            // Always clear any prior/residual pause in SNEL — explicit "charge now".
             out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.PAUSE, 0.0, priority(), NAME,
-                    "SNEL — resume"));
+                    resuming ? "SNEL — hervatten na pauze" : "SNEL — resume"));
             return;
         }
 
