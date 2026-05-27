@@ -36,7 +36,7 @@ class ItemSiteReaderTest {
 
     @Test
     void canonicalConventionPassesThrough() {
-        EmsBridgeConfig cfg = new EmsBridgeConfig(); // defaults: gridImportPositive=false, batteryChargePositive=true
+        EmsBridgeConfig cfg = new EmsBridgeConfig(); // defaults: all invert flags false (canonical)
         Site site = read(Map.of("Grid_Power", 2000.0, "Solar_Power", 5000.0, "House_Power", 3000.0, "Battery_Power",
                 1500.0, "Battery_SoC", 80.0, "Battery_Reserve_Target_Pct", 30.0), Set.of("Boiler_Switch"), cfg);
         assertEquals(2000.0, site.grid().watts(), 1e-9, "export stays positive");
@@ -50,21 +50,31 @@ class ItemSiteReaderTest {
     }
 
     @Test
-    void importPositiveGridIsNegated() {
+    void invertGridNegatesReading() {
         EmsBridgeConfig cfg = new EmsBridgeConfig();
-        cfg.gridImportPositive = true; // e.g. Fronius: + = import
+        cfg.invertGrid = true; // e.g. Fronius: + = import
         Site site = read(Map.of("Grid_Power", 2000.0), Set.of(), cfg);
         assertEquals(-2000.0, site.grid().watts(), 1e-9,
                 "import-positive grid is flipped to canonical export-positive");
     }
 
     @Test
-    void dischargePositiveBatteryIsNegated() {
+    void invertBatteryNegatesReading() {
         EmsBridgeConfig cfg = new EmsBridgeConfig();
-        cfg.batteryChargePositive = false; // item uses + = discharging
+        cfg.invertBattery = true; // item uses + = discharging
         Site site = read(Map.of("Battery_Power", 1500.0), Set.of(), cfg);
         assertEquals(-1500.0, site.battery().watts(), 1e-9,
                 "discharge-positive battery flips to canonical charge-positive");
+    }
+
+    @Test
+    void invertSolarAndHouseNegateReadings() {
+        EmsBridgeConfig cfg = new EmsBridgeConfig();
+        cfg.invertSolar = true;
+        cfg.invertHouse = true;
+        Site site = read(Map.of("Solar_Power", -5000.0, "House_Power", -3000.0), Set.of(), cfg);
+        assertEquals(5000.0, site.solar().watts(), 1e-9, "negative-producing solar flips to canonical + = producing");
+        assertEquals(3000.0, site.house().watts(), 1e-9, "negative-consuming house flips to canonical + = consuming");
     }
 
     @Test

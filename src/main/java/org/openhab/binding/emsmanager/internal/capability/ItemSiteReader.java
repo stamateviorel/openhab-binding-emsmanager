@@ -48,16 +48,13 @@ public final class ItemSiteReader {
     }
 
     public static Site read(NumberReader num, SwitchReader sw, EmsBridgeConfig cfg) {
-        double grid = num.read(nameOr(cfg.gridLoadItem, ITEM_GRID_LOAD));
-        if (!Double.isNaN(grid) && cfg.gridImportPositive) {
-            grid = -grid; // normalize to canonical: + = export
-        }
-        double solar = num.read(nameOr(cfg.solarLoadItem, ITEM_SOLAR_LOAD));
-        double house = num.read(nameOr(cfg.houseLoadSumItem, ITEM_HOUSE_LOAD_SUM));
-        double batteryW = num.read(nameOr(cfg.batteryLoadItem, ITEM_BATTERY_LOAD));
-        if (!Double.isNaN(batteryW) && !cfg.batteryChargePositive) {
-            batteryW = -batteryW; // normalize to canonical: + = charging
-        }
+        // Each reading is normalized to the canonical sign convention via its
+        // per-signal invert flag (grid + = export, solar + = producing, house
+        // + = consuming, battery + = charging).
+        double grid = invertIf(num.read(nameOr(cfg.gridLoadItem, ITEM_GRID_LOAD)), cfg.invertGrid);
+        double solar = invertIf(num.read(nameOr(cfg.solarLoadItem, ITEM_SOLAR_LOAD)), cfg.invertSolar);
+        double house = invertIf(num.read(nameOr(cfg.houseLoadSumItem, ITEM_HOUSE_LOAD_SUM)), cfg.invertHouse);
+        double batteryW = invertIf(num.read(nameOr(cfg.batteryLoadItem, ITEM_BATTERY_LOAD)), cfg.invertBattery);
         double soc = num.read(nameOr(cfg.batteryPercentageItem, ITEM_BATTERY_PERCENTAGE));
         double reserve = num.read(nameOr(cfg.batteryReserveTargetItem, ITEM_BATTERY_RESERVE_TARGET));
 
@@ -67,6 +64,11 @@ public final class ItemSiteReader {
         return new Snapshot(new EnergyReading.Of(grid), new EnergyReading.Of(solar), new EnergyReading.Of(house),
                 new Battery.Of(batteryW, soc, reserve), new ControllableLoad.Of(ASSET_BOILER, boilerOn),
                 new ControllableLoad.Of(ASSET_AIRCO, aircoOn));
+    }
+
+    /** Flip the sign of a reading when the item uses the opposite convention. NaN passes through. */
+    private static double invertIf(double value, boolean invert) {
+        return (invert && !Double.isNaN(value)) ? -value : value;
     }
 
     private static String nameOr(String configured, String fallback) {

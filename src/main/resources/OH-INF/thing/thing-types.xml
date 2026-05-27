@@ -149,20 +149,35 @@
 				<label>Battery reserve target item</label>
 				<default>Battery_Reserve_Target_Pct</default>
 			</parameter>
-			<parameter name="gridImportPositive" type="boolean" required="false">
-				<label>Grid item is import-positive</label>
-				<description>Enable if your grid item reports + = import (e.g. Fronius). The binding's internal
-					convention is + =
-					export; it negates the reading once when this is set.</description>
+			<parameter name="invertGrid" type="boolean" required="false">
+				<label>Invert grid sign</label>
+				<description>Enable if your grid item reports + = import/draw. The binding's canonical convention
+					is + =
+					export/inject; it negates the reading once when this is set.</description>
 				<default>false</default>
 				<advanced>true</advanced>
 			</parameter>
-			<parameter name="batteryChargePositive" type="boolean" required="false">
-				<label>Battery item is charge-positive</label>
-				<description>Whether your battery power item reports + = charging (the binding's convention).
-					Disable if your item
-					uses + = discharging.</description>
-				<default>true</default>
+			<parameter name="invertSolar" type="boolean" required="false">
+				<label>Invert solar sign</label>
+				<description>Enable if your solar item reports production as a negative value. The binding's canonical
+					convention is
+					+ = producing.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="invertHouse" type="boolean" required="false">
+				<label>Invert house-load sign</label>
+				<description>Enable if your house-load item reports consumption as a negative value. The binding's
+					canonical
+					convention is + = consuming.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="invertBattery" type="boolean" required="false">
+				<label>Invert battery sign</label>
+				<description>Enable if your battery item reports + = discharging. The binding's canonical convention
+					is + = charging.</description>
+				<default>false</default>
 				<advanced>true</advanced>
 			</parameter>
 			<parameter name="carCount" type="integer" required="false" min="0" max="8">

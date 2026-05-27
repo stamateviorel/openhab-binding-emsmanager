@@ -26,9 +26,10 @@ item-backed `Site` provider. It is the **single place** that:
 
 1. resolves the configured item name for each reading (falling back to the
    compile-time default when the config string is blank), and
-2. applies the **sign-convention normalization** (`gridImportPositive`,
-   `batteryChargePositive`) so everything downstream sees the canonical
-   convention.
+2. applies the **sign-convention normalization** (`invertGrid`, `invertSolar`,
+   `invertHouse`, `invertBattery`) so everything downstream sees the canonical
+   convention (grid + = export, solar + = producing, house + = consuming,
+   battery + = charging).
 
 The item reads are injected as functions, so `ItemSiteReader` has no openHAB
 runtime dependency and is unit-tested directly (`ItemSiteReaderTest`).

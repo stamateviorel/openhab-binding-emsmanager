@@ -58,12 +58,15 @@ public class EmsBridgeConfig {
     public String batteryPercentageItem = "Battery_SoC";
     public String batteryReserveTargetItem = "Battery_Reserve_Target_Pct";
 
-    // Sign-convention normalization. Internally the binding uses + = export for
-    // grid and + = charging for battery. Set these if YOUR items use the opposite
-    // convention (e.g. a Fronius grid meter reports + = import). Normalized once
-    // in ContextBuilder so every controller sees the canonical convention.
-    public boolean gridImportPositive = false;
-    public boolean batteryChargePositive = true;
+    // Sign-convention normalization. The binding's canonical convention is:
+    // grid + = export/inject, solar + = producing, house + = consuming,
+    // battery + = charging. Set an invert flag if YOUR item uses the opposite
+    // sign (e.g. a grid meter where + = import/draw). Applied once in the
+    // capability layer so every controller sees the canonical convention.
+    public boolean invertGrid = false;
+    public boolean invertSolar = false;
+    public boolean invertHouse = false;
+    public boolean invertBattery = false;
 
     // Per-car item naming patterns (use %d for the car number 1..4).
     // The defaults are examples for an EVSE + external-power-item layout.
