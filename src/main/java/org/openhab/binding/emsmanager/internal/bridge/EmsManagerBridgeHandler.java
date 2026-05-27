@@ -17,9 +17,12 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,6 +54,7 @@ import org.openhab.binding.emsmanager.internal.controller.peak.HardPeakShavingCo
 import org.openhab.binding.emsmanager.internal.controller.peak.SoftPeakShavingController;
 import org.openhab.binding.emsmanager.internal.controller.safety.SafetyBreakerController;
 import org.openhab.binding.emsmanager.internal.core.CapacityTariffTracker;
+import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.ContextBuilder;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
@@ -63,7 +67,10 @@ import org.openhab.binding.emsmanager.internal.report.WeeklyReportService;
 import org.openhab.binding.emsmanager.internal.sizing.BatterySizingService;
 import org.openhab.binding.emsmanager.internal.tariff.compare.TariffComparisonService;
 import org.openhab.core.events.EventPublisher;
+import org.openhab.core.items.GenericItem;
+import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
+import org.openhab.core.items.StateChangeListener;
 import org.openhab.core.items.events.ItemEventFactory;
 import org.openhab.core.library.types.DateTimeType;
 import org.openhab.core.library.types.DecimalType;
@@ -78,6 +85,7 @@ import org.openhab.core.thing.ThingRegistry;
 import org.openhab.core.thing.ThingStatus;
 import org.openhab.core.thing.binding.BaseBridgeHandler;
 import org.openhab.core.types.Command;
+import org.openhab.core.types.State;
 import org.openhab.core.types.UnDefType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +114,16 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private @Nullable LocalDate lastAnalyticsDate;
     private @Nullable ScheduledFuture<?> tickJob;
     private final AtomicLong tickCounter = new AtomicLong(0);
+    // Fast-tick: a Mode/Cable/Pause change on any car schedules a debounced tick
+    // so ECO/SNEL flips re-evaluate in ~1 s instead of waiting for the next
+    // periodic tick. The periodic tick stays as the fallback.
+    private static final long DEBOUNCE_MS = 500L;
+    private @Nullable ScheduledFuture<?> debouncedTickFuture;
+    private final List<GenericItem> watchedItems = new ArrayList<>();
+    private @Nullable StateChangeListener kickListener;
+    // Guards tick() against the periodic and debounced invocations overlapping —
+    // controller state (EWMA, capacity tracker, dedupe) is not re-entrant.
+    private final Object tickLock = new Object();
     private final PriorityScheduler controllerScheduler = new PriorityScheduler();
     private final Map<String, AssetHandler> assets = new HashMap<>();
     private volatile boolean shadowMode = true;
@@ -311,6 +329,8 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         int interval = Math.max(1, config.tickIntervalSeconds);
         tickJob = scheduler.scheduleWithFixedDelay(this::tick, interval, interval, TimeUnit.SECONDS);
 
+        registerKickListeners(config);
+
         updateState(CHANNEL_SHADOW_MODE, OnOffType.from(shadowMode));
         updateState(CHANNEL_TICK_COUNT, new DecimalType(0));
         updateState(CHANNEL_CONTROLLER_COUNT, new DecimalType(controllerScheduler.size()));
@@ -328,6 +348,60 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         }
     }
 
+    /**
+     * Subscribe to per-car Mode / CableConnected / Pause item changes so a flip
+     * (e.g. ECO → SNEL) triggers a debounced re-evaluation within ~1 s rather
+     * than waiting up to one tick interval. Items missing at init are simply not
+     * watched — the periodic tick still covers them.
+     */
+    private void registerKickListeners(EmsBridgeConfig config) {
+        StateChangeListener listener = new StateChangeListener() {
+            @Override
+            public void stateChanged(Item item, State oldState, State newState) {
+                onWatchedItemChanged(item.getName(), newState);
+            }
+
+            @Override
+            public void stateUpdated(Item item, State state) {
+                // Only react to actual changes, not same-value re-updates.
+            }
+        };
+        this.kickListener = listener;
+        Set<String> names = new LinkedHashSet<>();
+        for (int n = 1; n <= 4; n++) {
+            names.add(String.format(nameOr(config.carModeItemPattern, ITEM_CAR_MODE_FMT), n));
+            names.add(String.format(nameOr(config.carCableItemPattern, ITEM_CAR_CABLE_FMT), n));
+            names.add(String.format(nameOr(config.carPauseItemPattern, ITEM_CAR_PAUSE_FMT), n));
+        }
+        for (String name : names) {
+            try {
+                Item item = itemRegistry.getItem(name);
+                if (item instanceof GenericItem gi) {
+                    gi.addStateChangeListener(listener);
+                    watchedItems.add(gi);
+                }
+            } catch (Exception e) {
+                // Item not present yet — fine; the periodic tick still re-evaluates it.
+            }
+        }
+        logger.info("Fast-tick: watching {} car input items for instant re-evaluation", watchedItems.size());
+    }
+
+    /** Schedule a single coalesced tick shortly after a watched car input changes. */
+    private void onWatchedItemChanged(String itemName, State newState) {
+        if (tickJob == null || shadowMode) {
+            return;
+        }
+        ScheduledFuture<?> prev = debouncedTickFuture;
+        if (prev != null && !prev.isDone()) {
+            prev.cancel(false);
+        }
+        debouncedTickFuture = scheduler.schedule(() -> {
+            logger.debug("Debounced tick fired due to {} change ({})", itemName, newState);
+            tick();
+        }, DEBOUNCE_MS, TimeUnit.MILLISECONDS);
+    }
+
     @Override
     public void dispose() {
         ScheduledFuture<?> job = tickJob;
@@ -335,6 +409,23 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             job.cancel(true);
             tickJob = null;
         }
+        ScheduledFuture<?> debounced = debouncedTickFuture;
+        if (debounced != null) {
+            debounced.cancel(false);
+            debouncedTickFuture = null;
+        }
+        StateChangeListener kl = kickListener;
+        if (kl != null) {
+            for (GenericItem gi : watchedItems) {
+                try {
+                    gi.removeStateChangeListener(kl);
+                } catch (Exception e) {
+                    // best-effort cleanup
+                }
+            }
+        }
+        watchedItems.clear();
+        kickListener = null;
         for (var c : controllerScheduler.controllers()) {
             controllerScheduler.unregister(c);
         }
@@ -578,6 +669,12 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     }
 
     private void tick() {
+        synchronized (tickLock) {
+            tickLocked();
+        }
+    }
+
+    private void tickLocked() {
         try {
             long n = tickCounter.incrementAndGet();
             ZonedDateTime now = ZonedDateTime.now(ZoneId.systemDefault());
@@ -653,6 +750,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
             publishContext(ctx);
             publishPhase2Channels(ctx, decisions);
+            publishCarReasons(ctx, decisions);
             publishMirrorItems(ctx);
 
             if (n == 1 || n % 12 == 0) {
@@ -747,6 +845,81 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                     .collect(Collectors.joining("; "));
         }
         updateState(CHANNEL_LAST_DECISION_LOG, new StringType(summary));
+    }
+
+    /**
+     * Publish a human-readable per-car "why" string to each car's reason
+     * channel, derived from this tick's surviving decisions. Lets the UI show
+     * exactly which controller is steering a car and why (e.g. a capacity-tariff
+     * pause vs. a routine SNEL setpoint), instead of leaving the user guessing.
+     */
+    private void publishCarReasons(EnergyContext ctx, List<SetpointRequest> decisions) {
+        for (int n = 1; n <= 4; n++) {
+            String carKey = "car" + n;
+            CarSnapshot car = ctx.cars().get(carKey);
+            updateState(String.format(CHANNEL_CAR_REASON_FMT, n), new StringType(describeCar(carKey, car, decisions)));
+        }
+    }
+
+    /**
+     * Pick the most salient decision for one car (a pause outranks an amps
+     * setpoint outranks a charge-start) and format it; when no controller
+     * steered the car this tick, fall back to a neutral status derived from the
+     * snapshot (no cable / manual OFF / running).
+     */
+    private String describeCar(String carKey, @Nullable CarSnapshot car, List<SetpointRequest> decisions) {
+        @Nullable
+        SetpointRequest pause = null;
+        @Nullable
+        SetpointRequest amps = null;
+        @Nullable
+        SetpointRequest start = null;
+        for (SetpointRequest r : decisions) {
+            if (!carKey.equals(r.assetId())) {
+                continue;
+            }
+            switch (r.kind()) {
+                case PAUSE:
+                    pause = r;
+                    break;
+                case AMPS:
+                    amps = r;
+                    break;
+                case CHARGE_START:
+                    start = r;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (pause != null && pause.value() >= 0.5) {
+            return pause.controllerName() + ": " + pause.reason() + " — gepauzeerd";
+        }
+        if (amps != null) {
+            return amps.controllerName() + ": " + amps.reason() + " — " + (int) Math.round(amps.value()) + "A";
+        }
+        if (start != null) {
+            return start.controllerName() + ": " + start.reason() + " — start";
+        }
+        if (pause != null) {
+            return pause.controllerName() + ": " + pause.reason() + " — hervat";
+        }
+        if (car == null) {
+            return "geen gegevens";
+        }
+        if (!car.cableConnected()) {
+            return "geen kabel aangesloten";
+        }
+        switch (car.mode()) {
+            case OFF:
+                return "handmatige modus (uit)";
+            case ECO:
+                return "ECO — geen sturing nodig";
+            case SNEL:
+                return "SNEL — geen sturing nodig";
+            default:
+                return car.ocppStatus();
+        }
     }
 
     /**

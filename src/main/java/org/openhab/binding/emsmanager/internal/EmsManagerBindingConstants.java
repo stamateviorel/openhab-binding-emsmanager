@@ -269,6 +269,9 @@ public final class EmsManagerBindingConstants {
     public static final String CHANNEL_LAST_DECISION_LOG = "lastDecisionLog";
     public static final String CHANNEL_MODBUS_FRESH = "modbusFresh";
 
+    // Per-car EMS reason channels (car%dReason → car1Reason..car4Reason).
+    public static final String CHANNEL_CAR_REASON_FMT = "car%dReason";
+
     // HardPeakShavingController channels
     public static final String CHANNEL_HARD_PEAK_LEVEL = "hardPeakShavingLevel";
     public static final String CHANNEL_HARD_PEAK_STATUS = "hardPeakShavingStatus";

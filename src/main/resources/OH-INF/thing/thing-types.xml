@@ -37,6 +37,11 @@
 			<channel id="hardPeakShavingLevel" typeId="hardPeakShavingLevel"/>
 			<channel id="hardPeakShavingStatus" typeId="hardPeakShavingStatus"/>
 			<channel id="hardPeakShavingDetail" typeId="hardPeakShavingDetail"/>
+			<!-- per-car EMS reason (why each car is doing what it's doing) -->
+			<channel id="car1Reason" typeId="carReason"/>
+			<channel id="car2Reason" typeId="carReason"/>
+			<channel id="car3Reason" typeId="carReason"/>
+			<channel id="car4Reason" typeId="carReason"/>
 			<!-- solar-surplus dispatcher readback -->
 			<channel id="gridLoad5minAvgW" typeId="gridLoad5minAvgW"/>
 			<channel id="surplusOnThresholdW" typeId="surplusOnThresholdW"/>
@@ -433,6 +438,14 @@
 		<item-type>String</item-type>
 		<label>Hard peak-shaving detail</label>
 		<description>Longer Dutch explanation of the active tier — what it touched, why, and what is NOT touched (SNEL cars).</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="carReason">
+		<item-type>String</item-type>
+		<label>EV decision reason</label>
+		<description>Human-readable reason (controller + why) for this car's most recent EMS decision — e.g. a capacity-tariff
+			pause or a routine SNEL setpoint.</description>
 		<state readOnly="true"/>
 	</channel-type>
 
