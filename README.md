@@ -71,7 +71,7 @@ All parameters are documented in `thing-types.xml`; the important groups:
 
 ### Bridge channels (selection)
 
-`gridLoadRawW`, `gridLoadSmoothedW`, `solarLoadW`, `houseLoadSumW`, `batteryLoadW`, `batterySoC`, `batteryReserveTargetPct`, `batteryBelowReserve`, `availableExcessW`, `energyMode` (`SOLAR_EXCESS`/`BALANCED`/`GRID_IMPORT`/`BATTERY_DEPLETING`/`UNKNOWN`), `softPeakShavingEcoCapA`, `breakerHeadroomA`, `lastDecisionLog`, `hardPeakShavingLevel`/`hardPeakShavingStatus`/`hardPeakShavingDetail`, `gridLoad5minAvgW`, `surplusOnThresholdW`, `capMonthlyPeakW`/`capCurrentQuarterW`/`capProjectedQuarterW`/`capWouldExceed`/`capStatus`, `optPlanCsv`/`optNextChargeHour`/`optNextDischargeHour`, `controllerCount`/`lastTickAt`/`tickCount`.
+`gridLoadRawW`, `gridLoadSmoothedW`, `solarLoadW`, `houseLoadSumW`, `batteryLoadW`, `batterySoC`, `batteryReserveTargetPct`, `batteryBelowReserve`, `availableExcessW`, `energyMode` (`SOLAR_EXCESS`/`BALANCED`/`GRID_IMPORT`/`BATTERY_DEPLETING`/`UNKNOWN`), `softPeakShavingEcoCapA`, `breakerHeadroomA`, `lastDecisionLog`, `hardPeakShavingLevel`/`hardPeakShavingStatus`/`hardPeakShavingDetail`, `car1Reason`…`car4Reason` (per-car decision reason — which controller is steering each car and why), `gridLoad5minAvgW`, `surplusOnThresholdW`, `capMonthlyPeakW`/`capCurrentQuarterW`/`capProjectedQuarterW`/`capWouldExceed`/`capStatus`, `optPlanCsv`/`optNextChargeHour`/`optNextDischargeHour`, `controllerCount`/`lastTickAt`/`tickCount`.
 
 ## The controller stack
 
