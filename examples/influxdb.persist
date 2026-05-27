@@ -1,0 +1,25 @@
+// Example persistence strategy for the EMS Manager binding (InfluxDB).
+// The analytics, battery sizing, tariff comparison and statistics tier
+// all read history back, so the source power items and the binding's
+// EMS_* items must be persisted.
+
+Strategies {
+    everyMinute : "0 * * * * ?"
+    default = everyChange
+}
+
+Items {
+    // High-resolution source signals (drive the live charts + analytics)
+    Grid_Power, Solar_Power, House_Power, Battery_Power, Battery_SoC : strategy = everyChange, everyMinute
+
+    // Intra-day accumulators the binding publishes
+    EMS_SelfConsumption_kWh_Day, EMS_FeedIn_kWh_Day, EMS_Supply_kWh_Day,
+        EMS_CO2_Net_Today_kg, EMS_Cost_EUR_Total, EMS_Savings_EUR_Total, EMS_Earnings_EUR_Total
+        : strategy = everyChange, everyMinute
+
+    // Statistics tier — one clean point per day (written ~23:58).
+    // everyChange ONLY: keeps the series sparse so month/year charts are fast.
+    EMS_Stat_Solar_kWh, EMS_Stat_House_kWh, EMS_Stat_SelfConsumption_kWh,
+        EMS_Stat_FeedIn_kWh, EMS_Stat_Supply_kWh, EMS_Stat_CO2_kg
+        : strategy = everyChange
+}

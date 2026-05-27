@@ -1,0 +1,1113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<thing:thing-descriptions bindingId="emsmanager"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:thing="https://openhab.org/schemas/thing-description/v1.0.0"
+	xsi:schemaLocation="https://openhab.org/schemas/thing-description/v1.0.0 https://openhab.org/schemas/thing-description-1.0.0.xsd">
+
+	<!-- Bridge: the EMS coordinator. Single instance per site. -->
+	<bridge-type id="bridge">
+		<label>EMS Manager</label>
+		<description>Root coordinator: scheduler + per-tick energy context + per-controller dispatch. Default shadow-mode =
+			ON.</description>
+		<semantic-equipment-tag>WebService</semantic-equipment-tag>
+
+		<channels>
+			<!-- Liveness -->
+			<channel id="shadowMode" typeId="shadowMode"/>
+			<channel id="lastTickAt" typeId="lastTickAt"/>
+			<channel id="tickCount" typeId="tickCount"/>
+			<channel id="controllerCount" typeId="controllerCount"/>
+			<!-- energy context readback -->
+			<channel id="gridLoadRawW" typeId="gridLoadRawW"/>
+			<channel id="gridLoadSmoothedW" typeId="gridLoadSmoothedW"/>
+			<channel id="solarLoadW" typeId="solarLoadW"/>
+			<channel id="houseLoadSumW" typeId="houseLoadSumW"/>
+			<channel id="batteryLoadW" typeId="batteryLoadW"/>
+			<channel id="batterySoC" typeId="batterySoC"/>
+			<channel id="batteryReserveTargetPct" typeId="batteryReserveTargetPct"/>
+			<channel id="batteryBelowReserve" typeId="batteryBelowReserve"/>
+			<channel id="availableExcessW" typeId="availableExcessW"/>
+			<channel id="energyMode" typeId="energyMode"/>
+			<!-- controller readback -->
+			<channel id="softPeakShavingEcoCapA" typeId="softPeakShavingEcoCapA"/>
+			<channel id="breakerHeadroomA" typeId="breakerHeadroomA"/>
+			<channel id="modbusFresh" typeId="modbusFresh"/>
+			<channel id="lastDecisionLog" typeId="lastDecisionLog"/>
+			<!-- hard peak-shaving readback -->
+			<channel id="hardPeakShavingLevel" typeId="hardPeakShavingLevel"/>
+			<channel id="hardPeakShavingStatus" typeId="hardPeakShavingStatus"/>
+			<channel id="hardPeakShavingDetail" typeId="hardPeakShavingDetail"/>
+			<!-- solar-surplus dispatcher readback -->
+			<channel id="gridLoad5minAvgW" typeId="gridLoad5minAvgW"/>
+			<channel id="surplusOnThresholdW" typeId="surplusOnThresholdW"/>
+			<channel id="boilerUserOverride" typeId="boilerUserOverride"/>
+			<!-- capacity-tariff (Belgian capaciteitstarief) readback -->
+			<channel id="capacityMonthlyPeakW" typeId="capMonthlyPeakW"/>
+			<channel id="capacityCurrentQuarterAvgW" typeId="capCurrentQuarterW"/>
+			<channel id="capacityProjectedQuarterW" typeId="capProjectedQuarterW"/>
+			<channel id="capacityWouldExceedMonthlyPeak" typeId="capWouldExceed"/>
+			<channel id="capacityTariffStatus" typeId="capStatus"/>
+			<!-- self-consumption optimizer plan -->
+			<channel id="optimizerPlan24hCsv" typeId="optPlanCsv"/>
+			<channel id="optimizerNextChargeHour" typeId="optNextChargeHour"/>
+			<channel id="optimizerNextDischargeHour" typeId="optNextDischargeHour"/>
+			<!-- device-meter aggregates -->
+			<channel id="deviceMeterTrackedW" typeId="dmTrackedW"/>
+			<channel id="deviceMeterUntrackedW" typeId="dmUntrackedW"/>
+			<channel id="deviceMeterTrackedKwhDay" typeId="dmTrackedKwhDay"/>
+		</channels>
+
+		<config-description>
+			<parameter name="tickIntervalSeconds" type="integer" min="1" max="60" unit="s">
+				<label>Tick interval (s)</label>
+				<description>How often the scheduler evaluates controllers. Default 5.</description>
+				<default>5</default>
+			</parameter>
+			<parameter name="gridSafetyMarginW" type="integer" min="0" max="5000" unit="W">
+				<label>Grid safety margin (W)</label>
+				<description>Reserve held export-positive when computing ECO budgets. Default 500.</description>
+				<default>500</default>
+			</parameter>
+			<parameter name="gridEwmaTauSec" type="integer" min="1" max="600" unit="s">
+				<label>Grid EWMA tau (s)</label>
+				<description>Time constant for the grid-load EWMA. Default 30.</description>
+				<default>30</default>
+			</parameter>
+			<parameter name="shadowMode" type="boolean">
+				<label>Shadow mode (master)</label>
+				<description>When true, controllers compute but never write setpoints. Master kill-switch. DEFAULTS TO TRUE on first
+					install for safety.</description>
+				<default>true</default>
+			</parameter>
+			<!-- battery asset config -->
+			<parameter name="batteryControlMode" type="text" required="false">
+				<label>Battery control mode</label>
+				<description>auto = EMS writes setpoints to batterySetpointItemName; fixed = user-set static value
+					(BatteryTouDispatcher inert); readonly = inverter not writable (typical default).</description>
+				<options>
+					<option value="auto">auto — EMS-driven</option>
+					<option value="fixed">fixed — user-set static</option>
+					<option value="readonly">readonly — telemetry only</option>
+				</options>
+				<default>readonly</default>
+			</parameter>
+			<parameter name="batterySetpointItemName" type="text" required="false">
+				<label>Battery setpoint item (auto mode)</label>
+				<description>Item the binding writes to in batteryControlMode=auto. Leave blank in readonly/fixed.</description>
+				<default></default>
+			</parameter>
+			<parameter name="batteryFixedSetpointW" type="integer" required="false">
+				<label>Fixed setpoint (W, fixed mode)</label>
+				<description>Used when batteryControlMode=fixed. Signed: + = discharge, − = charge.</description>
+				<default>0</default>
+			</parameter>
+			<parameter name="batteryMinSetpointW" type="integer" required="false">
+				<label>Battery min setpoint (W)</label>
+				<description>Clamp floor in auto mode. − = max charge from grid.</description>
+				<default>-3000</default>
+			</parameter>
+			<parameter name="batteryMaxSetpointW" type="integer" required="false">
+				<label>Battery max setpoint (W)</label>
+				<description>Clamp ceiling in auto mode. + = max discharge.</description>
+				<default>3000</default>
+			</parameter>
+			<!-- cost analytics config -->
+			<parameter name="injectionPriceEurPerKWh" type="decimal" step="0.001" required="false">
+				<label>Injection price (€/kWh)</label>
+				<description>Price the supplier pays you for fed-in kWh. Used by CostAnalyticsController to compute earnings.
+					Belgian residential typical 0.04-0.08 €/kWh.</description>
+				<default>0.05</default>
+			</parameter>
+			<!-- boiler force-on schedule -->
+			<parameter name="boilerForceOnSchedule" type="text" required="false">
+				<label>Boiler force-on schedule</label>
+				<description>CSV of day:HH:MM-HH:MM windows (MON TUE WED THU FRI SAT SUN). Empty = disabled. Example:
+					TUE:07:00-09:00,THU:07:00-09:00.</description>
+			</parameter>
+			<!-- source-item names + per-car patterns (all optional; blank = compile-time default) -->
+			<parameter name="gridLoadItem" type="text" required="false">
+				<label>Grid load item</label>
+				<default>Grid_Power</default>
+			</parameter>
+			<parameter name="solarLoadItem" type="text" required="false">
+				<label>Solar load item</label>
+				<default>Solar_Power</default>
+			</parameter>
+			<parameter name="houseLoadSumItem" type="text" required="false">
+				<label>House load sum item</label>
+				<default>House_Power</default>
+			</parameter>
+			<parameter name="batteryLoadItem" type="text" required="false">
+				<label>Battery load item</label>
+				<default>Battery_Power</default>
+			</parameter>
+			<parameter name="batteryPercentageItem" type="text" required="false">
+				<label>Battery percentage item</label>
+				<default>Battery_SoC</default>
+			</parameter>
+			<parameter name="batteryReserveTargetItem" type="text" required="false">
+				<label>Battery reserve target item</label>
+				<default>Battery_Reserve_Target_Pct</default>
+			</parameter>
+			<parameter name="gridImportPositive" type="boolean" required="false">
+				<label>Grid item is import-positive</label>
+				<description>Enable if your grid item reports + = import (e.g. Fronius). The binding's internal
+					convention is + =
+					export; it negates the reading once when this is set.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="batteryChargePositive" type="boolean" required="false">
+				<label>Battery item is charge-positive</label>
+				<description>Whether your battery power item reports + = charging (the binding's convention).
+					Disable if your item
+					uses + = discharging.</description>
+				<default>true</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="carCount" type="integer" required="false" min="0" max="8">
+				<label>Number of cars</label>
+				<default>4</default>
+			</parameter>
+			<parameter name="carModeItemPattern" type="text" required="false">
+				<label>Car mode item pattern</label>
+				<default>EVSE%d_Mode</default>
+			</parameter>
+			<parameter name="carCableItemPattern" type="text" required="false">
+				<label>Car cable item pattern</label>
+				<default>EVSE%d_Cable</default>
+			</parameter>
+			<parameter name="carStatusItemPattern" type="text" required="false">
+				<label>Car status item pattern</label>
+				<default>EVSE%d_Status</default>
+			</parameter>
+			<parameter name="carCurrentLimitItemPattern" type="text" required="false">
+				<label>Car current-limit item pattern</label>
+				<default>EVSE%d_CurrentLimit</default>
+			</parameter>
+			<parameter name="carPauseItemPattern" type="text" required="false">
+				<label>Car pause item pattern</label>
+				<default>EVSE%d_Pause</default>
+			</parameter>
+			<parameter name="carChargingItemPattern" type="text" required="false">
+				<label>Car charging item pattern</label>
+				<default>EVSE%d_Charging</default>
+			</parameter>
+			<parameter name="carPowerOcppItemPattern" type="text" required="false">
+				<label>Car OCPP power item pattern (W)</label>
+				<default>EVSE%d_Power</default>
+			</parameter>
+			<parameter name="carPowerKwItemPattern" type="text" required="false">
+				<label>Car power (kW) item pattern</label>
+				<default>EVSE%d_Power_kW</default>
+			</parameter>
+			<parameter name="carAmpsL1ItemPattern" type="text" required="false">
+				<label>Car amps L1 item pattern</label>
+				<default>EVSE%d_Amps_L1</default>
+			</parameter>
+			<parameter name="carAmpsL2ItemPattern" type="text" required="false">
+				<label>Car amps L2 item pattern</label>
+				<default>EVSE%d_Amps_L2</default>
+			</parameter>
+			<parameter name="carAmpsL3ItemPattern" type="text" required="false">
+				<label>Car amps L3 item pattern</label>
+				<default>EVSE%d_Amps_L3</default>
+			</parameter>
+			<parameter name="statisticsRollupEnabled" type="boolean" required="false">
+				<label>Statistics rollup</label>
+				<description>Snapshot finalized daily totals into clean EMS_Stat_* items at 23:58 each day, so
+					month/year charts stay
+					fast. Disable only if you don't chart long-range energy.</description>
+				<default>true</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="boilerStateItem" type="text" required="false">
+				<label>Boiler state item</label>
+				<description>Switch item reflecting the boiler's real on/off state (read).</description>
+				<default>Boiler_Switch</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="aircoGroupItem" type="text" required="false">
+				<label>Air conditioning group item</label>
+				<description>Switch/group item reflecting whether air conditioning is drawing power (read).</description>
+				<default>Aircon_Switch</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="peakShavingEnabledItem" type="text" required="false">
+				<label>Peak shaving enabled item</label>
+				<description>Switch item used as the master enable for peak shaving. Missing/UNDEF is treated as enabled.</description>
+				<default>PeakShaving_Enabled</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="weatherCloudinessItem" type="text" required="false">
+				<label>Weather cloudiness item</label>
+				<description>Number item with today's forecast cloudiness percentage (read).</description>
+				<default>Weather_Cloudiness</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="boilerUserOverrideItem" type="text" required="false">
+				<label>Boiler user override item</label>
+				<description>Switch item letting the user force the boiler on, overriding solar/tariff scheduling (read).</description>
+				<default>EMS_Boiler_User_Override</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="publishLegacyMirrorItems" type="boolean" required="false">
+				<label>Publish legacy mirror items</label>
+				<description>Publish the legacy mirror items (PeakShaving_Level/Status/Detail, PeakShaving_EcoCap_A,
+					Available_excess_W, EnergyOrchestrator_Mode, Battery_below_reserve) for pre-existing widgets. Leave off for a fresh
+					install; the binding's own channels carry this data.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="capacityMinBillableW" type="integer" required="false" unit="W">
+				<label>Capacity tariff minimum billable demand</label>
+				<description>Minimum billable demand for a capacity tariff (Belgium bills a 2500 W minimum). Below this floor there
+					is no point shaving. Set to 0 in markets without a capacity tariff.</description>
+				<default>2500</default>
+				<advanced>true</advanced>
+			</parameter>
+		</config-description>
+	</bridge-type>
+
+	<!-- Liveness channel types -->
+	<channel-type id="shadowMode">
+		<item-type>Switch</item-type>
+		<label>Shadow mode (active)</label>
+		<description>Live readback of the bridge's shadow-mode state. ON = no writes are happening.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="lastTickAt">
+		<item-type>DateTime</item-type>
+		<label>Last tick at</label>
+		<description>Timestamp of the most recent scheduler tick.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="tickCount">
+		<item-type>Number</item-type>
+		<label>Tick count</label>
+		<description>Number of scheduler ticks since bridge initialization.</description>
+		<state readOnly="true" pattern="%d"/>
+	</channel-type>
+
+	<channel-type id="controllerCount">
+		<item-type>Number</item-type>
+		<label>Controllers registered</label>
+		<description>Number of controllers currently registered with the scheduler.</description>
+		<state readOnly="true" pattern="%d"/>
+	</channel-type>
+
+	<!-- Energy context channel types -->
+	<channel-type id="gridLoadRawW">
+		<item-type>Number:Power</item-type>
+		<label>Grid load (raw)</label>
+		<description>Raw grid power this tick. + = export, − = import.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="gridLoadSmoothedW">
+		<item-type>Number:Power</item-type>
+		<label>Grid load (EWMA smoothed)</label>
+		<description>EWMA-smoothed grid load, tau from bridge config.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="solarLoadW">
+		<item-type>Number:Power</item-type>
+		<label>Solar production</label>
+		<description>Raw solar power this tick.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="houseLoadSumW">
+		<item-type>Number:Power</item-type>
+		<label>House consumption</label>
+		<description>Raw house power this tick.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="batteryLoadW">
+		<item-type>Number:Power</item-type>
+		<label>Battery flow</label>
+		<description>Raw battery power this tick. Internal convention: + = charging, − = discharging.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="batterySoC">
+		<item-type>Number:Dimensionless</item-type>
+		<label>Battery state of charge</label>
+		<description>Battery state-of-charge mirror.</description>
+		<state readOnly="true" pattern="%.1f %%"/>
+	</channel-type>
+
+	<channel-type id="batteryReserveTargetPct">
+		<item-type>Number:Dimensionless</item-type>
+		<label>Battery reserve target (%)</label>
+		<description>User-tunable reserve floor. Read-only mirror.</description>
+		<state readOnly="true" pattern="%.0f %%"/>
+	</channel-type>
+
+	<channel-type id="batteryBelowReserve">
+		<item-type>Switch</item-type>
+		<label>Battery below reserve</label>
+		<description>ON when SoC &lt; reserve target.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="availableExcessW">
+		<item-type>Number:Power</item-type>
+		<label>Available solar excess</label>
+		<description>Smoothed grid export minus safety margin; 0 when importing.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="energyMode">
+		<item-type>String</item-type>
+		<label>Energy mode</label>
+		<description>Derived: SOLAR_EXCESS | BALANCED | GRID_IMPORT | BATTERY_DEPLETING | UNKNOWN.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- controller readback channels -->
+	<channel-type id="softPeakShavingEcoCapA">
+		<item-type>Number</item-type>
+		<label>Soft peak-shaving — ECO cap (A)</label>
+		<description>Live value of the soft peak-shaving controller's ECO current cap. 32 A normal, 8 A when grid import &gt;
+			5 kW.</description>
+		<state readOnly="true" pattern="%d A"/>
+	</channel-type>
+
+	<channel-type id="breakerHeadroomA">
+		<item-type>Number</item-type>
+		<label>Minimum breaker headroom (A)</label>
+		<description>Worst-phase headroom across all cable-connected cars. &lt; 6 A triggers a safety pause request.</description>
+		<state readOnly="true" pattern="%d A"/>
+	</channel-type>
+
+	<channel-type id="modbusFresh">
+		<item-type>Switch</item-type>
+		<label>Meter data fresh</label>
+		<description>ON when the per-car current meters are producing trustworthy amps. OFF triggers the staleness fail-safe.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="lastDecisionLog">
+		<item-type>String</item-type>
+		<label>Last controller decisions</label>
+		<description>Most recent tick's controller decisions, semicolon-separated. (idle) when nothing fired.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- hard peak-shaving readback channels -->
+	<channel-type id="hardPeakShavingLevel">
+		<item-type>Number</item-type>
+		<label>Hard peak-shaving tier</label>
+		<description>0 = idle, 1 = ECO cars paused, 2 = + boiler off, 3 = + airco off.</description>
+		<state readOnly="true" pattern="%d"/>
+	</channel-type>
+
+	<channel-type id="hardPeakShavingStatus">
+		<item-type>String</item-type>
+		<label>Hard peak-shaving status</label>
+		<description>Cumulative status of the active tier in Dutch (one-line summary suitable for a widget banner).</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="hardPeakShavingDetail">
+		<item-type>String</item-type>
+		<label>Hard peak-shaving detail</label>
+		<description>Longer Dutch explanation of the active tier — what it touched, why, and what is NOT touched (SNEL cars).</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- solar-surplus dispatcher diagnostic channels -->
+	<channel-type id="gridLoad5minAvgW">
+		<item-type>Number:Power</item-type>
+		<label>Grid load (5-min avg)</label>
+		<description>Arithmetic mean of raw grid power over the last 5 minutes. Drives the solar-surplus dispatcher.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="surplusOnThresholdW">
+		<item-type>Number:Power</item-type>
+		<label>Surplus on-threshold</label>
+		<description>Live boiler-on threshold computed from cloudiness + battery-reserve adjustments.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="boilerUserOverride">
+		<item-type>Switch</item-type>
+		<label>Boiler user-override active</label>
+		<description>ON when the user has manually toggled the boiler today — surplus dispatcher steps aside until midnight.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- capacity-tariff channel types -->
+	<channel-type id="capMonthlyPeakW">
+		<item-type>Number:Power</item-type>
+		<label>Capacity — month-to-date peak</label>
+		<description>Highest 15-min grid-import average seen so far this month. Reset on month rollover. This is the dimension
+			Belgian capaciteitstarief bills on.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="capCurrentQuarterW">
+		<item-type>Number:Power</item-type>
+		<label>Capacity — current quarter avg</label>
+		<description>Running average of grid power over the current :00/:15/:30/:45 slot (signed; − = import).</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="capProjectedQuarterW">
+		<item-type>Number:Power</item-type>
+		<label>Capacity — projected end-of-quarter</label>
+		<description>Projected end-of-slot average (v1 = same as current running avg).</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="capWouldExceed">
+		<item-type>Switch</item-type>
+		<label>Capacity — would exceed monthly peak</label>
+		<description>ON when the projected end-of-slot average would set a new monthly peak (or push above the 2.5 kW billing
+			floor).</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="capStatus">
+		<item-type>String</item-type>
+		<label>Capacity — status (Dutch)</label>
+		<description>Human-readable Dutch status describing what the capacity-tariff controller is doing this tick.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="dmTrackedW">
+		<item-type>Number:Power</item-type>
+		<label>Device-meters — tracked W</label>
+		<description>Sum of currentW across all registered device-meter Things.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="dmUntrackedW">
+		<item-type>Number:Power</item-type>
+		<label>Device-meters — untracked W</label>
+		<description>House power − Σ tracked. The "other / unknown" slice.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="dmTrackedKwhDay">
+		<item-type>Number:Energy</item-type>
+		<label>Device-meters — tracked kWh today</label>
+		<description>Sum of kWh-today across all device-meter Things.</description>
+		<state readOnly="true" pattern="%.2f %unit%"/>
+	</channel-type>
+
+	<!-- optimizer channel types -->
+	<channel-type id="optPlanCsv">
+		<item-type>String</item-type>
+		<label>Optimizer — 24h plan</label>
+		<description>24-character schedule string: c=charge, d=discharge, .=passive. Hour 0..23 indexed.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="optNextChargeHour">
+		<item-type>Number</item-type>
+		<label>Optimizer — next charge hour</label>
+		<description>Hour-of-day (0..23) of the next recommended battery-charge window; -1 if none planned.</description>
+		<state readOnly="true" pattern="%d"/>
+	</channel-type>
+
+	<channel-type id="optNextDischargeHour">
+		<item-type>Number</item-type>
+		<label>Optimizer — next discharge hour</label>
+		<description>Hour-of-day (0..23) of the next recommended battery-discharge window; -1 if none planned.</description>
+		<state readOnly="true" pattern="%d"/>
+	</channel-type>
+
+	<!-- device-meter Thing — one per sub-metered device -->
+	<thing-type id="device-meter">
+		<supported-bridge-type-refs>
+			<bridge-type-ref id="bridge"/>
+		</supported-bridge-type-refs>
+		<label>Energy Device Meter</label>
+		<description>Integrates a power-measuring item (CT clamp, smart plug, Modbus circuit, …) into per-device kWh
+			totals.
+			One Thing per device.</description>
+		<semantic-equipment-tag>Sensor</semantic-equipment-tag>
+
+		<channels>
+			<channel id="currentW" typeId="dmCurrentW"/>
+			<channel id="kwhToday" typeId="dmKwhToday"/>
+			<channel id="kwhYesterday" typeId="dmKwhYesterday"/>
+			<channel id="kwhLast7Days" typeId="dmKwhLast7Days"/>
+			<channel id="kwhLast30Days" typeId="dmKwhLast30Days"/>
+			<channel id="kwhYear" typeId="dmKwhYear"/>
+			<channel id="category" typeId="dmCategoryChan"/>
+			<channel id="color" typeId="dmColorChan"/>
+		</channels>
+
+		<config-description>
+			<parameter name="name" type="text" required="true">
+				<label>Display name</label>
+				<description>Human-friendly label for the UI (e.g. "Boiler", "Auto 1 — Poort", "Verlichting beneden").</description>
+				<default>Device</default>
+			</parameter>
+			<parameter name="powerItem" type="text" required="true">
+				<label>Power item</label>
+				<description>Item providing instantaneous power draw (Watts, or kW if powerInKw=true). Examples:
+					Boiler_Power,
+					Power_FridgeKitchen.</description>
+			</parameter>
+			<parameter name="powerInKw" type="boolean" required="false">
+				<label>Power in kW</label>
+				<description>Set true if the source item reports kW instead of W.</description>
+				<default>false</default>
+			</parameter>
+			<parameter name="energyItem" type="text" required="false">
+				<label>Cumulative energy item (optional)</label>
+				<description>If provided, an absolute kWh item — currently informational; future versions may use Δitem instead of
+					integrating power.</description>
+			</parameter>
+			<parameter name="category" type="text" required="false">
+				<label>Category</label>
+				<description>UI grouping. heating / lighting / ev / appliance / hvac / other.</description>
+				<options>
+					<option value="heating">Heating / hot water</option>
+					<option value="lighting">Lighting</option>
+					<option value="ev">EV charging</option>
+					<option value="appliance">Appliance</option>
+					<option value="hvac">HVAC</option>
+					<option value="other">Other</option>
+				</options>
+				<default>other</default>
+			</parameter>
+			<parameter name="color" type="text" required="false">
+				<label>UI color (hex)</label>
+				<description>For donut chart wedge / progress bar tint.</description>
+				<default>#666666</default>
+			</parameter>
+		</config-description>
+	</thing-type>
+
+	<!-- device-meter channel types -->
+	<channel-type id="dmCurrentW">
+		<item-type>Number:Power</item-type>
+		<label>Current power</label>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+	<channel-type id="dmKwhToday">
+		<item-type>Number:Energy</item-type>
+		<label>kWh today</label>
+		<state readOnly="true" pattern="%.2f kWh"/>
+	</channel-type>
+	<channel-type id="dmKwhYesterday">
+		<item-type>Number:Energy</item-type>
+		<label>kWh yesterday</label>
+		<state readOnly="true" pattern="%.2f kWh"/>
+	</channel-type>
+	<channel-type id="dmKwhLast7Days">
+		<item-type>Number:Energy</item-type>
+		<label>kWh last 7 days</label>
+		<state readOnly="true" pattern="%.1f kWh"/>
+	</channel-type>
+	<channel-type id="dmKwhLast30Days">
+		<item-type>Number:Energy</item-type>
+		<label>kWh last 30 days</label>
+		<state readOnly="true" pattern="%.1f kWh"/>
+	</channel-type>
+	<channel-type id="dmKwhYear">
+		<item-type>Number:Energy</item-type>
+		<label>kWh this year</label>
+		<state readOnly="true" pattern="%.0f kWh"/>
+	</channel-type>
+	<channel-type id="dmCategoryChan">
+		<item-type>String</item-type>
+		<label>Category</label>
+		<state readOnly="true"/>
+	</channel-type>
+	<channel-type id="dmColorChan">
+		<item-type>String</item-type>
+		<label>Color</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- forecast-solar Thing -->
+	<thing-type id="forecast-solar">
+		<supported-bridge-type-refs>
+			<bridge-type-ref id="bridge"/>
+		</supported-bridge-type-refs>
+		<label>Solar Forecast (forecast.solar)</label>
+		<description>Polls a solar-production forecast provider (defaults to forecast.solar free tier) and exposes
+			today/tomorrow estimates. Pluggable provider — see kind config.</description>
+		<semantic-equipment-tag>WebService</semantic-equipment-tag>
+
+		<channels>
+			<channel id="nowW" typeId="fcNowW"/>
+			<channel id="next1hWh" typeId="fcNext1hWh"/>
+			<channel id="next3hWh" typeId="fcNext3hWh"/>
+			<channel id="next6hWh" typeId="fcNext6hWh"/>
+			<channel id="todayKwh" typeId="fcTodayKwh"/>
+			<channel id="tomorrowKwh" typeId="fcTomorrowKwh"/>
+			<channel id="peakTodayAt" typeId="fcPeakTodayAt"/>
+			<channel id="lastRefreshAt" typeId="fcLastRefreshAt"/>
+			<channel id="rateLimitRemaining" typeId="fcRateLimitRemaining"/>
+			<channel id="lastError" typeId="fcLastError"/>
+			<channel id="hourlyForecastTodayCsv" typeId="fcHourlyTodayCsv"/>
+		</channels>
+
+		<config-description>
+			<parameter name="kind" type="text" required="true">
+				<label>Provider kind</label>
+				<description>Which forecast provider to use. Currently ships the free tier.</description>
+				<options>
+					<option value="forecast-solar-free">forecast.solar free tier (default; 12 calls/h, single plane)</option>
+				</options>
+				<default>forecast-solar-free</default>
+			</parameter>
+			<parameter name="apiBaseUrl" type="text">
+				<label>API base URL</label>
+				<description>Override only if testing against a non-default endpoint.</description>
+				<default>https://api.forecast.solar</default>
+			</parameter>
+			<parameter name="apiKey" type="text" required="false">
+				<label>API key (paid tiers)</label>
+				<description>Not used by the free tier; reserved for forecast-solar-paid + solcast.</description>
+			</parameter>
+			<parameter name="lat" type="decimal" required="true" step="0.0001">
+				<label>Latitude</label>
+				<description>Site latitude in decimal degrees. Required — Thing stays OFFLINE without it.</description>
+			</parameter>
+			<parameter name="lon" type="decimal" required="true" step="0.0001">
+				<label>Longitude</label>
+				<description>Site longitude in decimal degrees. Required.</description>
+			</parameter>
+			<parameter name="declination" type="decimal" min="0" max="90" step="1">
+				<label>Roof tilt (declination, deg)</label>
+				<description>0 = horizontal, 90 = vertical. Typical Flemish roof: 30-40°.</description>
+				<default>35</default>
+			</parameter>
+			<parameter name="azimuth" type="decimal" min="-180" max="180" step="1">
+				<label>Roof azimuth (deg)</label>
+				<description>0 = south, 90 = west, -90 = east, ±180 = north.</description>
+				<default>0</default>
+			</parameter>
+			<parameter name="kwp" type="decimal" min="0.1" step="0.1">
+				<label>Peak power (kWp)</label>
+				<description>Installed solar peak power.</description>
+				<default>25</default>
+			</parameter>
+			<parameter name="refreshIntervalMin" type="integer" min="5" max="240">
+				<label>Refresh interval (min)</label>
+				<description>How often to poll the provider. Default 30 min keeps comfortably under the free-tier 12/h rate limit.</description>
+				<default>30</default>
+			</parameter>
+		</config-description>
+	</thing-type>
+
+	<!-- Forecast channel types -->
+	<channel-type id="fcNowW">
+		<item-type>Number:Power</item-type>
+		<label>Forecast — now</label>
+		<description>Forecast solar production at this hour.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="fcNext1hWh">
+		<item-type>Number:Energy</item-type>
+		<label>Forecast — next 1 h</label>
+		<description>Forecast energy production for the next 60 minutes.</description>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="fcNext3hWh">
+		<item-type>Number:Energy</item-type>
+		<label>Forecast — next 3 h</label>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="fcNext6hWh">
+		<item-type>Number:Energy</item-type>
+		<label>Forecast — next 6 h</label>
+		<state readOnly="true" pattern="%.0f %unit%"/>
+	</channel-type>
+
+	<channel-type id="fcTodayKwh">
+		<item-type>Number:Energy</item-type>
+		<label>Forecast — today total</label>
+		<description>Forecast total energy production for the current calendar day.</description>
+		<state readOnly="true" pattern="%.1f kWh"/>
+	</channel-type>
+
+	<channel-type id="fcTomorrowKwh">
+		<item-type>Number:Energy</item-type>
+		<label>Forecast — tomorrow total</label>
+		<description>Forecast total energy production for tomorrow.</description>
+		<state readOnly="true" pattern="%.1f kWh"/>
+	</channel-type>
+
+	<channel-type id="fcPeakTodayAt">
+		<item-type>DateTime</item-type>
+		<label>Forecast — peak today at</label>
+		<description>Timestamp of today's projected production peak.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="fcLastRefreshAt">
+		<item-type>DateTime</item-type>
+		<label>Forecast — last refresh</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="fcRateLimitRemaining">
+		<item-type>Number</item-type>
+		<label>Forecast — rate-limit remaining</label>
+		<description>API calls remaining in the current rate window (when the provider reports it).</description>
+		<state readOnly="true" pattern="%d"/>
+	</channel-type>
+
+	<channel-type id="fcLastError">
+		<item-type>String</item-type>
+		<label>Forecast — last error</label>
+		<description>Most recent fetch error, if any.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="fcHourlyTodayCsv">
+		<item-type>String</item-type>
+		<label>Forecast — today hourly (CSV)</label>
+		<description>HH:MM=W,HH:MM=W,… for today. Dashboard chart parses this for forecast-vs-actual overlay.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- tariff Thing -->
+	<thing-type id="tariff">
+		<supported-bridge-type-refs>
+			<bridge-type-ref id="bridge"/>
+		</supported-bridge-type-refs>
+		<label>Energy Tariff</label>
+		<description>User-settable energy tariff. Pluggable kind: flat (single price), day-night (two-rate schedule),
+			tou-schedule (24-hour user-defined). Dynamic spot providers (ENTSO-E etc.) are also supported.</description>
+		<semantic-equipment-tag>WebService</semantic-equipment-tag>
+
+		<channels>
+			<channel id="nowPriceEurPerKWh" typeId="trNowPrice"/>
+			<channel id="next1hPriceEurPerKWh" typeId="trNext1hPrice"/>
+			<channel id="todayMinPrice" typeId="trTodayMinPrice"/>
+			<channel id="todayMaxPrice" typeId="trTodayMaxPrice"/>
+			<channel id="todayAvgPrice" typeId="trTodayAvgPrice"/>
+			<channel id="cheapestHourStart" typeId="trCheapestHourStart"/>
+			<channel id="mostExpensiveHourStart" typeId="trMostExpensiveHourStart"/>
+			<channel id="schedule24hCsv" typeId="trSchedule24hCsv"/>
+			<channel id="schedule48hCsv" typeId="trSchedule48hCsv"/>
+			<channel id="tariffLastRefreshAt" typeId="trLastRefreshAt"/>
+		</channels>
+
+		<config-description>
+			<parameter name="kind" type="text" required="true">
+				<label>Tariff kind</label>
+				<description>flat = single fixed rate; day-night = two-rate schedule; tou-schedule = user-defined hourly prices;
+					dynamic-spot = live day-ahead prices from ENTSO-E / Tibber / CSV.</description>
+				<options>
+					<option value="flat">Flat (single fixed €/kWh)</option>
+					<option value="day-night">Day / Night (two-rate)</option>
+					<option value="tou-schedule">ToU schedule (24 hourly prices)</option>
+					<option value="dynamic-spot">Dynamic spot (ENTSO-E / Tibber / CSV)</option>
+				</options>
+				<default>flat</default>
+			</parameter>
+			<!-- dynamic-spot sub-provider + credentials -->
+			<parameter name="subProvider" type="text" required="false">
+				<label>Spot sub-provider (kind=dynamic-spot only)</label>
+				<description>Which upstream service to fetch from. ENTSO-E = free transparency platform raw day-ahead BE bidding
+					zone. Tibber = end-customer-final prices via your Tibber account (BE supported). CSV = generic file/URL for
+					suppliers without APIs (Engie Dynamic / Bolt / Mega Flow / TotalEnergies).</description>
+				<options>
+					<option value="entsoe-be">ENTSO-E day-ahead BE (raw spot + markup)</option>
+					<option value="tibber">Tibber (taxes included)</option>
+					<option value="csv-upload">CSV (URL or local file)</option>
+				</options>
+				<default>entsoe-be</default>
+			</parameter>
+			<parameter name="apiKey" type="text" required="false">
+				<label>API key / token</label>
+				<description>ENTSO-E security token (register free at transparency.entsoe.eu), OR Tibber personal access token
+					(developer.tibber.com). Leave blank for csv-upload.</description>
+				<context>password</context>
+			</parameter>
+			<parameter name="csvUrl" type="text" required="false">
+				<label>CSV URL or local file path</label>
+				<description>For subProvider=csv-upload. Either http(s):// URL or absolute filesystem path. Expects 24-48 €/kWh
+					values, one per line, OR &quot;timestamp,price&quot; pairs. Pre-tax prices — markup is added on top.</description>
+			</parameter>
+			<parameter name="markupEurPerKWh" type="decimal" step="0.001" required="false">
+				<label>Markup €/kWh (added on top of raw spot)</label>
+				<description>Covers taxes, distribution, supplier margin, green-energy levies. Belgian residential typical: 0.12
+					€/kWh on top of EPEX spot. SET 0 FOR TIBBER (Tibber prices are end-customer-final).</description>
+				<default>0.12</default>
+			</parameter>
+			<parameter name="refreshIntervalMin" type="integer" min="5" max="240" required="false">
+				<label>Refresh interval (min)</label>
+				<description>How often to poll the upstream. Day-ahead prices don't change intraday so 60+ minutes is plenty. Lower
+					= more API traffic.</description>
+				<default>60</default>
+			</parameter>
+			<parameter name="flatPriceEurPerKWh" type="decimal" step="0.001">
+				<label>Flat price (€/kWh)</label>
+				<description>Used when kind=flat.</description>
+				<default>0.30</default>
+			</parameter>
+			<parameter name="dayPriceEurPerKWh" type="decimal" step="0.001">
+				<label>Day price (€/kWh)</label>
+				<description>Used when kind=day-night.</description>
+				<default>0.32</default>
+			</parameter>
+			<parameter name="nightPriceEurPerKWh" type="decimal" step="0.001">
+				<label>Night price (€/kWh)</label>
+				<description>Used when kind=day-night.</description>
+				<default>0.18</default>
+			</parameter>
+			<parameter name="dayStartHour" type="integer" min="0" max="23">
+				<label>Day start hour</label>
+				<description>0..23, local time. Used when kind=day-night.</description>
+				<default>7</default>
+			</parameter>
+			<parameter name="dayEndHour" type="integer" min="0" max="23">
+				<label>Day end hour</label>
+				<description>0..23, local time. Day window is [start, end). Can wrap midnight (e.g. start=22, end=6).</description>
+				<default>22</default>
+			</parameter>
+			<parameter name="hourlyPricesCsv" type="text">
+				<label>Hourly prices (24, CSV)</label>
+				<description>Used when kind=tou-schedule. Exactly 24 comma-separated €/kWh values for hours 0..23.</description>
+				<default>0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.18,0.18</default>
+			</parameter>
+		</config-description>
+	</thing-type>
+
+	<!-- Tariff channel types -->
+	<channel-type id="trNowPrice">
+		<item-type>Number</item-type>
+		<label>Tariff — current price</label>
+		<description>Current €/kWh.</description>
+		<state readOnly="true" pattern="%.4f €/kWh"/>
+	</channel-type>
+
+	<channel-type id="trNext1hPrice">
+		<item-type>Number</item-type>
+		<label>Tariff — next hour</label>
+		<state readOnly="true" pattern="%.4f €/kWh"/>
+	</channel-type>
+
+	<channel-type id="trTodayMinPrice">
+		<item-type>Number</item-type>
+		<label>Tariff — today min</label>
+		<state readOnly="true" pattern="%.4f €/kWh"/>
+	</channel-type>
+
+	<channel-type id="trTodayMaxPrice">
+		<item-type>Number</item-type>
+		<label>Tariff — today max</label>
+		<state readOnly="true" pattern="%.4f €/kWh"/>
+	</channel-type>
+
+	<channel-type id="trTodayAvgPrice">
+		<item-type>Number</item-type>
+		<label>Tariff — today avg</label>
+		<state readOnly="true" pattern="%.4f €/kWh"/>
+	</channel-type>
+
+	<channel-type id="trCheapestHourStart">
+		<item-type>DateTime</item-type>
+		<label>Tariff — cheapest hour starts</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="trMostExpensiveHourStart">
+		<item-type>DateTime</item-type>
+		<label>Tariff — most expensive hour starts</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="trSchedule24hCsv">
+		<item-type>String</item-type>
+		<label>Tariff — schedule today (CSV)</label>
+		<description>24 comma-separated €/kWh values for today's hours 0..23. Widget can parse and chart.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="trSchedule48hCsv">
+		<item-type>String</item-type>
+		<label>Tariff — schedule today+tomorrow (CSV)</label>
+		<description>48 comma-separated €/kWh values for today + tomorrow.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="trLastRefreshAt">
+		<item-type>DateTime</item-type>
+		<label>Tariff — last refresh</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- Heat-pump asset Thing — config holder. Optimizer publishes channels. -->
+	<thing-type id="heatpump">
+		<supported-bridge-type-refs>
+			<bridge-type-ref id="bridge"/>
+		</supported-bridge-type-refs>
+		<label>Heat pump</label>
+		<description>Heat-pump asset for SCOP-aware optimization. Provide a power-item + temp items; the optimizer publishes a
+			recommended mode each tick. The pump itself is not written to — link the recommendation channel to your pump's mode
+			item via a rule.</description>
+		<channels>
+			<channel id="recommendedMode" typeId="hpRecommendedMode"/>
+			<channel id="reason" typeId="hpReason"/>
+			<channel id="effectivePriceEurPerKWh" typeId="hpEffectivePrice"/>
+			<channel id="dailyKwhEstimate" typeId="hpDailyKwh"/>
+			<channel id="optimizerActive" typeId="hpOptimizerActive"/>
+		</channels>
+		<config-description>
+			<parameter name="name" type="text" required="false">
+				<label>Display name</label>
+				<default>Heat pump</default>
+			</parameter>
+			<parameter name="powerItem" type="text" required="false">
+				<label>Power item (W)</label>
+				<description>Item that reports the pump's current draw in watts.</description>
+			</parameter>
+			<parameter name="currentTempItem" type="text" required="false">
+				<label>Current indoor-temp item (°C)</label>
+			</parameter>
+			<parameter name="targetTempItem" type="text" required="false">
+				<label>Target indoor-temp item (°C)</label>
+			</parameter>
+			<parameter name="modeItem" type="text" required="false">
+				<label>Mode item (read-only echo)</label>
+				<description>Item the pump's current mode can be read from. Optional; informational only.</description>
+			</parameter>
+			<parameter name="scopCop" type="decimal" required="false">
+				<label>SCOP (Seasonal CoP)</label>
+				<description>Used to compute effective €/kWh-thermal. Typical air-water: 3.5–4. Geothermal: 4.5–5.5.</description>
+				<default>4.0</default>
+			</parameter>
+			<parameter name="allowBoostOnSurplus" type="boolean" required="false">
+				<label>Boost on solar surplus</label>
+				<default>true</default>
+			</parameter>
+			<parameter name="allowDeferOnPeak" type="boolean" required="false">
+				<label>Defer on tariff peaks</label>
+				<default>true</default>
+			</parameter>
+			<parameter name="cheapPriceThresholdRatio" type="decimal" required="false">
+				<label>Cheap-window ratio</label>
+				<description>Tariff &lt; dayAvg × this → cheap mode.</description>
+				<default>0.7</default>
+			</parameter>
+			<parameter name="expensivePriceThresholdRatio" type="decimal" required="false">
+				<label>Expensive-window ratio</label>
+				<description>Tariff &gt; dayAvg × this → defer mode.</description>
+				<default>1.3</default>
+			</parameter>
+			<parameter name="boostSurplusThresholdW" type="integer" required="false">
+				<label>Boost surplus threshold (W)</label>
+				<default>3000</default>
+			</parameter>
+			<parameter name="tempDeadbandC" type="decimal" required="false">
+				<label>Temp deadband (°C)</label>
+				<default>0.5</default>
+			</parameter>
+		</config-description>
+	</thing-type>
+
+	<!-- Heat-pump channel types -->
+	<channel-type id="hpRecommendedMode">
+		<item-type>String</item-type>
+		<label>Heat pump — recommended mode</label>
+		<description>One of: OFF / ECO / COMFORT / BOOST.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="hpReason">
+		<item-type>String</item-type>
+		<label>Heat pump — reason</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="hpEffectivePrice">
+		<item-type>Number</item-type>
+		<label>Heat pump — effective price (€/kWh-thermal)</label>
+		<description>Tariff / SCOP.</description>
+		<state readOnly="true" pattern="%.4f €/kWh"/>
+	</channel-type>
+
+	<channel-type id="hpDailyKwh">
+		<item-type>Number:Energy</item-type>
+		<label>Heat pump — daily kWh estimate</label>
+		<state readOnly="true" pattern="%.1f %unit%"/>
+	</channel-type>
+
+	<channel-type id="hpOptimizerActive">
+		<item-type>Switch</item-type>
+		<label>Heat pump — optimizer active</label>
+		<description>ON when the recommendation differs from passive comfort mode.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<!-- A.2: per-car EV charger Thing -->
+	<thing-type id="charger">
+		<supported-bridge-type-refs>
+			<bridge-type-ref id="bridge"/>
+		</supported-bridge-type-refs>
+		<label>EV charger</label>
+		<description>Per-charger config for the EV coordinator + charging plan. Bind the items the coordinator reads
+			(mode/cable/status/amps/power) and writes (current-limit/pause/charging). When any charger Thing exists it replaces
+			the bridge car%d-pattern config.</description>
+		<config-description>
+			<parameter name="name" type="text" required="false">
+				<label>Display name</label>
+				<default>EV charger</default>
+			</parameter>
+			<parameter name="carKey" type="text" required="false">
+				<label>Snapshot key</label>
+				<description>Defaults to the Thing id. Controllers key per-car state on this.</description>
+			</parameter>
+			<parameter name="modeItem" type="text" required="false">
+				<label>Mode item (ECO/SNEL/OFF)</label>
+			</parameter>
+			<parameter name="cableItem" type="text" required="false">
+				<label>Cable-connected item (ON/OFF)</label>
+			</parameter>
+			<parameter name="statusItem" type="text" required="false">
+				<label>OCPP status item</label>
+			</parameter>
+			<parameter name="powerOcppItem" type="text" required="false">
+				<label>Power item (OCPP, W)</label>
+			</parameter>
+			<parameter name="powerKwItem" type="text" required="false">
+				<label>Power item (clamp, kW)</label>
+			</parameter>
+			<parameter name="ampsL1Item" type="text" required="false">
+				<label>Amps L1 item</label>
+			</parameter>
+			<parameter name="ampsL2Item" type="text" required="false">
+				<label>Amps L2 item</label>
+			</parameter>
+			<parameter name="ampsL3Item" type="text" required="false">
+				<label>Amps L3 item</label>
+			</parameter>
+			<parameter name="currentLimitItem" type="text" required="false">
+				<label>Current-limit item (write, A)</label>
+			</parameter>
+			<parameter name="pauseItem" type="text" required="false">
+				<label>Pause item (write, ON/OFF)</label>
+			</parameter>
+			<parameter name="chargingItem" type="text" required="false">
+				<label>Charging/RemoteStart item (write, ON)</label>
+			</parameter>
+			<parameter name="breakerLimitA" type="integer" required="false">
+				<label>Breaker limit (A/phase)</label>
+				<default>63</default>
+			</parameter>
+		</config-description>
+	</thing-type>
+
+	<!-- A.2: per-car EV charger channel types placeholder (none — config-only Thing) -->
+</thing:thing-descriptions>
