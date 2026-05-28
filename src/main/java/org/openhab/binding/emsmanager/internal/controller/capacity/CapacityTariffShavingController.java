@@ -15,7 +15,9 @@ package org.openhab.binding.emsmanager.internal.controller.capacity;
 import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.*;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
@@ -60,6 +62,21 @@ public final class CapacityTariffShavingController implements Controller {
 
     /** Last computed status string for the bridge channel. */
     private volatile String lastStatus = "No peak control — insufficient data";
+
+    /**
+     * Cars this controller has paused itself. Used to issue an explicit release
+     * (PAUSE=0.0) when the peak event passes so an ECO car doesn't stay paused
+     * indefinitely — the user shouldn't have to flip to SNEL to wake a car the
+     * binding silently parked.
+     */
+    private final Set<String> pausedByMe = new HashSet<>();
+
+    /**
+     * Best-effort tracking-restore: on the first tick after init, any paused
+     * ECO car is assumed to be one we paused in a previous bridge lifetime so a
+     * mid-event restart doesn't leave it stuck forever.
+     */
+    private boolean firstEvalAfterInit = true;
 
     public CapacityTariffShavingController(boolean shadowMode, int minBillableW) {
         this.shadowMode = shadowMode;
@@ -124,14 +141,44 @@ public final class CapacityTariffShavingController implements Controller {
             return List.of();
         }
 
+        // Restart-resilience: on the very first eval after init, claim any
+        // currently-paused ECO car as "possibly ours" so a bridge restart in the
+        // middle of a peak event doesn't strand the car when the event passes.
+        // The worst case is a one-off release of a car that was paused for some
+        // other reason; hard-shaving re-asserts every tick so its pauses win
+        // in dispatch, making the heuristic safe.
+        if (firstEvalAfterInit) {
+            for (CarSnapshot car : ctx.cars().values()) {
+                if (car.cableConnected() && car.mode() == CarSnapshot.Mode.ECO && car.paused()) {
+                    pausedByMe.add(car.carKey());
+                }
+            }
+            firstEvalAfterInit = false;
+        }
+
         boolean wouldExceed = wouldExceedMonthlyPeak(ctx, minBillableW);
         double projectedKW = -projectedQuarterW(ctx) / 1000.0;
         double mtdPeakKW = -ctx.monthlyPeakW() / 1000.0;
 
         if (!wouldExceed) {
+            // Peak event passed (or never was) — release any cars we paused so
+            // they can resume in ECO. Without this, an ECO car paused during a
+            // capacity event would sit there forever waiting for someone to
+            // unpause it, and users would assume the charger is broken.
+            List<SetpointRequest> releases = new ArrayList<>();
+            for (String carKey : pausedByMe) {
+                CarSnapshot car = ctx.cars().get(carKey);
+                if (car != null && car.mode() == CarSnapshot.Mode.ECO && car.cableConnected() && car.paused()) {
+                    releases.add(new SetpointRequest(carKey, SetpointRequest.Kind.PAUSE, 0.0, priority(), NAME,
+                            String.format(java.util.Locale.ROOT,
+                                    "capacity tariff: piek voorbij — kwartier %.1f kW < maandpiek %.1f kW", projectedKW,
+                                    mtdPeakKW)));
+                }
+            }
+            pausedByMe.clear();
             lastStatus = String.format(java.util.Locale.ROOT, "Within budget — quarter %.1f kW, monthly peak %.1f kW",
                     projectedKW, mtdPeakKW);
-            return List.of();
+            return releases;
         }
 
         // Project says we'd set a new monthly peak. Find ECO cars to pause.
@@ -145,6 +192,9 @@ public final class CapacityTariffShavingController implements Controller {
                 continue;
             }
             if (car.paused()) {
+                // Already paused (likely by us from an earlier tick) — keep tracking it
+                // so we can issue an explicit release later.
+                pausedByMe.add(car.carKey());
                 continue;
             }
             candidates++;
@@ -152,6 +202,7 @@ public final class CapacityTariffShavingController implements Controller {
                     String.format(java.util.Locale.ROOT,
                             "capacity tariff: quarter would reach %.1f kW, monthly peak %.1f kW", projectedKW,
                             mtdPeakKW)));
+            pausedByMe.add(car.carKey());
         }
         if (candidates == 0) {
             lastStatus = String.format(java.util.Locale.ROOT, "Above monthly peak (%.1f kW) but no ECO cars to pause",
