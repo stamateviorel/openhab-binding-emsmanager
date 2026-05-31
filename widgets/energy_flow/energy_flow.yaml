@@ -1,0 +1,498 @@
+uid: energy_flow
+tags:
+- energy
+- power
+- solar
+- flow
+- sankey
+props:
+  parameterGroups:
+  - name: sources
+    label: Sources / inverter
+  - name: loads
+    label: Consumers
+  - name: tuning
+    label: Conventions & scaling
+  parameters:
+  - name: name
+    label: Subtitle (top-right)
+    type: TEXT
+    groupName: ''
+    default: ''
+    description: Optional subtitle shown in the header. Leave empty for none.
+  - name: generatorGroup
+    label: Generators group
+    type: TEXT
+    context: item
+    groupName: sources
+    description: Group whose members are generation sources (PV, wind, genset). Each member appears as a left-side inflow.
+  - name: gridItem
+    label: Grid power item
+    type: TEXT
+    context: item
+    groupName: sources
+    description: Grid power. Positive = export by default (toggle below).
+  - name: gridLabel
+    label: Grid label
+    type: TEXT
+    groupName: sources
+    default: Grid
+    description: Short name shown on the grid flow.
+  - name: batteryItem
+    label: Battery power item
+    type: TEXT
+    context: item
+    groupName: sources
+    description: Battery power. Positive = charging by default (toggle below).
+  - name: batteryLabel
+    label: Battery label
+    type: TEXT
+    groupName: sources
+    default: Battery
+    description: Short name shown on the battery flow.
+  - name: houseItem
+    label: Total consumption item
+    type: TEXT
+    context: item
+    groupName: sources
+    description: Total building/house power — shown in the glowing centre.
+  - name: centerLabel
+    label: Centre caption
+    type: TEXT
+    groupName: sources
+    default: Usage
+    description: Caption under the centre value (rendered upper-case).
+  - name: consumerGroup
+    label: Consumers group
+    type: TEXT
+    context: item
+    groupName: loads
+    description: Group whose members are loads. Each member appears as a right-side outflow (auto colour + keyword icon).
+  - name: consumerDivisor
+    label: Consumer item -> kW divisor (W=1000, kW=1)
+    type: DECIMAL
+    groupName: loads
+    default: 1000
+  - name: powerDivisor
+    label: Source item -> kW divisor (W=1000, kW=1)
+    type: DECIMAL
+    groupName: tuning
+    default: 1000
+  - name: gridExportPositive
+    label: 'Grid sign: positive = EXPORT'
+    type: BOOLEAN
+    groupName: tuning
+    default: true
+  - name: batteryChargePositive
+    label: 'Battery sign: positive = CHARGING'
+    type: BOOLEAN
+    groupName: tuning
+    default: true
+timestamp: Jun 1, 2026, 12:00:00 AM
+component: f7-block
+config:
+  style:
+    padding: 6px
+    margin: 0
+  stylesheet: ".ebento { padding: 2px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n.ecard { position: relative; border-radius: 18px; background: var(--f7-card-bg-color, #fff); border: 1px solid rgba(127,127,127,0.18); box-shadow: 0 2px 10px rgba(127,127,127,0.16); padding: 14px 16px; color: var(--f7-text-color); }\n.ec-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }\n.ec-title .dot { width: 8px; height: 8px; border-radius: 3px; }\n.ec-title .out { margin-left: auto; font-size: 12px; font-weight: 500; color: #9aa0a0; }\n.sankey { position: relative; width: 100%; }\n.sankey svg { width: 100%; height: 184px; display: block; }\n.sk-ribbon { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }\n.sk-flow { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 6; stroke-dasharray: 1 13; animation: skflow 1.1s linear infinite; transition: opacity .4s ease; }\n@keyframes skflow { to { stroke-dashoffset: -14; } }\n.bub { position: absolute; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 9px;\n  background: var(--f7-card-bg-color, #fff); box-shadow: 0 1px 5px rgba(0,0,0,0.16); white-space: nowrap; transition: opacity .4s ease; z-index: 2; }\n.bub-src { left: 0; border-left: 3px solid; padding-left: 6px; }\n.bub-con { right: 0; flex-direction: row-reverse; border-right: 3px solid; padding-right: 6px; }\n.bub { max-width: 150px; }\n.bub .bnm { font-size: 10px; color: #9aa0a0; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }\n.bub .bkw { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }\n.energy-ring { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: conic-gradient(from 0deg, #f0a83c, #f0902a 18%, #4aa6dd 48%, #6fd0ff 62%, #f0a83c 92%);\n  box-shadow: 0 0 14px rgba(240,144,42,0.6), 0 0 26px rgba(95,208,255,0.5), inset 0 0 12px rgba(255,255,255,0.28); animation: espin 3.4s linear infinite; z-index: 1; }\n.energy-ring2 { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle at 70% 28%, rgba(255,255,255,0.6), rgba(255,255,255,0) 42%); opacity: 0.9; animation: espin2 2.6s linear infinite reverse; z-index: 1; }\n.energy-hub { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle, rgba(10,14,22,0.62) 0%, rgba(10,14,22,0.34) 44%, rgba(10,14,22,0) 70%);\n  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; z-index: 2; }\n.hub-kw { font-size: 15px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.75); }\n.hub-lbl { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.92); text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 2px rgba(0,0,0,0.65); }\n@keyframes espin { to { transform: translate(-50%,-50%) rotate(360deg); } }\n@keyframes espin2 { to { transform: translate(-50%,-50%) rotate(360deg); } }\n"
+slots:
+  default:
+  - component: div
+    config:
+      class: ebento
+    slots:
+      default:
+      - component: div
+        config:
+          class: ecard c-hero
+        slots:
+          default:
+          - component: div
+            config:
+              class: ec-title
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dot
+                  style:
+                    background: '#5fd0ff'
+              - component: Label
+                config:
+                  text: Energy Flow
+              - component: div
+                config:
+                  class: out
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =props.name
+          - component: div
+            config:
+              class: sankey
+            slots:
+              default:
+              - component: svg
+                config:
+                  viewBox: 0 0 320 180
+                  preserveAspectRatio: none
+                slots:
+                  default:
+                  - component: oh-repeater
+                    config:
+                      sourceType: itemsInGroup
+                      groupItem: =props.generatorGroup
+                      for: g
+                      fragment: true
+                    slots:
+                      default:
+                      - component: path
+                        config:
+                          class: sk-ribbon
+                          d: ="M22,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" C82,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" 110,90 144,90"
+                          stroke: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
+                          style:
+                            stroke-width: =Math.max(7,Math.min(22,(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))*4))
+                            opacity: =(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))>0.05?0.4:0
+                      - component: path
+                        config:
+                          class: sk-flow
+                          d: ="M22,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" C82,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" 110,90 144,90"
+                          stroke: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
+                          style:
+                            stroke-width: =Math.max(6,Math.min(13,(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))*2))
+                            opacity: =(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))>0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M22,90 C82,90 110,90 144,90
+                      stroke: '#7d6cd6'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))*4))
+                        opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))>0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M22,90 C82,90 110,90 144,90
+                      stroke: '#7d6cd6'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))*2))
+                        opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))>0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M22,135 C82,135 110,90 144,90
+                      stroke: '#3bb273'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*4))
+                        opacity: =(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M22,135 C82,135 110,90 144,90
+                      stroke: '#3bb273'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*2))
+                        opacity: =(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M144,90 C210,20 260,20 306,20
+                      stroke: '#7d6cd6'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,(Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*4))
+                        opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))<-0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M144,90 C210,20 260,20 306,20
+                      stroke: '#7d6cd6'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,(Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*2))
+                        opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))<-0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M144,90 C210,38 260,38 306,38
+                      stroke: '#3bb273'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*4))
+                        opacity: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M144,90 C210,38 260,38 306,38
+                      stroke: '#3bb273'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*2))
+                        opacity: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?1:0
+                  - component: oh-repeater
+                    config:
+                      sourceType: itemsInGroup
+                      groupItem: =props.consumerGroup
+                      for: c
+                      fragment: true
+                    slots:
+                      default:
+                      - component: path
+                        config:
+                          class: sk-ribbon
+                          d: ="M144,90 C210,"+((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))+" 260,"+((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))+" 306,"+((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))
+                          stroke: ='hsl('+((loop.c_idx*53+200)%360)+',62%,54%)'
+                          style:
+                            stroke-width: =Math.max(7,Math.min(22,(((items[loop.c.name]!=null&&items[loop.c.name].numericState!=null?items[loop.c.name].numericState:0)/(props.consumerDivisor||1000)))*4))
+                            opacity: =(((items[loop.c.name]!=null&&items[loop.c.name].numericState!=null?items[loop.c.name].numericState:0)/(props.consumerDivisor||1000)))>0.05?0.4:0
+                      - component: path
+                        config:
+                          class: sk-flow
+                          d: ="M144,90 C210,"+((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))+" 260,"+((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))+" 306,"+((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))
+                          stroke: ='hsl('+((loop.c_idx*53+200)%360)+',62%,54%)'
+                          style:
+                            stroke-width: =Math.max(6,Math.min(13,(((items[loop.c.name]!=null&&items[loop.c.name].numericState!=null?items[loop.c.name].numericState:0)/(props.consumerDivisor||1000)))*2))
+                            opacity: =(((items[loop.c.name]!=null&&items[loop.c.name].numericState!=null?items[loop.c.name].numericState:0)/(props.consumerDivisor||1000)))>0.05?1:0
+              - component: oh-repeater
+                config:
+                  sourceType: itemsInGroup
+                  groupItem: =props.generatorGroup
+                  for: g
+                  fragment: true
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: bub bub-src
+                      style:
+                        top: =(((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))/180*100)+"%"
+                        opacity: =(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))>0.05?1:0
+                        border-color: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: =((loop.g.name+' '+loop.g.label).toLowerCase().indexOf('solar')>=0||(loop.g.name+' '+loop.g.label).toLowerCase().indexOf('pv')>=0||(loop.g.name+' '+loop.g.label).toLowerCase().indexOf('zon')>=0?'sun_max_fill':(loop.g.name+' '+loop.g.label).toLowerCase().indexOf('wind')>=0?'wind':(loop.g.name+' '+loop.g.label).toLowerCase().indexOf('gen')>=0?'bolt_fill':'sun_max_fill')
+                          size: 14
+                          style:
+                            color: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
+                      - component: div
+                        config:
+                          class: bnm
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =(loop.g.label.split(' ')[0].length>9?loop.g.label.split(' ')[0].substring(0,8)+'…':loop.g.label.split(' ')[0])
+                      - component: div
+                        config:
+                          class: bkw
+                          style:
+                            color: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000))).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-src
+                  style:
+                    top: 50%
+                    opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))>0.05?1:0
+                    border-color: '#7d6cd6'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: bolt_fill
+                      size: 14
+                      style:
+                        color: '#7d6cd6'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =props.gridLabel
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#7d6cd6'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-src
+                  style:
+                    top: 75%
+                    opacity: =(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?1:0
+                    border-color: '#3bb273'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: battery_100
+                      size: 14
+                      style:
+                        color: '#3bb273'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =props.batteryLabel
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#3bb273'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-con
+                  style:
+                    top: 11%
+                    opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))<-0.05?1:0
+                    border-color: '#7d6cd6'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: bolt_fill
+                      size: 14
+                      style:
+                        color: '#7d6cd6'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =props.gridLabel
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#7d6cd6'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-con
+                  style:
+                    top: 21%
+                    opacity: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?1:0
+                    border-color: '#3bb273'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: battery_100
+                      size: 14
+                      style:
+                        color: '#3bb273'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =props.batteryLabel
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#3bb273'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'
+              - component: oh-repeater
+                config:
+                  sourceType: itemsInGroup
+                  groupItem: =props.consumerGroup
+                  for: c
+                  fragment: true
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: bub bub-con
+                      style:
+                        top: =(((56+(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))<=1?54:108*(loop.c_idx/(((loop.c_source&&loop.c_source.length?loop.c_source.length:5))-1)))))/180*100)+"%"
+                        opacity: =(((items[loop.c.name]!=null&&items[loop.c.name].numericState!=null?items[loop.c.name].numericState:0)/(props.consumerDivisor||1000)))>0.05?1:0
+                        border-color: ='hsl('+((loop.c_idx*53+200)%360)+',62%,54%)'
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: =((loop.c.name+' '+loop.c.label).toLowerCase().indexOf('car')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('charg')>=0?'bolt_car':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('light')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('lamp')>=0?'lightbulb_fill':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('boiler')>=0?'flame_fill':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('heat')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('warm')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('radiator')>=0?'thermometer':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('air')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('climate')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('cool')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('hvac')>=0?'snow':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('secur')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('alarm')>=0?'shield_fill':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('pump')>=0?'drop_fill':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('wash')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('dryer')>=0?'arrow_2_circlepath':(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('oven')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('cook')>=0||(loop.c.name+' '+loop.c.label).toLowerCase().indexOf('kitchen')>=0?'flame':'bolt_horizontal_fill')
+                          size: 14
+                          style:
+                            color: ='hsl('+((loop.c_idx*53+200)%360)+',62%,54%)'
+                      - component: div
+                        config:
+                          class: bnm
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =(loop.c.label.split(' ')[0].length>9?loop.c.label.split(' ')[0].substring(0,8)+'…':loop.c.label.split(' ')[0])
+                      - component: div
+                        config:
+                          class: bkw
+                          style:
+                            color: ='hsl('+((loop.c_idx*53+200)%360)+',62%,54%)'
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =(((items[loop.c.name]!=null&&items[loop.c.name].numericState!=null?items[loop.c.name].numericState:0)/(props.consumerDivisor||1000))).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: energy-ring
+                  style:
+                    animation-duration: =( Math.max(0.8, 3.5 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.22) ) + 's'
+              - component: div
+                config:
+                  class: energy-ring2
+                  style:
+                    animation-duration: =( Math.max(0.6, 2.6 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.18) ) + 's'
+              - component: div
+                config:
+                  class: energy-hub
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: hub-kw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((items[props.houseItem]!=null&&items[props.houseItem].numericState!=null?items[props.houseItem].numericState:0)/(props.powerDivisor||1000)).toFixed(2)+' kW'
+                  - component: div
+                    config:
+                      class: hub-lbl
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =props.centerLabel
