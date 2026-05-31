@@ -44,6 +44,12 @@ props:
     context: item
     groupName: sources
     description: Battery power. Positive = charging by default (toggle below).
+  - name: batterySocItem
+    label: Battery SoC % item
+    type: TEXT
+    context: item
+    groupName: sources
+    description: Optional. State-of-charge % — shown as a chip + on the battery flow.
   - name: batteryLabel
     label: Battery label
     type: TEXT
@@ -88,13 +94,13 @@ props:
     type: BOOLEAN
     groupName: tuning
     default: true
-timestamp: Jun 1, 2026, 12:00:00 AM
+timestamp: Jun 1, 2026, 5:00:00 AM
 component: f7-block
 config:
   style:
     padding: 6px
     margin: 0
-  stylesheet: ".ebento { padding: 2px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n.ecard { position: relative; border-radius: 18px; background: var(--f7-card-bg-color, #fff); border: 1px solid rgba(127,127,127,0.18); box-shadow: 0 2px 10px rgba(127,127,127,0.16); padding: 14px 16px; color: var(--f7-text-color); }\n.ec-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }\n.ec-title .dot { width: 8px; height: 8px; border-radius: 3px; }\n.ec-title .out { margin-left: auto; font-size: 12px; font-weight: 500; color: #9aa0a0; }\n.sankey { position: relative; width: 100%; }\n.sankey svg { width: 100%; height: 184px; display: block; }\n.sk-ribbon { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }\n.sk-flow { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 6; stroke-dasharray: 1 13; animation: skflow 1.1s linear infinite; transition: opacity .4s ease; }\n@keyframes skflow { to { stroke-dashoffset: -14; } }\n.bub { position: absolute; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 9px;\n  background: var(--f7-card-bg-color, #fff); box-shadow: 0 1px 5px rgba(0,0,0,0.16); white-space: nowrap; transition: opacity .4s ease; z-index: 2; }\n.bub-src { left: 0; border-left: 3px solid; padding-left: 6px; }\n.bub-con { right: 0; flex-direction: row-reverse; border-right: 3px solid; padding-right: 6px; }\n.bub { max-width: 150px; }\n.bub .bnm { font-size: 10px; color: #9aa0a0; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }\n.bub .bkw { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }\n.energy-ring { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: conic-gradient(from 0deg, #f0a83c, #f0902a 18%, #4aa6dd 48%, #6fd0ff 62%, #f0a83c 92%);\n  box-shadow: 0 0 14px rgba(240,144,42,0.6), 0 0 26px rgba(95,208,255,0.5), inset 0 0 12px rgba(255,255,255,0.28); animation: espin 3.4s linear infinite; z-index: 1; }\n.energy-ring2 { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle at 70% 28%, rgba(255,255,255,0.6), rgba(255,255,255,0) 42%); opacity: 0.9; animation: espin2 2.6s linear infinite reverse; z-index: 1; }\n.energy-hub { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle, rgba(10,14,22,0.62) 0%, rgba(10,14,22,0.34) 44%, rgba(10,14,22,0) 70%);\n  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; z-index: 2; }\n.hub-kw { font-size: 15px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.75); }\n.hub-lbl { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.92); text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 2px rgba(0,0,0,0.65); }\n@keyframes espin { to { transform: translate(-50%,-50%) rotate(360deg); } }\n@keyframes espin2 { to { transform: translate(-50%,-50%) rotate(360deg); } }\n"
+  stylesheet: ".ebento { padding: 2px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n.ecard { position: relative; border-radius: 18px; background: var(--f7-card-bg-color, #fff); border: 1px solid rgba(127,127,127,0.18); box-shadow: 0 2px 10px rgba(127,127,127,0.16); padding: 14px 16px; color: var(--f7-text-color); }\n.ec-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }\n.ec-title .dot { width: 8px; height: 8px; border-radius: 3px; }\n.ec-title .out { margin-left: auto; font-size: 12px; font-weight: 500; color: #9aa0a0; }\n.sankey { position: relative; width: 100%; }\n.sankey svg { width: 100%; height: 184px; display: block; }\n.sk-ribbon { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }\n.sk-flow { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 6; stroke-dasharray: 1 13; animation: skflow 1.1s linear infinite; transition: opacity .4s ease; }\n@keyframes skflow { to { stroke-dashoffset: -14; } }\n.bub { position: absolute; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 9px;\n  background: var(--f7-card-bg-color, #fff); box-shadow: 0 1px 5px rgba(0,0,0,0.16); white-space: nowrap; transition: opacity .4s ease; z-index: 2; }\n.bub-src { left: 0; border-left: 3px solid; padding-left: 6px; }\n.bub-con { right: 0; flex-direction: row-reverse; border-right: 3px solid; padding-right: 6px; }\n.bub { max-width: 150px; }\n.bub .bnm { font-size: 10px; color: #9aa0a0; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }\n.bub .bkw { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }\n.energy-ring { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: conic-gradient(from 0deg, #f0a83c, #f0902a 18%, #4aa6dd 48%, #6fd0ff 62%, #f0a83c 92%);\n  box-shadow: 0 0 14px rgba(240,144,42,0.6), 0 0 26px rgba(95,208,255,0.5), inset 0 0 12px rgba(255,255,255,0.28); animation: espin 3.4s linear infinite; z-index: 1; }\n.energy-ring2 { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle at 70% 28%, rgba(255,255,255,0.6), rgba(255,255,255,0) 42%); opacity: 0.9; animation: espin2 2.6s linear infinite reverse; z-index: 1; }\n.energy-hub { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle, rgba(10,14,22,0.62) 0%, rgba(10,14,22,0.34) 44%, rgba(10,14,22,0) 70%);\n  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; z-index: 2; }\n.hub-kw { font-size: 15px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.75); }\n.hub-lbl { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.92); text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 2px rgba(0,0,0,0.65); }\n@keyframes espin { to { transform: translate(-50%,-50%) rotate(360deg); } }\n@keyframes espin2 { to { transform: translate(-50%,-50%) rotate(360deg); } }\n.bat-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 8px; border-radius: 9px; border: 1px solid; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }\n"
 slots:
   default:
   - component: div
@@ -128,6 +134,27 @@ slots:
                   - component: Label
                     config:
                       text: =props.name
+              - component: div
+                config:
+                  class: bat-chip
+                  style:
+                    color: =(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))>50?'#3bb273':((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))<-50?'#f0a83c':'#9aa0a0')
+                    border-color: =(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))>50?'#3bb273':((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))<-50?'#f0a83c':'#9aa0a0')
+                    display: =props.batterySocItem?'inline-flex':'none'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: =(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))>50?'battery_100_bolt':(items[props.batterySocItem]!=null&&items[props.batterySocItem].numericState!=null?items[props.batterySocItem].numericState:0)>80?'battery_100':(items[props.batterySocItem]!=null&&items[props.batterySocItem].numericState!=null?items[props.batterySocItem].numericState:0)>30?'battery_25':'battery_0')
+                      size: '13'
+                      style:
+                        color: =(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))>50?'#3bb273':((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))<-50?'#f0a83c':'#9aa0a0')
+                  - component: div
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(items[props.batterySocItem]!=null&&items[props.batterySocItem].numericState!=null?items[props.batterySocItem].numericState:0).toFixed(0)+'%'+(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))>50?' · charging '+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/1000).toFixed(1)+' kW':((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))<-50?' · discharging '+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/1000).toFixed(1)+' kW':((items[props.batterySocItem]!=null&&items[props.batterySocItem].numericState!=null?items[props.batterySocItem].numericState:0)>=99?' · full':''))
           - component: div
             config:
               class: sankey
@@ -357,7 +384,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: =(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'
+                          text: =(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'+(props.batterySocItem?' · '+(items[props.batterySocItem]!=null&&items[props.batterySocItem].numericState!=null?items[props.batterySocItem].numericState:0).toFixed(0)+'%':'')
               - component: div
                 config:
                   class: bub bub-con
@@ -423,7 +450,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'
+                          text: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'+(props.batterySocItem?' · '+(items[props.batterySocItem]!=null&&items[props.batterySocItem].numericState!=null?items[props.batterySocItem].numericState:0).toFixed(0)+'%':'')
               - component: oh-repeater
                 config:
                   sourceType: itemsInGroup
