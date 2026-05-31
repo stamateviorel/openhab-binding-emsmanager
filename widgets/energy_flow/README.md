@@ -6,7 +6,7 @@ whether they're feeding in or drawing out, and an **unlimited** set of consumers
 fan out on the right. Flat design, **light & dark** adaptive, fully configurable,
 **no external dependencies** (pure YAML + inline CSS/SVG).
 
-> 📷 _Add a light + dark screenshot here._
+![Energy Flow](./energy_flow.gif)
 
 ## Features
 
