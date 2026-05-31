@@ -469,12 +469,12 @@ slots:
                 config:
                   class: energy-ring
                   style:
-                    animation-duration: =( Math.max(0.8, 3.5 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.22) ) + 's'
+                    animation-duration: =( Math.max(0.8, 3.5 - ((items[props.houseItem]!=null&&items[props.houseItem].numericState!=null?items[props.houseItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.22) ) + 's'
               - component: div
                 config:
                   class: energy-ring2
                   style:
-                    animation-duration: =( Math.max(0.6, 2.6 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.18) ) + 's'
+                    animation-duration: =( Math.max(0.6, 2.6 - ((items[props.houseItem]!=null&&items[props.houseItem].numericState!=null?items[props.houseItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.18) ) + 's'
               - component: div
                 config:
                   class: energy-hub
