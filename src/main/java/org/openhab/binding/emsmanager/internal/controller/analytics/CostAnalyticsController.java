@@ -20,6 +20,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
@@ -71,6 +72,12 @@ public final class CostAnalyticsController implements Controller {
     private int lastMonth = -1;
     private int lastYear = -1;
 
+    // Restore-on-(re)init: defer the first publish until the persisted items are
+    // readable, so a transient UNDEF during a registry reload never overwrites good
+    // totals with 0 (root cause of the 2026-05-31 daily-counter wipe).
+    private boolean restored = false;
+    private @Nullable ItemRegistry itemRegistry;
+
     // Accumulators (kWh + €).
     private double selfConsumptionKwhDay = 0.0;
     private double selfConsumptionKwhMonth = 0.0;
@@ -90,23 +97,44 @@ public final class CostAnalyticsController implements Controller {
         this.injectionPriceEurPerKWh = injectionPriceEurPerKWh;
     }
 
-    /** Read persisted item state into the accumulators so we resume cleanly across restarts. */
+    /**
+     * Remember the registry and try to restore the accumulators from persisted item
+     * state so we resume cleanly across (re)init. If the source items aren't readable
+     * yet (transient UNDEF during a registry reload), DEFER — {@link #evaluate} retries
+     * every tick and we never publish 0 over a good total.
+     */
     public void initFromItems(ItemRegistry items) {
-        selfConsumptionKwhDay = readNumber(items, ITEM_EMS_SELFCONSUMPTION_KWH_DAY);
-        selfConsumptionKwhMonth = readNumber(items, ITEM_EMS_SELFCONSUMPTION_KWH_MONTH);
-        feedInKwhDay = readNumber(items, ITEM_EMS_FEEDIN_KWH_DAY);
-        feedInKwhMonth = readNumber(items, ITEM_EMS_FEEDIN_KWH_MONTH);
-        supplyKwhDay = readNumber(items, ITEM_EMS_SUPPLY_KWH_DAY);
-        supplyKwhMonth = readNumber(items, ITEM_EMS_SUPPLY_KWH_MONTH);
-        costEurMonth = readNumber(items, ITEM_EMS_COST_EUR_MONTH);
-        costEurTotal = readNumber(items, ITEM_EMS_COST_EUR_TOTAL);
-        savingsEurMonth = readNumber(items, ITEM_EMS_SAVINGS_EUR_MONTH);
-        savingsEurTotal = readNumber(items, ITEM_EMS_SAVINGS_EUR_TOTAL);
-        earningsEurMonth = readNumber(items, ITEM_EMS_EARNINGS_EUR_MONTH);
-        earningsEurTotal = readNumber(items, ITEM_EMS_EARNINGS_EUR_TOTAL);
-        LOGGER.info("CostAnalytics initialized from items: dayKWh sc={} fi={} sup={}, monthEUR cost={} sav={} earn={}",
+        this.itemRegistry = items;
+        this.restored = restoreFrom(items);
+    }
+
+    /** @return true once the accumulators were restored from readable items. */
+    private boolean restoreFrom(ItemRegistry items) {
+        double scDay = readNumber(items, ITEM_EMS_SELFCONSUMPTION_KWH_DAY);
+        if (Double.isNaN(scDay)) {
+            LOGGER.info("CostAnalytics restore deferred — source items not ready (UNDEF)");
+            return false;
+        }
+        selfConsumptionKwhDay = scDay;
+        selfConsumptionKwhMonth = nz(readNumber(items, ITEM_EMS_SELFCONSUMPTION_KWH_MONTH));
+        feedInKwhDay = nz(readNumber(items, ITEM_EMS_FEEDIN_KWH_DAY));
+        feedInKwhMonth = nz(readNumber(items, ITEM_EMS_FEEDIN_KWH_MONTH));
+        supplyKwhDay = nz(readNumber(items, ITEM_EMS_SUPPLY_KWH_DAY));
+        supplyKwhMonth = nz(readNumber(items, ITEM_EMS_SUPPLY_KWH_MONTH));
+        costEurMonth = nz(readNumber(items, ITEM_EMS_COST_EUR_MONTH));
+        costEurTotal = nz(readNumber(items, ITEM_EMS_COST_EUR_TOTAL));
+        savingsEurMonth = nz(readNumber(items, ITEM_EMS_SAVINGS_EUR_MONTH));
+        savingsEurTotal = nz(readNumber(items, ITEM_EMS_SAVINGS_EUR_TOTAL));
+        earningsEurMonth = nz(readNumber(items, ITEM_EMS_EARNINGS_EUR_MONTH));
+        earningsEurTotal = nz(readNumber(items, ITEM_EMS_EARNINGS_EUR_TOTAL));
+        LOGGER.info("CostAnalytics restored from items: dayKWh sc={} fi={} sup={}, monthEUR cost={} sav={} earn={}",
                 fmt(selfConsumptionKwhDay), fmt(feedInKwhDay), fmt(supplyKwhDay), fmt(costEurMonth),
                 fmt(savingsEurMonth), fmt(earningsEurMonth));
+        return true;
+    }
+
+    private static double nz(double v) {
+        return Double.isNaN(v) ? 0.0 : v;
     }
 
     @Override
@@ -131,6 +159,15 @@ public final class CostAnalyticsController implements Controller {
 
     @Override
     public List<SetpointRequest> evaluate(EnergyContext ctx) {
+        // Resume guard: until the accumulators are restored from readable items, do NOT
+        // publish — a fresh controller starts at 0 and publishing would wipe good totals.
+        // Retry the restore each tick until the items become available.
+        if (!restored) {
+            ItemRegistry ir = itemRegistry;
+            if (ir == null || !(restored = restoreFrom(ir))) {
+                return List.of();
+            }
+        }
         long nowMs = ctx.tickAt().toEpochMilli();
         if (lastTickMs == 0L) {
             lastTickMs = nowMs;
@@ -240,22 +277,27 @@ public final class CostAnalyticsController implements Controller {
         }
     }
 
+    /**
+     * Reads an item's numeric value. Returns {@link Double#NaN} (NOT 0) when the item
+     * is UNDEF/NULL/missing, so callers can tell "not readable yet" from "genuinely 0"
+     * and avoid clobbering good totals during a transient registry reload.
+     */
     private static double readNumber(ItemRegistry items, String itemName) {
         try {
             Item item = items.getItem(itemName);
             State state = item.getState();
             if (state instanceof UnDefType) {
-                return 0.0;
+                return Double.NaN;
             }
             String s = state.toString();
             if (s == null || "NULL".equals(s) || "UNDEF".equals(s) || s.isEmpty()) {
-                return 0.0;
+                return Double.NaN;
             }
             int sp = s.indexOf(' ');
             String numPart = (sp > 0) ? s.substring(0, sp) : s;
             return Double.parseDouble(numPart);
         } catch (ItemNotFoundException | NumberFormatException e) {
-            return 0.0;
+            return Double.NaN;
         }
     }
 
