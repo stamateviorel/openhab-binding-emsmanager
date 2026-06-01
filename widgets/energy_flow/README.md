@@ -13,6 +13,7 @@ fan out on the right. Flat design, **light & dark** adaptive, fully configurable
 - **Animated marching-dot flows** — only flows that are actually active are shown; they fade in/out with usage.
 - **Dynamic source/sink** — grid sits on the **left when importing**, **right when exporting**; battery **left when discharging**, **right when charging**. No backwards lines.
 - **Unlimited consumers & generators** via openHAB **Group** items — drop an item into the group and it appears automatically, with an **auto-assigned distinct colour** and a **keyword-matched icon**.
+- **Auto-compacting consumer lanes** — only consumers **actually drawing power** take a slot, spaced evenly among **themselves** (idle meters take no space and draw no ribbon), so the flow stays uncluttered on mobile no matter how many consumers you configure.
 - **Glowing rotating centre hub** showing total consumption; spin speed scales with throughput.
 - **Configurable sign conventions** (grid export ±, battery charge ±) and **W/kW scaling**.
 - **Theme-adaptive**, responsive, flat (no glassmorphism), self-contained.
@@ -67,7 +68,7 @@ group, grid item, (optional) battery item and total-consumption item. Check the
 
 - **Sign conventions:** defaults are *grid += export* and *battery += charging*; flip the toggles if your meters differ.
 - **Icons:** each consumer/generator gets an icon auto-picked from keywords in the item name/label (`car`, `light`, `boiler`, `heat`, `air`, `security`, `pump`, `wash`, `oven`, `solar`, `wind`, …), otherwise a neutral default. Colours are auto-assigned and distinct.
-- **Layout:** clean up to ~8 members per side; beyond that they pack tighter (one column).
+- **Layout:** consumers auto-compact — only those drawing power occupy a slot, spaced evenly among themselves, so the right side stays clean on mobile even with many configured. Generators pack tighter beyond ~8 per side.
 - Grid & battery are intentionally single, bidirectional flows; only generators and consumers are unlimited.
 
 ## License
