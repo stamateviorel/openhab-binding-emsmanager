@@ -177,10 +177,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         controllerScheduler.register(new SafetyBreakerController(shadowMode));
         // Capacity-tariff controller follows the bridge shadowMode flag.
         CapacityTariffShavingController cap = new CapacityTariffShavingController(shadowMode,
-                config.capacityMinBillableW);
+                config.capacityMinBillableW, config.evEcoSacrosanct);
         this.capacityTariff = cap;
         controllerScheduler.register(cap);
-        HardPeakShavingController hard = new HardPeakShavingController(shadowMode);
+        HardPeakShavingController hard = new HardPeakShavingController(shadowMode, config.evEcoSacrosanct);
         this.hardPeakShaving = hard;
         controllerScheduler.register(hard);
         SoftPeakShavingController soft = new SoftPeakShavingController(shadowMode);

@@ -63,6 +63,8 @@ All parameters are documented in `thing-types.xml`; the important groups:
 
 **Capacity tariff:** `capacityMinBillableW` (default 2500 — the Belgian *capaciteitstarief* floor; set to your market, or ignore the controller).
 
+**ECO protection:** `evEcoSacrosanct` (default `false`). When `true`, the capacity-tariff and hard peak-shaving controllers never pause an EV in ECO mode — they shed the boiler and air-conditioning instead. The hardware breaker-headroom limit still applies. Use it when ECO means "always charging — minimal floor, ramp with solar" and a paused car would look broken to users.
+
 **CO₂:** `gridCo2GramsPerKWh`, `injectionCo2OffsetGramsPerKWh`, `emissionsProvider` (`fixed`/`electricitymaps`), `electricityMapsApiKey`, `electricityMapsZone`.
 
 **Forecast location:** `latitude`, `longitude` (OpenMeteo temperature forecast for the heat-pump planner; no API key).

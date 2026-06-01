@@ -65,7 +65,19 @@ public final class HardPeakShavingController implements Controller {
             "Boiler temporarily off alongside pausing ECO cars. Fast charging (SNEL) stays untouched.",
             "AC also temporarily off. Fast charging (SNEL) stays untouched; only the main breaker can still limit SNEL." };
 
+    /** Status lines when ECO is sacrosanct — the ECO-pause tier is dropped, leaving boiler then airco. */
+    private static final String[] TIER_STATUS_ECO_SAFE = new String[] { "Normal — protection on standby",
+            "Peak shaving — boiler off (ECO protected)", "Peak shaving — boiler + AC off (ECO protected)",
+            "Peak shaving — boiler + AC off (ECO protected)" };
+
+    private static final String[] TIER_DETAIL_ECO_SAFE = new String[] {
+            "Grid within safe limits. No intervention needed.",
+            "Boiler temporarily off to shed load. ECO and fast (SNEL) charging both keep running — only the main breaker can still limit them.",
+            "Boiler and AC temporarily off. ECO and fast (SNEL) charging both keep running — only the main breaker can still limit them.",
+            "Boiler and AC temporarily off. ECO and fast (SNEL) charging both keep running — only the main breaker can still limit them." };
+
     private final boolean shadowMode;
+    private final boolean ecoSacrosanct;
 
     // State across ticks.
     private volatile int level = 0;
@@ -89,8 +101,9 @@ public final class HardPeakShavingController implements Controller {
         pendingManualReset = true;
     }
 
-    public HardPeakShavingController(boolean shadowMode) {
+    public HardPeakShavingController(boolean shadowMode, boolean ecoSacrosanct) {
         this.shadowMode = shadowMode;
+        this.ecoSacrosanct = ecoSacrosanct;
     }
 
     @Override
@@ -119,12 +132,20 @@ public final class HardPeakShavingController implements Controller {
 
     public String status() {
         int l = Math.max(0, Math.min(HARD_MAX_TIER, level));
-        return TIER_STATUS[l];
+        return (ecoSacrosanct ? TIER_STATUS_ECO_SAFE : TIER_STATUS)[l];
     }
 
     public String detail() {
         int l = Math.max(0, Math.min(HARD_MAX_TIER, level));
-        return TIER_DETAIL[l];
+        return (ecoSacrosanct ? TIER_DETAIL_ECO_SAFE : TIER_DETAIL)[l];
+    }
+
+    /**
+     * Highest tier this controller escalates to. With ECO sacrosanct the
+     * ECO-pause tier is dropped, so shedding tops out at boiler + airco.
+     */
+    private int maxTier() {
+        return ecoSacrosanct ? 2 : HARD_MAX_TIER;
     }
 
     @Override
@@ -161,7 +182,7 @@ public final class HardPeakShavingController implements Controller {
                 return escalateTo(1, ctx, now);
             }
             // Already engaged — step up one tier if room.
-            if (level < HARD_MAX_TIER) {
+            if (level < maxTier()) {
                 return escalateTo(level + 1, ctx, now);
             }
         }
@@ -199,7 +220,7 @@ public final class HardPeakShavingController implements Controller {
         // Already engaged. Escalate / de-escalate / hold.
         long dwell = now - levelChangedAtMs;
         if (grid < HARD_PEAK_THRESHOLD_W) {
-            if (level < HARD_MAX_TIER && dwell > HARD_TIER_INTERVAL_SEC * 1000L) {
+            if (level < maxTier() && dwell > HARD_TIER_INTERVAL_SEC * 1000L) {
                 return escalateTo(level + 1, ctx, now);
             }
         } else if (grid > HARD_RECOVERY_THRESHOLD_W) {
@@ -228,20 +249,31 @@ public final class HardPeakShavingController implements Controller {
             snap = new Snapshot();
             snapshots.put(target, snap);
         }
+        if (ecoSacrosanct) {
+            // ECO sacrosanct — shed boiler, then airco; never pause cars.
+            switch (target) {
+                case 1:
+                    return engageBoiler(snap, ctx);
+                case 2:
+                    return engageAirco(snap, ctx);
+                default:
+                    return List.of();
+            }
+        }
         switch (target) {
             case 1:
-                return engageTier1(snap, ctx);
+                return engageEcoPause(snap, ctx);
             case 2:
-                return engageTier2(snap, ctx);
+                return engageBoiler(snap, ctx);
             case 3:
-                return engageTier3(snap, ctx);
+                return engageAirco(snap, ctx);
             default:
                 return List.of();
         }
     }
 
-    /** Tier 1: pause ECO cars that aren't already paused. */
-    private List<SetpointRequest> engageTier1(Snapshot snap, EnergyContext ctx) {
+    /** ECO-pause tier (skipped when ECO is sacrosanct): pause ECO cars that aren't already paused. */
+    private List<SetpointRequest> engageEcoPause(Snapshot snap, EnergyContext ctx) {
         List<SetpointRequest> out = new ArrayList<>();
         for (CarSnapshot car : ctx.cars().values()) {
             if (!car.cableConnected()) {
@@ -263,8 +295,8 @@ public final class HardPeakShavingController implements Controller {
         return out;
     }
 
-    /** Tier 2: boiler off (if on). */
-    private List<SetpointRequest> engageTier2(Snapshot snap, EnergyContext ctx) {
+    /** Boiler-off tier (if on). */
+    private List<SetpointRequest> engageBoiler(Snapshot snap, EnergyContext ctx) {
         if (!ctx.boilerOn()) {
             return List.of();
         }
@@ -277,8 +309,8 @@ public final class HardPeakShavingController implements Controller {
                 "tier 2 — boiler off"));
     }
 
-    /** Tier 3: airco group off (if on). */
-    private List<SetpointRequest> engageTier3(Snapshot snap, EnergyContext ctx) {
+    /** Airco-off tier (if on). */
+    private List<SetpointRequest> engageAirco(Snapshot snap, EnergyContext ctx) {
         if (!ctx.aircoOn()) {
             return List.of();
         }

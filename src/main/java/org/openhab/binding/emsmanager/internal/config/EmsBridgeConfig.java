@@ -127,6 +127,13 @@ public class EmsBridgeConfig {
     // Markets without a capacity tariff can ignore this.
     public int capacityMinBillableW = 2500;
 
+    // EV ECO mode is "always charging — minimal floor, ramp with solar". When
+    // true, the peak/billing shedding controllers (capacity-tariff and hard
+    // peak-shaving) never pause an ECO car; they shed the boiler and airco
+    // instead. The hardware breaker-headroom limit still applies (physical
+    // safety, not a policy). Default false keeps the shed-ECO-first behaviour.
+    public boolean evEcoSacrosanct = false;
+
     // Assumed EV charge rate for the "cheapest" plan projection.
     // Defaults to a single-phase 32 A equivalent.
     public double evDefaultChargeRateKw = 7.0;

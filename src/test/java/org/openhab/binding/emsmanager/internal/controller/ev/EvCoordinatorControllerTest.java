@@ -39,7 +39,7 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 class EvCoordinatorControllerTest {
 
     private EvCoordinatorController newController() {
-        return new EvCoordinatorController(false, new HardPeakShavingController(false),
+        return new EvCoordinatorController(false, new HardPeakShavingController(false, false),
                 new SoftPeakShavingController(false), 500);
     }
 

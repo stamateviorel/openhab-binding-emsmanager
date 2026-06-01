@@ -286,6 +286,16 @@
 				<default>2500</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="evEcoSacrosanct" type="boolean" required="false">
+				<label>ECO charging is sacrosanct</label>
+				<description>When enabled, the peak/billing shedding controllers (capacity tariff and hard peak-shaving)
+					never pause
+					an EV in ECO mode — they shed the boiler and air-conditioning instead. The hardware
+					breaker-headroom limit still
+					applies. Leave off to shed ECO cars first.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
 		</config-description>
 	</bridge-type>
 

@@ -59,6 +59,7 @@ public final class CapacityTariffShavingController implements Controller {
 
     private final boolean shadowMode;
     private final int minBillableW;
+    private final boolean ecoSacrosanct;
 
     /** Last computed status string for the bridge channel. */
     private volatile String lastStatus = "No peak control — insufficient data";
@@ -78,9 +79,10 @@ public final class CapacityTariffShavingController implements Controller {
      */
     private boolean firstEvalAfterInit = true;
 
-    public CapacityTariffShavingController(boolean shadowMode, int minBillableW) {
+    public CapacityTariffShavingController(boolean shadowMode, int minBillableW, boolean ecoSacrosanct) {
         this.shadowMode = shadowMode;
         this.minBillableW = minBillableW;
+        this.ecoSacrosanct = ecoSacrosanct;
     }
 
     @Override
@@ -159,6 +161,26 @@ public final class CapacityTariffShavingController implements Controller {
         boolean wouldExceed = wouldExceedMonthlyPeak(ctx, minBillableW);
         double projectedKW = -projectedQuarterW(ctx) / 1000.0;
         double mtdPeakKW = -ctx.monthlyPeakW() / 1000.0;
+
+        if (ecoSacrosanct) {
+            // ECO cars are sacrosanct here — observe + publish the projection but
+            // never pause a car. Release anything a previous (shave-enabled)
+            // lifetime had paused so flipping the flag can't strand a car.
+            List<SetpointRequest> releases = new ArrayList<>();
+            for (String carKey : pausedByMe) {
+                CarSnapshot car = ctx.cars().get(carKey);
+                if (car != null && car.mode() == CarSnapshot.Mode.ECO && car.cableConnected() && car.paused()) {
+                    releases.add(new SetpointRequest(carKey, SetpointRequest.Kind.PAUSE, 0.0, priority(), NAME,
+                            "capacity tariff: ECO is sacrosanct — never paused for a billing peak"));
+                }
+            }
+            pausedByMe.clear();
+            lastStatus = wouldExceed ? String.format(java.util.Locale.ROOT,
+                    "Above peak but ECO exempt — quarter %.1f kW > monthly peak %.1f kW", projectedKW, mtdPeakKW)
+                    : String.format(java.util.Locale.ROOT, "Within budget — quarter %.1f kW, monthly peak %.1f kW",
+                            projectedKW, mtdPeakKW);
+            return releases;
+        }
 
         if (!wouldExceed) {
             // Peak event passed (or never was) — release any cars we paused so

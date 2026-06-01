@@ -61,7 +61,7 @@ class CapacityTariffShavingControllerTest {
 
     @Test
     void pausesEcoCarWhenProjectionExceedsMonthlyPeak() {
-        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W);
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, false);
         // projection well over the floor and worse than the prior peak → shave.
         List<SetpointRequest> out = ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, false), -10_000, -2_000));
 
@@ -72,7 +72,7 @@ class CapacityTariffShavingControllerTest {
 
     @Test
     void releasesPreviouslyPausedEcoCarWhenPeakPasses() {
-        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W);
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, false);
         // Tick 1: shave — the car gets paused by us.
         ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, false), -10_000, -2_000));
         // Tick 2: the dispatch has flipped the pause item ON; projection still high.
@@ -87,7 +87,7 @@ class CapacityTariffShavingControllerTest {
 
     @Test
     void doesNotSpamReleasesOnConsecutiveBelowTicks() {
-        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W);
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, false);
         ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, false), -10_000, -2_000)); // pause
         ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, true), -1_000, -2_000)); // first release
         List<SetpointRequest> outAgain = ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, false), -1_000, -2_000));
@@ -100,7 +100,7 @@ class CapacityTariffShavingControllerTest {
         // Simulates a bridge restart mid-event: the controller has no memory but
         // sees an already-paused ECO car. It should adopt it so the next
         // wouldExceed=false transition releases it.
-        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W);
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, false);
         List<SetpointRequest> out = ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, true), -1_000, -2_000));
 
         Optional<SetpointRequest> release = pauseFor(out, "car1");
@@ -112,9 +112,35 @@ class CapacityTariffShavingControllerTest {
     void leavesPausedSnelCarAlone() {
         // A paused SNEL car is not capacity-tariff's problem; the EvCoordinator
         // handles SNEL resume. Capacity must not claim or release it.
-        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W);
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, false);
         List<SetpointRequest> out = ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.SNEL, true), -1_000, -2_000));
 
         assertTrue(pauseFor(out, "car1").isEmpty(), "must not touch SNEL cars");
+    }
+
+    @Test
+    void monitorsButDoesNotPauseEcoWhenSacrosanct() {
+        // evEcoSacrosanct=true → capacity tariff must never pause an ECO car,
+        // even when the projection blows past the monthly peak.
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, true);
+        List<SetpointRequest> out = ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, false), -10_000, -2_000));
+
+        assertTrue(
+                out.stream().noneMatch(
+                        r -> r.assetId().equals("car1") && r.kind() == SetpointRequest.Kind.PAUSE && r.value() >= 0.5),
+                "sacrosanct mode must never pause an ECO car for a billing peak");
+    }
+
+    @Test
+    void releasesAStrandedEcoCarOnFirstEvalWhenSacrosanct() {
+        // Flipping evEcoSacrosanct=true while a car was paused by the prior
+        // shave-enabled behaviour: first eval must adopt-and-release it so it
+        // can't sit paused forever.
+        CapacityTariffShavingController ctrl = new CapacityTariffShavingController(false, MIN_BILLABLE_W, true);
+        List<SetpointRequest> out = ctrl.evaluate(ctx(car("car1", CarSnapshot.Mode.ECO, true), -10_000, -2_000));
+
+        Optional<SetpointRequest> release = pauseFor(out, "car1");
+        assertTrue(release.isPresent(), "must release a car stranded paused by the prior shave-enabled mode");
+        assertEquals(0.0, release.get().value(), 1e-9);
     }
 }
