@@ -1,0 +1,237 @@
+uid: ems_analyse_tab
+tags:
+- ems
+timestamp: Jun 1, 2026, 7:40:00 AM
+component: f7-block
+config:
+  style:
+    padding: 6px
+    margin: '0'
+  stylesheet: "  .pg { padding: 6px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n  .card { background: var(--f7-card-bg-color,#fff); border: 1px solid rgba(127,127,127,0.13); border-radius: 15px; padding: 13px 15px; box-shadow: 0 2px 10px rgba(127,127,127,0.09); margin-bottom: 10px; }\n  .ch { font-size: 12px; font-weight: 700; color: #8a9099; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 11px; }\n  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }\n  .tile { background: rgba(127,127,127,0.06); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; }\n  .tile .tv { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }\n  .tile .tl { font-size: 11px; color: #9aa0a0; }\n  .reco { font-size: 14px; margin-bottom: 4px; }\n  .reco b { font-weight: 800; }\n  .recosub { font-size: 12px; color: #9aa0a0; margin-bottom: 11px; }\n  .srow { display: flex; align-items: center; padding: 4px 0; }\n  .srow .sl { font-size: 13px; color: #8a9099; }\n  .srow > :last-child { margin-left: auto; }\n  .summary { font-size: 12.5px; color: #8a9099; line-height: 1.5; margin-bottom: 11px; }\n  .evrow { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid rgba(127,127,127,0.08); }\n  .evrow:last-child { border-bottom: none; }\n  .evn { font-size: 13px; width: 70px; }\n  .evtrack { flex: 1; height: 8px; border-radius: 4px; background: rgba(127,127,127,0.1); overflow: hidden; }\n  .evtrack > div { height: 100%; border-radius: 4px; background: #ef7b3e; transition: width .7s cubic-bezier(.2,.8,.2,1); }\n  .evw { font-size: 11px; color: #9aa0a0; width: 56px; text-align: right; font-variant-numeric: tabular-nums; }\n  .evk { font-size: 13px; font-weight: 700; width: 64px; text-align: right; font-variant-numeric: tabular-nums; }\n  .navbtn { width: 100%; }\n"
+slots:
+  default:
+  - component: div
+    config:
+      class: pg
+    slots:
+      default:
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Deze maand
+          - component: div
+            config:
+              class: tiles
+            slots:
+              default:
+              - component: div
+                config:
+                  class: tile
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: tv
+                      style:
+                        color: '#db3b56'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: ='€ '+Number((items.EMS_Cost_EUR_Month.state||'0').toString().split(' ')[0]).toFixed(2)
+                  - component: div
+                    config:
+                      class: tl
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Netkosten
+              - component: div
+                config:
+                  class: tile
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: tv
+                      style:
+                        color: '#3bb273'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: ='€ '+Number((items.EMS_Savings_EUR_Month.state||'0').toString().split(' ')[0]).toFixed(2)
+                  - component: div
+                    config:
+                      class: tl
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Bespaard (zon)
+              - component: div
+                config:
+                  class: tile
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: tv
+                      style:
+                        color: '#7d6cd6'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: ='€ '+Number((items.EMS_Earnings_EUR_Month.state||'0').toString().split(' ')[0]).toFixed(2)
+                  - component: div
+                    config:
+                      class: tl
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Verdiend (teruglev.)
+              - component: div
+                config:
+                  class: tile
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: tv
+                      style:
+                        color: '#34b9c9'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_CO2_Saved_Year_kg.state||'0').toString().split(' ')[0])).toFixed(1)+' kg'
+                  - component: div
+                    config:
+                      class: tl
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: CO₂ vermeden (jaar)
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Batterij-advies
+          - component: div
+            config:
+              class: reco
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: '=''Aanbevolen: '''
+          - component: div
+            config:
+              class: reco
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: =Number((items.EMS_BatterySizing_OptimalKwh.state||'0').toString().split(' ')[0]).toFixed(1)+' kWh'
+          - component: div
+            config:
+              class: recosub
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: ='terugverdientijd '+Number((items.EMS_BatterySizing_PaybackYears.state||'0').toString().split(' ')[0]).toFixed(1)+' jaar'
+          - component: div
+            config:
+              class: srow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Opnieuw berekenen
+              - component: oh-button
+                config:
+                  text: Bereken nu
+                  action: command
+                  actionItem: EMS_BatterySizing_Run
+                  actionCommand: 'ON'
+                  fill: true
+                  round: true
+                  small: true
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Tariefvergelijking
+          - component: div
+            config:
+              class: summary
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: =items.EMS_TariffComparison_Summary.state
+          - component: div
+            config:
+              class: recosub
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: '=''Goedkoopste: ''+items.EMS_TariffComparison_Cheapest.state'
+          - component: div
+            config:
+              class: srow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Opnieuw berekenen
+              - component: oh-button
+                config:
+                  text: Bereken nu
+                  action: command
+                  actionItem: EMS_TariffComparison_Run
+                  actionCommand: 'ON'
+                  fill: true
+                  round: true
+                  small: true

@@ -1,0 +1,307 @@
+uid: ems_sturing_tab
+tags:
+- ems
+timestamp: Jun 1, 2026, 7:30:00 AM
+component: f7-block
+config:
+  style:
+    padding: 6px
+    margin: '0'
+  stylesheet: "  .pg { padding: 6px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n  .card { background: var(--f7-card-bg-color,#fff); border: 1px solid rgba(127,127,127,0.13); border-radius: 15px; padding: 13px 15px; box-shadow: 0 2px 10px rgba(127,127,127,0.09); margin-bottom: 10px; }\n  .ch { font-size: 12px; font-weight: 700; color: #8a9099; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 11px; }\n  .big { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }\n  .bigsub { font-size: 12px; color: #9aa0a0; margin-top: 4px; }\n  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin-top: 12px; }\n  .tile { background: rgba(127,127,127,0.06); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }\n  .tile .tv { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }\n  .tile .tl { font-size: 11px; color: #9aa0a0; }\n  .bar { height: 12px; border-radius: 6px; background: rgba(127,127,127,0.12); overflow: hidden; margin-top: 13px; }\n  .bar > div { height: 100%; border-radius: 6px; transition: width .6s cubic-bezier(.2,.8,.2,1); }\n  .stat { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(127,127,127,0.08); font-size: 13px; }\n  .stat:last-child { border-bottom: none; }\n  .stat .sn { color: #8a9099; }\n  .stat .sv { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }\n  .srow { display: flex; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(127,127,127,0.08); }\n  .srow:last-child { border-bottom: none; }\n  .srow .sl { font-size: 13px; }\n  .srow > :last-child { margin-left: auto; }\n  .pl { display: flex; gap: 2px; height: 16px; margin-top: 4px; }\n  .pl > div { flex: 1; border-radius: 2px; }\n  .legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: #9aa0a0; }\n  .lg { display: flex; align-items: center; gap: 5px; }\n  .lg > div { width: 9px; height: 9px; border-radius: 3px; }\n  .statusline { font-size: 12.5px; color: #8a9099; margin-top: 11px; }\n"
+slots:
+  default:
+  - component: div
+    config:
+      class: pg
+    slots:
+      default:
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Controllers
+          - component: div
+            config:
+              class: stat
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sn
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Actieve controllers
+              - component: div
+                config:
+                  class: sv
+                  style:
+                    color: inherit
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =Number((items.EMS_Bridge_Controller_Count.state||'0').toString().split(' ')[0]).toFixed(0)
+          - component: div
+            config:
+              class: stat
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sn
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Laatste beslissing
+              - component: div
+                config:
+                  class: sv
+                  style:
+                    color: inherit
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =items.EMS_Bridge_Last_Decision.state
+          - component: div
+            config:
+              class: srow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Schaduwmodus (alleen simuleren)
+              - component: oh-toggle
+                config:
+                  item: EMS_Bridge_Shadow_Mode
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Batterijplan — komende 24 u
+          - component: div
+            config:
+              class: stat
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sn
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Volgende lading
+              - component: div
+                config:
+                  class: sv
+                  style:
+                    color: inherit
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_Optimizer_Next_Charge.state||'0').toString().split(' ')[0])<0?'geen':'over '+Number((items.EMS_Optimizer_Next_Charge.state||'0').toString().split(' ')[0]).toFixed(0)+' u')
+          - component: div
+            config:
+              class: stat
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sn
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Volgende ontlading
+              - component: div
+                config:
+                  class: sv
+                  style:
+                    color: inherit
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_Optimizer_Next_Discharge.state||'0').toString().split(' ')[0])<0?'geen':'over '+Number((items.EMS_Optimizer_Next_Discharge.state||'0').toString().split(' ')[0]).toFixed(0)+' u')
+          - component: div
+            config:
+              class: pl
+            slots:
+              default:
+              - component: oh-repeater
+                config:
+                  sourceType: array
+                  for: pt
+                  fragment: true
+                  in: =(items.EMS_Optimizer_Plan_24h.state||'').split('')
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: =(loop.pt_idx===dayjs().hour())?'plnow':''
+                      style:
+                        background: =(loop.pt==='c'?'#3bb273':loop.pt==='d'?'#f0a83c':'rgba(127,127,127,0.16)')
+                        box-shadow: '=(loop.pt_idx===dayjs().hour())?''0 0 0 2px #5fd0ff'':''none'''
+          - component: div
+            config:
+              class: legend
+            slots:
+              default:
+              - component: div
+                config:
+                  class: lg
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      style:
+                        background: '#3bb273'
+                  - component: Label
+                    config:
+                      text: laden
+              - component: div
+                config:
+                  class: lg
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      style:
+                        background: '#f0a83c'
+                  - component: Label
+                    config:
+                      text: ontladen
+              - component: div
+                config:
+                  class: lg
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      style:
+                        background: rgba(127,127,127,0.3)
+                  - component: Label
+                    config:
+                      text: rust
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Piekbescherming
+          - component: div
+            config:
+              class: stat
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sn
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Status
+              - component: div
+                config:
+                  class: sv
+                  style:
+                    color: inherit
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =items.PeakShaving_Status.state
+          - component: div
+            config:
+              class: srow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Ingeschakeld
+              - component: oh-toggle
+                config:
+                  item: PeakShaving_Enabled
+          - component: div
+            config:
+              class: srow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Nu forceren
+              - component: oh-button
+                config:
+                  text: Activeer
+                  action: command
+                  actionItem: PeakShaving_Manual_Engage
+                  actionCommand: 'ON'
+                  fill: true
+                  round: true
+                  small: true
+          - component: div
+            config:
+              class: srow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Alles vrijgeven
+              - component: oh-button
+                config:
+                  text: Reset
+                  action: command
+                  actionItem: PeakShaving_Manual_Reset
+                  actionCommand: 'ON'
+                  fill: true
+                  round: true
+                  small: true

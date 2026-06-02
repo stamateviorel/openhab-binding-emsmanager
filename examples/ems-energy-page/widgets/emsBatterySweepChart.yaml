@@ -1,0 +1,52 @@
+uid: emsBatterySweepChart
+tags:
+- ems
+- chart
+props:
+  parameters: []
+timestamp: May 25, 2026, 10:52:47 AM
+component: f7-card
+config:
+  title: Batterij-besparing per grootte
+  headerDivider: true
+  footer: '=items.EMS_BatterySizing_OptimalKwh.state && items.EMS_BatterySizing_OptimalKwh.state!==''NULL'' ? ''Optimaal ''+Number(items.EMS_BatterySizing_OptimalKwh.state).toFixed(1)+'' kWh · terugverdientijd ''+Number(items.EMS_BatterySizing_PaybackYears.state).toFixed(1)+'' jr'' : ''Druk op Bereken nu'''
+slots:
+  content:
+  - component: f7-card-content
+    slots:
+      default:
+      - component: f7-block
+        config:
+          style:
+            display: flex
+            align-items: flex-end
+            gap: 1px
+            height: 130px
+            padding: 4px 0
+            overflow-x: auto
+        slots:
+          default:
+          - component: oh-repeater
+            config:
+              sourceType: array
+              for: pt
+              fragment: true
+              in: =(items.EMS_BatterySizing_CurveCsv.state||'').split(',').filter(s=>s.indexOf('=')>0)
+            slots:
+              default:
+              - component: f7-block
+                config:
+                  title: '=loop.pt.split(''='')[0]+'' kWh: EUR ''+Number(loop.pt.split(''='')[1]).toFixed(0)'
+                  style:
+                    flex: 1 0 auto
+                    min-width: 4px
+                    height: =Math.max(2,Number(loop.pt.split('=')[1])/(Number(((items.EMS_BatterySizing_CurveCsv.state||'0=1').split(',').slice(-1)[0]||'0=1').split('=')[1])||1)*120)+'px'
+                    background: '=Math.abs(Number(loop.pt.split(''='')[0])-Number((items.EMS_BatterySizing_OptimalKwh.state||''-1'').toString().split('' '')[0]))<0.01 ? ''#2e7d32'' : ''#a5d6a7'''
+                    border-radius: 2px 2px 0 0
+      - component: Label
+        config:
+          text: 0 -> 30 kWh  (groen = aanbevolen)
+          style:
+            opacity: 0.6
+            font-size: 0.75em
+            margin-top: 4px

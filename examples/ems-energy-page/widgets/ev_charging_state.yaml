@@ -1,0 +1,350 @@
+uid: ev_charging_state
+tags:
+- cell
+- ev
+- charger
+props:
+  parameterGroups: []
+  parameters:
+  - description: Card title
+    label: Title
+    name: prop_name
+    required: false
+    type: TEXT
+  - description: Watts threshold to consider solar-vs-grid arrow direction
+    label: Threshold
+    name: prop_tres
+    required: false
+    type: INTEGER
+timestamp: May 18, 2026, 10:20:00 PM
+component: f7-card
+config:
+  title: =props.prop_name || 'Laadpalen'
+slots:
+  default:
+  - component: f7-row
+    config:
+      class:
+      - padding-vertical-half
+    slots:
+      default:
+      - component: f7-col
+        config:
+          class:
+          - display-flex
+          - flex-direction-column
+          - align-items-center
+          - padding-vertical-half
+          width: 50
+          medium: 25
+        slots:
+          default:
+          - component: oh-label-item
+            config:
+              class:
+              - display-flex
+              - justify-content-center
+              title: Auto 1 · Poort
+              style:
+                font-weight: bold
+                font-size: 13px
+          - component: f7-icon
+            config:
+              f7: '=items.Car1_CableConnected_OCPP.state === ''ON'' ? ''bolt_car_fill'' : ''bolt_car'''
+              color: '=items.Car1_Status_OCPP.state === ''Charging'' ? ''green'' : items.Car1_CableConnected_OCPP.state === ''ON'' ? ''blue'' : ''gray'''
+              size: 36
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              title: =items.Car1_Laadstatus.state || '—'
+              style:
+                font-size: 10px
+                line-height: 1.2
+                min-height: 24px
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              visible: =(items.Car1_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car1_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              title: =items.Car1_EMS_Reason.state || ''
+              style:
+                font-size: 9px
+                line-height: 1.1
+                color: '#e65100'
+                font-style: italic
+          - component: f7-segmented
+            config:
+              raised: true
+              tag: p
+              style:
+                margin-top: 4px
+            slots:
+              default:
+              - component: oh-button
+                config:
+                  text: ECO
+                  small: true
+                  fill: =items.Car1_Mode_OCPP.state === 'ECO'
+                  color: green
+                  actionItem: Car1_Mode_OCPP
+                  actionCommand: ECO
+                  action: command
+              - component: oh-button
+                config:
+                  text: SNEL
+                  small: true
+                  fill: =items.Car1_Mode_OCPP.state === 'SNEL'
+                  color: orange
+                  actionItem: Car1_Mode_OCPP
+                  actionCommand: SNEL
+                  action: command
+              - component: oh-button
+                config:
+                  text: 'OFF'
+                  small: true
+                  fill: =items.Car1_Mode_OCPP.state === 'OFF'
+                  color: red
+                  actionItem: Car1_Mode_OCPP
+                  actionCommand: 'OFF'
+                  action: command
+      - component: f7-col
+        config:
+          class:
+          - display-flex
+          - flex-direction-column
+          - align-items-center
+          - padding-vertical-half
+          width: 50
+          medium: 25
+        slots:
+          default:
+          - component: oh-label-item
+            config:
+              class:
+              - display-flex
+              - justify-content-center
+              title: Auto 2 · Poort
+              style:
+                font-weight: bold
+                font-size: 13px
+          - component: f7-icon
+            config:
+              f7: '=items.Car2_CableConnected_OCPP.state === ''ON'' ? ''bolt_car_fill'' : ''bolt_car'''
+              color: '=items.Car2_Status_OCPP.state === ''Charging'' ? ''green'' : items.Car2_CableConnected_OCPP.state === ''ON'' ? ''blue'' : ''gray'''
+              size: 36
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              title: =items.Car2_Laadstatus.state || '—'
+              style:
+                font-size: 10px
+                line-height: 1.2
+                min-height: 24px
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              visible: =(items.Car2_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car2_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              title: =items.Car2_EMS_Reason.state || ''
+              style:
+                font-size: 9px
+                line-height: 1.1
+                color: '#e65100'
+                font-style: italic
+          - component: f7-segmented
+            config:
+              raised: true
+              tag: p
+              style:
+                margin-top: 4px
+            slots:
+              default:
+              - component: oh-button
+                config:
+                  text: ECO
+                  small: true
+                  fill: =items.Car2_Mode_OCPP.state === 'ECO'
+                  color: green
+                  actionItem: Car2_Mode_OCPP
+                  actionCommand: ECO
+                  action: command
+              - component: oh-button
+                config:
+                  text: SNEL
+                  small: true
+                  fill: =items.Car2_Mode_OCPP.state === 'SNEL'
+                  color: orange
+                  actionItem: Car2_Mode_OCPP
+                  actionCommand: SNEL
+                  action: command
+              - component: oh-button
+                config:
+                  text: 'OFF'
+                  small: true
+                  fill: =items.Car2_Mode_OCPP.state === 'OFF'
+                  color: red
+                  actionItem: Car2_Mode_OCPP
+                  actionCommand: 'OFF'
+                  action: command
+      - component: f7-col
+        config:
+          class:
+          - display-flex
+          - flex-direction-column
+          - align-items-center
+          - padding-vertical-half
+          width: 50
+          medium: 25
+        slots:
+          default:
+          - component: oh-label-item
+            config:
+              class:
+              - display-flex
+              - justify-content-center
+              title: Auto 3 · Zijkant
+              style:
+                font-weight: bold
+                font-size: 13px
+          - component: f7-icon
+            config:
+              f7: '=items.Car3_CableConnected_OCPP.state === ''ON'' ? ''bolt_car_fill'' : ''bolt_car'''
+              color: '=items.Car3_Status_OCPP.state === ''Charging'' ? ''green'' : items.Car3_CableConnected_OCPP.state === ''ON'' ? ''blue'' : ''gray'''
+              size: 36
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              title: =items.Car3_Laadstatus.state || '—'
+              style:
+                font-size: 10px
+                line-height: 1.2
+                min-height: 24px
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              visible: =(items.Car3_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car3_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              title: =items.Car3_EMS_Reason.state || ''
+              style:
+                font-size: 9px
+                line-height: 1.1
+                color: '#e65100'
+                font-style: italic
+          - component: f7-segmented
+            config:
+              raised: true
+              tag: p
+              style:
+                margin-top: 4px
+            slots:
+              default:
+              - component: oh-button
+                config:
+                  text: ECO
+                  small: true
+                  fill: =items.Car3_Mode_OCPP.state === 'ECO'
+                  color: green
+                  actionItem: Car3_Mode_OCPP
+                  actionCommand: ECO
+                  action: command
+              - component: oh-button
+                config:
+                  text: SNEL
+                  small: true
+                  fill: =items.Car3_Mode_OCPP.state === 'SNEL'
+                  color: orange
+                  actionItem: Car3_Mode_OCPP
+                  actionCommand: SNEL
+                  action: command
+              - component: oh-button
+                config:
+                  text: 'OFF'
+                  small: true
+                  fill: =items.Car3_Mode_OCPP.state === 'OFF'
+                  color: red
+                  actionItem: Car3_Mode_OCPP
+                  actionCommand: 'OFF'
+                  action: command
+      - component: f7-col
+        config:
+          class:
+          - display-flex
+          - flex-direction-column
+          - align-items-center
+          - padding-vertical-half
+          width: 50
+          medium: 25
+        slots:
+          default:
+          - component: oh-label-item
+            config:
+              class:
+              - display-flex
+              - justify-content-center
+              title: Auto 4 · Binnen
+              style:
+                font-weight: bold
+                font-size: 13px
+          - component: f7-icon
+            config:
+              f7: '=items.Car4_CableConnected_OCPP.state === ''ON'' ? ''bolt_car_fill'' : ''bolt_car'''
+              color: '=items.Car4_Status_OCPP.state === ''Charging'' ? ''green'' : items.Car4_CableConnected_OCPP.state === ''ON'' ? ''blue'' : ''gray'''
+              size: 36
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              title: =items.Car4_Laadstatus.state || '—'
+              style:
+                font-size: 10px
+                line-height: 1.2
+                min-height: 24px
+          - component: oh-label-item
+            config:
+              class:
+              - text-align-center
+              visible: =(items.Car4_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car4_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              title: =items.Car4_EMS_Reason.state || ''
+              style:
+                font-size: 9px
+                line-height: 1.1
+                color: '#e65100'
+                font-style: italic
+          - component: f7-segmented
+            config:
+              raised: true
+              tag: p
+              style:
+                margin-top: 4px
+            slots:
+              default:
+              - component: oh-button
+                config:
+                  text: ECO
+                  small: true
+                  fill: =items.Car4_Mode_OCPP.state === 'ECO'
+                  color: green
+                  actionItem: Car4_Mode_OCPP
+                  actionCommand: ECO
+                  action: command
+              - component: oh-button
+                config:
+                  text: SNEL
+                  small: true
+                  fill: =items.Car4_Mode_OCPP.state === 'SNEL'
+                  color: orange
+                  actionItem: Car4_Mode_OCPP
+                  actionCommand: SNEL
+                  action: command
+              - component: oh-button
+                config:
+                  text: 'OFF'
+                  small: true
+                  fill: =items.Car4_Mode_OCPP.state === 'OFF'
+                  color: red
+                  actionItem: Car4_Mode_OCPP
+                  actionCommand: 'OFF'
+                  action: command

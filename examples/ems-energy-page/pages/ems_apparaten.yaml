@@ -1,0 +1,28 @@
+uid: ems_apparaten
+tags:
+- emstab
+props:
+  parameters: []
+timestamp: Jun 1, 2026, 7:10:00 AM
+component: oh-layout-page
+config:
+  label: Energie - Apparaten
+  sidebar: false
+slots:
+  default:
+  - component: oh-block
+    config: {}
+    slots:
+      default:
+      - component: oh-grid-row
+        config:
+          gap: true
+        slots:
+          default:
+          - component: oh-grid-col
+            config:
+              width: '100'
+            slots:
+              default:
+              - component: widget:ems_apparaten_tab
+                config: {}

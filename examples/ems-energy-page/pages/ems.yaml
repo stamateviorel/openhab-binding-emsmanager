@@ -1,0 +1,47 @@
+uid: ems
+tags: []
+props:
+  parameters: []
+timestamp: Jun 1, 2026, 2:00:00 AM
+component: oh-tabs-page
+config:
+  label: Energie
+  sidebar: true
+  icon: f7:bolt_fill
+slots:
+  default:
+  - component: oh-tab
+    config:
+      title: Overzicht
+      icon: f7:house_fill
+      page: ems_overzicht
+  - component: oh-tab
+    config:
+      title: Apparaten
+      icon: f7:bolt_horizontal_fill
+      page: ems_apparaten
+  - component: oh-tab
+    config:
+      title: EV
+      icon: f7:car_fill
+      page: ems_ev
+  - component: oh-tab
+    config:
+      title: Analyse
+      icon: f7:chart_bar_alt_fill
+      page: ems_analyse
+  - component: oh-tab
+    config:
+      title: Capaciteit
+      icon: f7:gauge
+      page: ems_capaciteit
+  - component: oh-tab
+    config:
+      title: Vergelijken
+      icon: f7:chart_pie_fill
+      page: ems_vergelijken
+  - component: oh-tab
+    config:
+      title: Sturing
+      icon: f7:slider_horizontal_3
+      page: ems_sturing

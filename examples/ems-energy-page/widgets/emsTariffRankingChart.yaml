@@ -1,0 +1,46 @@
+uid: emsTariffRankingChart
+tags:
+- ems
+- chart
+props:
+  parameters: []
+timestamp: May 25, 2026, 10:52:47 AM
+component: f7-card
+config:
+  title: Tariefvergelijking per leverancier
+  headerDivider: true
+  footer: '=(items.EMS_TariffComparison_LastRunAt.state && items.EMS_TariffComparison_LastRunAt.state!==''NULL'') ? ''Laatst: ''+(items.EMS_TariffComparison_LastRunAt.state||'''').toString().substring(0,16).replace(''T'','' '') : ''Druk op Vergelijk nu'''
+slots:
+  content:
+  - component: f7-card-content
+    slots:
+      default:
+      - component: oh-repeater
+        config:
+          sourceType: array
+          for: row
+          fragment: true
+          in: =(items.EMS_TariffComparison_RankingCsv.state||'').split(',').filter(s=>s.indexOf('=')>0)
+        slots:
+          default:
+          - component: f7-block
+            config:
+              style:
+                margin: 6px 0
+                padding: '0'
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: =loop.row.split('=')[0]+'  EUR '+Number(loop.row.split('=')[1]).toFixed(0)
+                  style:
+                    font-size: 0.85em
+                    font-weight: 600
+              - component: f7-block
+                config:
+                  style:
+                    height: 14px
+                    border-radius: 7px
+                    margin-top: 2px
+                    background: '=loop.row_index===0 ? ''#2e7d32'' : ''#90caf9'''
+                    width: =Math.max(4,Number(loop.row.split('=')[1])/(Number(((items.EMS_TariffComparison_RankingCsv.state||'x=1').split(',').slice(-1)[0]||'x=1').split('=')[1])||1)*100)+'%'

@@ -1,0 +1,852 @@
+uid: ems_overview_tiles
+tags:
+- ems
+timestamp: Jun 1, 2026, 9:30:00 AM
+component: f7-block
+config:
+  style:
+    padding: 6px
+    margin: '0'
+  stylesheet: "  .ovw { padding: 3px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n  .period { margin-bottom: 9px; }\n  .card { background: var(--f7-card-bg-color,#fff); border: 1px solid rgba(127,127,127,0.13); border-radius: 15px; padding: 11px 13px; box-shadow: 0 2px 10px rgba(127,127,127,0.09); margin-bottom: 9px; }\n  .card-h { display: flex; align-items: baseline; font-size: 12px; font-weight: 700; margin-bottom: 8px; color: #8a9099; text-transform: uppercase; letter-spacing: .04em; }\n  .card-h-r { margin-left: auto; font-size: 11px; color: #9aa0a0; font-weight: 500; text-transform: none; letter-spacing: 0; }\n  .flowbox { position: relative; height: 156px; }\n  .flowbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }\n  .fldot { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 2.5; stroke-dasharray: 1 13; animation: march 1.4s linear infinite; }\n  @keyframes march { to { stroke-dashoffset: -14; } }\n  .slabel { position: absolute; transform: translateY(-50%); display: flex; align-items: center; gap: 6px; z-index: 3; transition: top .5s ease, opacity .4s ease; background: var(--f7-card-bg-color, #fff); border-radius: 11px; padding: 3px 9px 3px 4px; box-shadow: 0 1px 7px rgba(0,0,0,0.22); }\n  .s-left { left: 6px; }\n  .s-right { right: 6px; flex-direction: row-reverse; }\n  .s-right .sl-txt { text-align: right; }\n  .sl-ic { width: 26px; height: 26px; border-radius: 9px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); flex-shrink: 0; }\n  .sl-txt .nm { font-size: 9px; color: #9aa0a0; text-transform: uppercase; letter-spacing: .03em; }\n  .sl-txt .v { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.1; }\n  .gauges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 9px; }\n  .gauge { background: var(--f7-card-bg-color,#fff); border: 1px solid rgba(127,127,127,0.13); border-radius: 15px; padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 5px; box-shadow: 0 2px 10px rgba(127,127,127,0.09); }\n  .g-ring { position: relative; width: 66px; height: 66px; }\n  .g-arc { width: 66px; height: 66px; border-radius: 50%; -webkit-mask: radial-gradient(transparent 60%, #000 62%); mask: radial-gradient(transparent 60%, #000 62%); transition: background .6s ease; }\n  .g-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }\n  .g-pct { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }\n  .g-lbl { font-size: 10px; color: #8a9099; text-align: center; }\n  .dv-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }\n  .dv-name { font-size: 12px; width: 76px; flex-shrink: 0; }\n  .dv-track { flex: 1; height: 8px; border-radius: 4px; background: rgba(127,127,127,0.12); overflow: hidden; }\n  .dv-fill { height: 100%; border-radius: 4px; transition: width .7s cubic-bezier(.2,.8,.2,1); }\n  .dv-kwh { width: 38px; text-align: right; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; color: #8a9099; }\n"
+slots:
+  default:
+  - component: div
+    config:
+      class: ovw
+    slots:
+      default:
+      - component: f7-segmented
+        config:
+          strong: true
+          round: true
+          class: period
+        slots:
+          default:
+          - component: oh-button
+            config:
+              text: Vandaag
+              active: =(vars.period||'Day')==='Day'
+              action: variable
+              actionVariable: period
+              actionVariableValue: Day
+          - component: oh-button
+            config:
+              text: Week
+              active: =(vars.period||'Day')==='Last7Days'
+              action: variable
+              actionVariable: period
+              actionVariableValue: Last7Days
+          - component: oh-button
+            config:
+              text: Maand
+              active: =(vars.period||'Day')==='Month'
+              action: variable
+              actionVariable: period
+              actionVariableValue: Month
+          - component: oh-button
+            config:
+              text: Jaar
+              active: =(vars.period||'Day')==='Year'
+              action: variable
+              actionVariable: period
+              actionVariableValue: Year
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: card-h
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Energieverdeling
+          - component: div
+            config:
+              class: flowbox
+            slots:
+              default:
+              - component: svg
+                config:
+                  viewBox: 0 0 300 156
+                  preserveAspectRatio: none
+                slots:
+                  default:
+                  - component: defs
+                    slots:
+                      default:
+                      - component: linearGradient
+                        config:
+                          id: gself
+                          x1: '0'
+                          y1: '0'
+                          x2: '1'
+                          y2: '0'
+                        slots:
+                          default:
+                          - component: stop
+                            config:
+                              offset: 0%
+                              stop-color: '#f5b03c'
+                          - component: stop
+                            config:
+                              offset: 100%
+                              stop-color: '#3bb273'
+                      - component: linearGradient
+                        config:
+                          id: gexp
+                          x1: '0'
+                          y1: '0'
+                          x2: '1'
+                          y2: '0'
+                        slots:
+                          default:
+                          - component: stop
+                            config:
+                              offset: 0%
+                              stop-color: '#f5b03c'
+                          - component: stop
+                            config:
+                              offset: 100%
+                              stop-color: '#8b6cd6'
+                      - component: linearGradient
+                        config:
+                          id: gimp
+                          x1: '0'
+                          y1: '0'
+                          x2: '1'
+                          y2: '0'
+                        slots:
+                          default:
+                          - component: stop
+                            config:
+                              offset: 0%
+                              stop-color: '#e8895a'
+                          - component: stop
+                            config:
+                              offset: 100%
+                              stop-color: '#4a90d9'
+                  - component: path
+                    config:
+                      d: ='M60,'+(14)+' C140,'+(14)+' 160,'+(14)+' 240,'+(14)+' L240,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' C160,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 140,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 60,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' Z'
+                      fill: url(#gself)
+                      style:
+                        fill-opacity: '0.62'
+                  - component: path
+                    config:
+                      d: ='M60,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' C140,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 160,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 240,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' L240,'+(142)+' C160,'+(142)+' 140,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 60,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' Z'
+                      fill: url(#gexp)
+                      style:
+                        fill-opacity: '0.62'
+                  - component: path
+                    config:
+                      d: ='M60,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' C140,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 160,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 240,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' L240,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' C160,'+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+' 140,'+(142)+' 60,'+(142)+' Z'
+                      fill: url(#gimp)
+                      style:
+                        fill-opacity: '0.62'
+                  - component: path
+                    config:
+                      class: fldot
+                      d: ='M60,'+((14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)+' C140,'+((14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)+' 160,'+((14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)+' 240,'+((14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)
+                      stroke: '#ffffff'
+                      style:
+                        opacity: =(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?0.55:0
+                  - component: path
+                    config:
+                      class: fldot
+                      d: ='M60,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)+' C140,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)+' 160,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+142)/2)+' 240,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+142)/2)
+                      stroke: '#ffffff'
+                      style:
+                        opacity: =(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?0.55:0
+                  - component: path
+                    config:
+                      class: fldot
+                      d: ='M60,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+142)/2)+' C140,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+142)/2)+' 160,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)+' 240,'+((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))/2)
+                      stroke: '#ffffff'
+                      style:
+                        opacity: =(Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?0.55:0
+                  - component: rect
+                    config:
+                      x: '52'
+                      width: '6'
+                      rx: '3'
+                      fill: '#f0a83c'
+                      style:
+                        y: =14
+                        height: =Math.max(0,(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))-(14))
+                  - component: rect
+                    config:
+                      x: '52'
+                      width: '6'
+                      rx: '3'
+                      fill: '#e8895a'
+                      style:
+                        y: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)
+                        height: =Math.max(0,(142)-(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)))
+                        opacity: =(Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?1:0
+                  - component: rect
+                    config:
+                      x: '242'
+                      width: '6'
+                      rx: '3'
+                      fill: '#4a90d9'
+                      style:
+                        y: =14
+                        height: =Math.max(0,(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))-(14))
+                  - component: rect
+                    config:
+                      x: '242'
+                      width: '6'
+                      rx: '3'
+                      fill: '#8b6cd6'
+                      style:
+                        y: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)
+                        height: =Math.max(0,(142)-(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)))
+                        opacity: =(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?1:0
+              - component: div
+                config:
+                  class: slabel s-left
+                  style:
+                    top: =(((14)+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)))/2/156*100)+'%'
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: sl-ic
+                      style:
+                        background: '#f0a83c'
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: sun_max_fill
+                          size: '13'
+                          style:
+                            color: '#fff'
+                  - component: div
+                    config:
+                      class: sl-txt
+                    slots:
+                      default:
+                      - component: div
+                        config:
+                          class: nm
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: Opgewekt
+                      - component: div
+                        config:
+                          class: v
+                          style:
+                            color: '#f0a83c'
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))).toFixed(1)+' kWh'
+              - component: div
+                config:
+                  class: slabel s-left
+                  style:
+                    top: =(((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+(142))/2/156*100)+'%'
+                    opacity: =(Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?1:0
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: sl-ic
+                      style:
+                        background: '#e8895a'
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: bolt_fill
+                          size: '13'
+                          style:
+                            color: '#fff'
+                  - component: div
+                    config:
+                      class: sl-txt
+                    slots:
+                      default:
+                      - component: div
+                        config:
+                          class: nm
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: Van net
+                      - component: div
+                        config:
+                          class: v
+                          style:
+                            color: '#e8895a'
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =(Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])).toFixed(1)+' kWh'
+              - component: div
+                config:
+                  class: slabel s-right
+                  style:
+                    top: =(((14)+(((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78)))/2/156*100)+'%'
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: sl-ic
+                      style:
+                        background: '#4a90d9'
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: house_fill
+                          size: '13'
+                          style:
+                            color: '#fff'
+                  - component: div
+                    config:
+                      class: sl-txt
+                    slots:
+                      default:
+                      - component: div
+                        config:
+                          class: nm
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: Verbruikt
+                      - component: div
+                        config:
+                          class: v
+                          style:
+                            color: '#4a90d9'
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))).toFixed(1)+' kWh'
+              - component: div
+                config:
+                  class: slabel s-right
+                  style:
+                    top: =(((((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?(14+((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*128):78))+(142))/2/156*100)+'%'
+                    opacity: =(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0.1?1:0
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: sl-ic
+                      style:
+                        background: '#8b6cd6'
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: arrow_up_right_circle_fill
+                          size: '13'
+                          style:
+                            color: '#fff'
+                  - component: div
+                    config:
+                      class: sl-txt
+                    slots:
+                      default:
+                      - component: div
+                        config:
+                          class: nm
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: Naar net
+                      - component: div
+                        config:
+                          class: v
+                          style:
+                            color: '#8b6cd6'
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])).toFixed(1)+' kWh'
+      - component: div
+        config:
+          class: gauges
+        slots:
+          default:
+          - component: div
+            config:
+              class: gauge
+            slots:
+              default:
+              - component: div
+                config:
+                  class: g-ring
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: g-arc
+                      style:
+                        background: ='conic-gradient('#3bb273' 0deg '+(Math.min(100,((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg, rgba(127,127,127,0.16) '+(Math.min(100,((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg)'
+                  - component: div
+                    config:
+                      class: g-center
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: house_fill
+                          size: '13'
+                          style:
+                            color: '''#3bb273'''
+                      - component: div
+                        config:
+                          class: g-pct
+                          style:
+                            color: '''#3bb273'''
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0)+'%'
+              - component: div
+                config:
+                  class: g-lbl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Zelfvoorz.
+          - component: div
+            config:
+              class: gauge
+            slots:
+              default:
+              - component: div
+                config:
+                  class: g-ring
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: g-arc
+                      style:
+                        background: ='conic-gradient('#f0a83c' 0deg '+(Math.min(100,((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg, rgba(127,127,127,0.16) '+(Math.min(100,((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg)'
+                  - component: div
+                    config:
+                      class: g-center
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: sun_max_fill
+                          size: '13'
+                          style:
+                            color: '''#f0a83c'''
+                      - component: div
+                        config:
+                          class: g-pct
+                          style:
+                            color: '''#f0a83c'''
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0)+'%'
+              - component: div
+                config:
+                  class: g-lbl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Zon-verbr.
+          - component: div
+            config:
+              class: gauge
+            slots:
+              default:
+              - component: div
+                config:
+                  class: g-ring
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: g-arc
+                      style:
+                        background: ='conic-gradient('#8b6cd6' 0deg '+(Math.min(100,((Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg, rgba(127,127,127,0.16) '+(Math.min(100,((Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg)'
+                  - component: div
+                    config:
+                      class: g-center
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: arrow_2_squarepath
+                          size: '13'
+                          style:
+                            color: '''#8b6cd6'''
+                      - component: div
+                        config:
+                          class: g-pct
+                          style:
+                            color: '''#8b6cd6'''
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =((Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])/(Number((items['EMS_FeedIn_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0)+'%'
+              - component: div
+                config:
+                  class: g-lbl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Teruglev.
+          - component: div
+            config:
+              class: gauge
+            slots:
+              default:
+              - component: div
+                config:
+                  class: g-ring
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: g-arc
+                      style:
+                        background: ='conic-gradient('#34b9c9' 0deg '+(Math.min(100,((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+0.65*Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg, rgba(127,127,127,0.16) '+(Math.min(100,((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+0.65*Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0))*3.6)+'deg)'
+                  - component: div
+                    config:
+                      class: g-center
+                    slots:
+                      default:
+                      - component: f7-icon
+                        config:
+                          f7: leaf_arrow_circlepath
+                          size: '13'
+                          style:
+                            color: '''#34b9c9'''
+                      - component: div
+                        config:
+                          class: g-pct
+                          style:
+                            color: '''#34b9c9'''
+                        slots:
+                          default:
+                          - component: Label
+                            config:
+                              text: =((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))>0?Math.round((Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+0.65*Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))/(Number((items['EMS_SelfConsumption_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0])+Number((items['EMS_Supply_kWh_'+(vars.period||'Day')].state||'0').toString().split(' ')[0]))*100):0)+'%'
+              - component: div
+                config:
+                  class: g-lbl
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: CO₂-vrij
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: card-h
+            slots:
+              default:
+              - component: div
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Waar ging de energie naartoe
+              - component: div
+                config:
+                  class: card-h-r
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: vandaag
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: shield_fill
+                  size: '15'
+                  style:
+                    color: '#8a9098'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Security
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Security_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#8a9098'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_DM_Security_kWh.state||'0').toString().split(' ')[0])).toFixed(1)
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: snow
+                  size: '15'
+                  style:
+                    color: '#34b9c9'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Airco
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Airco_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#34b9c9'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_DM_Airco_kWh.state||'0').toString().split(' ')[0])).toFixed(1)
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: flame_fill
+                  size: '15'
+                  style:
+                    color: '#db3b56'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Boiler
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Boiler_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#db3b56'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_DM_Boiler_kWh.state||'0').toString().split(' ')[0])).toFixed(1)
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: thermometer
+                  size: '15'
+                  style:
+                    color: '#c8527f'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Verwarming
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_HeaterKitchen_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#c8527f'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_DM_HeaterKitchen_kWh.state||'0').toString().split(' ')[0])).toFixed(1)
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: car_fill
+                  size: '15'
+                  style:
+                    color: '#ef7b3e'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Auto's
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,((Number((items.EMS_DM_Car1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Car2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Car3_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Car4_kWh.state||'0').toString().split(' ')[0])))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#ef7b3e'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =((Number((items.EMS_DM_Car1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Car2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Car3_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Car4_kWh.state||'0').toString().split(' ')[0]))).toFixed(1)
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: lightbulb_fill
+                  size: '15'
+                  style:
+                    color: '#dcc63e'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Verlichting
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,((Number((items.EMS_DM_Light1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light3_kWh.state||'0').toString().split(' ')[0])))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#dcc63e'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =((Number((items.EMS_DM_Light1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light3_kWh.state||'0').toString().split(' ')[0]))).toFixed(1)
+          - component: div
+            config:
+              class: dv-row
+            slots:
+              default:
+              - component: f7-icon
+                config:
+                  f7: square_grid_2x2_fill
+                  size: '15'
+                  style:
+                    color: '#9b8f7e'
+              - component: div
+                config:
+                  class: dv-name
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: Algemeen
+              - component: div
+                config:
+                  class: dv-track
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dv-fill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_General_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'1').toString().split(' ')[0]))*100)+'%'
+                        background: '#9b8f7e'
+              - component: div
+                config:
+                  class: dv-kwh
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_DM_General_kWh.state||'0').toString().split(' ')[0])).toFixed(1)

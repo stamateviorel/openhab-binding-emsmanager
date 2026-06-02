@@ -1,0 +1,728 @@
+uid: ems_apparaten_tab
+tags:
+- ems
+timestamp: Jun 1, 2026, 7:10:00 AM
+component: f7-block
+config:
+  style:
+    padding: 6px
+    margin: '0'
+  stylesheet: "  .av { padding: 6px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n  .card { background: var(--f7-card-bg-color,#fff); border: 1px solid rgba(127,127,127,0.13); border-radius: 15px; padding: 13px 15px; box-shadow: 0 2px 10px rgba(127,127,127,0.09); margin-bottom: 10px; }\n  .ahead { margin-bottom: 4px; }\n  .htot { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }\n  .hsub { font-size: 12px; color: #9aa0a0; margin-top: 2px; }\n  .stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: rgba(127,127,127,0.12); margin: 12px 0 4px; }\n  .sg { height: 100%; transition: width .6s cubic-bezier(.2,.8,.2,1); }\n  .anom { display: none; align-items: center; gap: 8px; background: #db3b56; color: #fff; border-radius: 11px; padding: 9px 13px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }\n  .ch { font-size: 12px; font-weight: 700; color: #8a9099; text-transform: uppercase; letter-spacing: .04em; margin: 2px 2px 10px; }\n  .drow { padding: 7px 0; border-bottom: 1px solid rgba(127,127,127,0.08); }\n  .drow:last-child { border-bottom: none; }\n  .dhead { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }\n  .dn { font-size: 13px; }\n  .dw { margin-left: auto; font-size: 11px; color: #9aa0a0; font-variant-numeric: tabular-nums; }\n  .dk { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; width: 74px; text-align: right; }\n  .dtrack { height: 7px; border-radius: 4px; background: rgba(127,127,127,0.1); overflow: hidden; }\n  .dfill { height: 100%; border-radius: 4px; transition: width .7s cubic-bezier(.2,.8,.2,1); }\n"
+slots:
+  default:
+  - component: div
+    config:
+      class: av
+    slots:
+      default:
+      - component: div
+        config:
+          class: anom
+          style:
+            display: =(Number((items.EMS_Anomaly_Count_Today.state||'0').toString().split(' ')[0]))>0?'flex':'none'
+        slots:
+          default:
+          - component: f7-icon
+            config:
+              f7: exclamationmark_triangle_fill
+              size: '16'
+              style:
+                color: '#fff'
+          - component: div
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: =(Number((items.EMS_Anomaly_Count_Today.state||'0').toString().split(' ')[0])).toFixed(0)+' afwijking(en) vandaag gedetecteerd'
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ahead
+            slots:
+              default:
+              - component: div
+                config:
+                  class: htot
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: =(Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'0').toString().split(' ')[0])).toFixed(1)+' kWh gevolgd'
+              - component: div
+                config:
+                  class: hsub
+                slots:
+                  default:
+                  - component: Label
+                    config:
+                      text: ='van '+(Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))).toFixed(1)+' kWh verbruik · '+Math.max(0,(Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))-Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'0').toString().split(' ')[0]))).toFixed(1)+' kWh overig'
+          - component: div
+            config:
+              class: stack
+            slots:
+              default:
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Security_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#8a9098'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Airco_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#34b9c9'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Boiler_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#db3b56'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_HeaterKitchen_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#c8527f'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Car1_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#ef7b3e'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Car2_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#e8895a'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Car3_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#f0a35a'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_Car4_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#d9824a'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,((Number((items.EMS_DM_Light1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light3_kWh.state||'0').toString().split(' ')[0])))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#dcc63e'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Number((items.EMS_DM_General_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: '#9b8f7e'
+              - component: div
+                config:
+                  class: sg
+                  style:
+                    width: =Math.max(0,(Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))-Number((items.EMS_DeviceMeter_Tracked_kWh_Day.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                    background: rgba(127,127,127,0.25)
+      - component: div
+        config:
+          class: card
+        slots:
+          default:
+          - component: div
+            config:
+              class: ch
+            slots:
+              default:
+              - component: Label
+                config:
+                  text: Per apparaat · vandaag
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: shield_fill
+                      size: '16'
+                      style:
+                        color: '#8a9098'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Security
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_security_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Security_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Security_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Security_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#8a9098'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: snow
+                      size: '16'
+                      style:
+                        color: '#34b9c9'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Airco
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_airco_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Airco_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Airco_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Airco_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#34b9c9'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: flame_fill
+                      size: '16'
+                      style:
+                        color: '#db3b56'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Boiler
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_boiler_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Boiler_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Boiler_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Boiler_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#db3b56'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: thermometer
+                      size: '16'
+                      style:
+                        color: '#c8527f'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Keukenverw.
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_heater_kitchen_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_HeaterKitchen_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_HeaterKitchen_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_HeaterKitchen_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#c8527f'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: car_fill
+                      size: '16'
+                      style:
+                        color: '#ef7b3e'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 1
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_car1_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car1_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car1_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Car1_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#ef7b3e'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: car_fill
+                      size: '16'
+                      style:
+                        color: '#e8895a'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 2
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_car2_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car2_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car2_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Car2_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#e8895a'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: car_fill
+                      size: '16'
+                      style:
+                        color: '#f0a35a'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 3
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_car3_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car3_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car3_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Car3_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#f0a35a'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: car_fill
+                      size: '16'
+                      style:
+                        color: '#d9824a'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 4
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_car4_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car4_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_Car4_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_Car4_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#d9824a'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: lightbulb_fill
+                      size: '16'
+                      style:
+                        color: '#dcc63e'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Verlichting
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((Number((items.EMS_DM_Light1_W.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light2_W.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light3_W.state||'0').toString().split(' ')[0]))).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((Number((items.EMS_DM_Light1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light3_kWh.state||'0').toString().split(' ')[0]))).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,((Number((items.EMS_DM_Light1_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light2_kWh.state||'0').toString().split(' ')[0])+Number((items.EMS_DM_Light3_kWh.state||'0').toString().split(' ')[0])))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#dcc63e'
+          - component: div
+            config:
+              class: drow
+            slots:
+              default:
+              - component: div
+                config:
+                  class: dhead
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: square_grid_2x2_fill
+                      size: '16'
+                      style:
+                        color: '#9b8f7e'
+                  - component: div
+                    config:
+                      class: dn
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Algemeen
+                  - component: f7-icon
+                    config:
+                      f7: exclamationmark_triangle_fill
+                      size: '13'
+                      style:
+                        color: '#db3b56'
+                        margin-left: 4px
+                        display: =items.EMS_Anomaly_general_Active.state==='ON'?'inline':'none'
+                  - component: div
+                    config:
+                      class: dw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_General_W.state||'0').toString().split(' ')[0])).toFixed(0)+' W'
+                  - component: div
+                    config:
+                      class: dk
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =(Number((items.EMS_DM_General_kWh.state||'0').toString().split(' ')[0])).toFixed(2)+' kWh'
+              - component: div
+                config:
+                  class: dtrack
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: dfill
+                      style:
+                        width: =Math.min(100,(Number((items.EMS_DM_General_kWh.state||'0').toString().split(' ')[0]))/Math.max(1,(Number((items.EMS_SelfConsumption_kWh_Day.state||'0').toString().split(' ')[0])+Number((items.EMS_Supply_kWh_Day.state||'0').toString().split(' ')[0])))*100)+'%'
+                        background: '#9b8f7e'
