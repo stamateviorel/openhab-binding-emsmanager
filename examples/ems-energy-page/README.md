@@ -6,13 +6,15 @@ A single-page MainUI dashboard for openHAB that consolidates everything about yo
 
 ## Screenshots
 
-> The five screenshots below show the original Dutch deployment. Drop your own PNGs under `./img/` (the *Compare* and *Control* tabs are not pictured yet).
+> All seven tabs are pictured below. The screenshots are from the original Dutch deployment; the labels in this example are translated to English.
 
 ![Overview](./img/overview.png)
 ![Devices](./img/devices.png)
 ![EV](./img/ev.png)
 ![Analysis](./img/analysis.png)
 ![Capacity](./img/capacity.png)
+![Compare](./img/compare.png)
+![Control](./img/control.png)
 
 ## Tabs
 
