@@ -6,7 +6,7 @@ props:
 timestamp: Jun 1, 2026, 9:10:00 AM
 component: oh-chart-page
 config:
-  label: Vergelijken
+  label: Compare
   sidebar: false
   chartType: day
   period: D
@@ -31,17 +31,17 @@ slots:
     config:
       gridIndex: 0
       categoryType: hour
-      name: uur
+      name: hour
   - component: oh-category-axis
     config:
       gridIndex: 1
       categoryType: hour
-      name: uur
+      name: hour
   yAxis:
   - component: oh-value-axis
     config:
       gridIndex: 0
-      name: 'W  (Net: + injectie / − afname)'
+      name: 'W  (Grid: + feed-in / − draw)'
   - component: oh-value-axis
     config:
       gridIndex: 1
@@ -51,7 +51,7 @@ slots:
   series:
   - component: oh-aggregate-series
     config:
-      name: Productie (zon+accu)
+      name: Production (solar+battery)
       item: Solar_load
       service: influxdb
       type: line
@@ -65,7 +65,7 @@ slots:
         color: '#fbc02d'
   - component: oh-aggregate-series
     config:
-      name: Verbruik
+      name: Consumption
       item: House_load_sum
       service: influxdb
       type: line
@@ -79,7 +79,7 @@ slots:
         color: '#4a90d9'
   - component: oh-aggregate-series
     config:
-      name: Net
+      name: Grid
       item: Grid_load
       service: influxdb
       type: bar
@@ -93,7 +93,7 @@ slots:
         color: '#ab47bc'
   - component: oh-aggregate-series
     config:
-      name: Batterij SoC
+      name: Battery SoC
       item: Battery_percentage
       service: influxdb
       type: line

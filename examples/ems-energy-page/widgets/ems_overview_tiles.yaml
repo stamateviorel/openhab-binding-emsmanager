@@ -24,7 +24,7 @@ slots:
           default:
           - component: oh-button
             config:
-              text: Vandaag
+              text: Today
               active: =(vars.period||'Day')==='Day'
               action: variable
               actionVariable: period
@@ -38,14 +38,14 @@ slots:
               actionVariableValue: Last7Days
           - component: oh-button
             config:
-              text: Maand
+              text: Month
               active: =(vars.period||'Day')==='Month'
               action: variable
               actionVariable: period
               actionVariableValue: Month
           - component: oh-button
             config:
-              text: Jaar
+              text: Year
               active: =(vars.period||'Day')==='Year'
               action: variable
               actionVariable: period
@@ -62,7 +62,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Energieverdeling
+                  text: Energy distribution
           - component: div
             config:
               class: flowbox
@@ -237,7 +237,7 @@ slots:
                           default:
                           - component: Label
                             config:
-                              text: Opgewekt
+                              text: Generated
                       - component: div
                         config:
                           class: v
@@ -281,7 +281,7 @@ slots:
                           default:
                           - component: Label
                             config:
-                              text: Van net
+                              text: From grid
                       - component: div
                         config:
                           class: v
@@ -324,7 +324,7 @@ slots:
                           default:
                           - component: Label
                             config:
-                              text: Verbruikt
+                              text: Consumed
                       - component: div
                         config:
                           class: v
@@ -368,7 +368,7 @@ slots:
                           default:
                           - component: Label
                             config:
-                              text: Naar net
+                              text: To grid
                       - component: div
                         config:
                           class: v
@@ -427,7 +427,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Zelfvoorz.
+                      text: Self-suff.
           - component: div
             config:
               class: gauge
@@ -471,7 +471,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Zon-verbr.
+                      text: Solar use
           - component: div
             config:
               class: gauge
@@ -515,7 +515,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Teruglev.
+                      text: Feed-in
           - component: div
             config:
               class: gauge
@@ -559,7 +559,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: CO₂-vrij
+                      text: CO₂-free
       - component: div
         config:
           class: card
@@ -575,7 +575,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Waar ging de energie naartoe
+                      text: Where the energy went
               - component: div
                 config:
                   class: card-h-r
@@ -583,7 +583,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: vandaag
+                      text: today
           - component: div
             config:
               class: dv-row
@@ -640,7 +640,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Airco
+                      text: Air-co
               - component: div
                 config:
                   class: dv-track
@@ -716,7 +716,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Verwarming
+                      text: Heating
               - component: div
                 config:
                   class: dv-track
@@ -754,7 +754,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Auto's
+                      text: Cars
               - component: div
                 config:
                   class: dv-track
@@ -792,7 +792,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Verlichting
+                      text: Lighting
               - component: div
                 config:
                   class: dv-track
@@ -830,7 +830,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Algemeen
+                      text: General
               - component: div
                 config:
                   class: dv-track

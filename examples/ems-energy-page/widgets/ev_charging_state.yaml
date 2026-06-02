@@ -44,7 +44,7 @@ slots:
               class:
               - display-flex
               - justify-content-center
-              title: Auto 1 · Poort
+              title: Car 1 · Gate
               style:
                 font-weight: bold
                 font-size: 13px
@@ -66,7 +66,7 @@ slots:
             config:
               class:
               - text-align-center
-              visible: =(items.Car1_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car1_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              visible: =(items.Car1_EMS_Reason.state||'').toString().indexOf('paused')>=0 || (items.Car1_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
               title: =items.Car1_EMS_Reason.state || ''
               style:
                 font-size: 9px
@@ -92,12 +92,12 @@ slots:
                   action: command
               - component: oh-button
                 config:
-                  text: SNEL
+                  text: FAST
                   small: true
-                  fill: =items.Car1_Mode_OCPP.state === 'SNEL'
+                  fill: =items.Car1_Mode_OCPP.state === 'FAST'
                   color: orange
                   actionItem: Car1_Mode_OCPP
-                  actionCommand: SNEL
+                  actionCommand: FAST
                   action: command
               - component: oh-button
                 config:
@@ -124,7 +124,7 @@ slots:
               class:
               - display-flex
               - justify-content-center
-              title: Auto 2 · Poort
+              title: Car 2 · Gate
               style:
                 font-weight: bold
                 font-size: 13px
@@ -146,7 +146,7 @@ slots:
             config:
               class:
               - text-align-center
-              visible: =(items.Car2_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car2_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              visible: =(items.Car2_EMS_Reason.state||'').toString().indexOf('paused')>=0 || (items.Car2_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
               title: =items.Car2_EMS_Reason.state || ''
               style:
                 font-size: 9px
@@ -172,12 +172,12 @@ slots:
                   action: command
               - component: oh-button
                 config:
-                  text: SNEL
+                  text: FAST
                   small: true
-                  fill: =items.Car2_Mode_OCPP.state === 'SNEL'
+                  fill: =items.Car2_Mode_OCPP.state === 'FAST'
                   color: orange
                   actionItem: Car2_Mode_OCPP
-                  actionCommand: SNEL
+                  actionCommand: FAST
                   action: command
               - component: oh-button
                 config:
@@ -204,7 +204,7 @@ slots:
               class:
               - display-flex
               - justify-content-center
-              title: Auto 3 · Zijkant
+              title: Car 3 · Side
               style:
                 font-weight: bold
                 font-size: 13px
@@ -226,7 +226,7 @@ slots:
             config:
               class:
               - text-align-center
-              visible: =(items.Car3_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car3_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              visible: =(items.Car3_EMS_Reason.state||'').toString().indexOf('paused')>=0 || (items.Car3_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
               title: =items.Car3_EMS_Reason.state || ''
               style:
                 font-size: 9px
@@ -252,12 +252,12 @@ slots:
                   action: command
               - component: oh-button
                 config:
-                  text: SNEL
+                  text: FAST
                   small: true
-                  fill: =items.Car3_Mode_OCPP.state === 'SNEL'
+                  fill: =items.Car3_Mode_OCPP.state === 'FAST'
                   color: orange
                   actionItem: Car3_Mode_OCPP
-                  actionCommand: SNEL
+                  actionCommand: FAST
                   action: command
               - component: oh-button
                 config:
@@ -284,7 +284,7 @@ slots:
               class:
               - display-flex
               - justify-content-center
-              title: Auto 4 · Binnen
+              title: Car 4 · Indoor
               style:
                 font-weight: bold
                 font-size: 13px
@@ -306,7 +306,7 @@ slots:
             config:
               class:
               - text-align-center
-              visible: =(items.Car4_EMS_Reason.state||'').toString().indexOf('gepauzeerd')>=0 || (items.Car4_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
+              visible: =(items.Car4_EMS_Reason.state||'').toString().indexOf('paused')>=0 || (items.Car4_EMS_Reason.state||'').toString().indexOf('peak-shaving')>=0
               title: =items.Car4_EMS_Reason.state || ''
               style:
                 font-size: 9px
@@ -332,12 +332,12 @@ slots:
                   action: command
               - component: oh-button
                 config:
-                  text: SNEL
+                  text: FAST
                   small: true
-                  fill: =items.Car4_Mode_OCPP.state === 'SNEL'
+                  fill: =items.Car4_Mode_OCPP.state === 'FAST'
                   color: orange
                   actionItem: Car4_Mode_OCPP
-                  actionCommand: SNEL
+                  actionCommand: FAST
                   action: command
               - component: oh-button
                 config:

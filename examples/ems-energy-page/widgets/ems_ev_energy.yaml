@@ -27,7 +27,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Laadenergie per auto · vandaag
+                  text: Charging energy per car · today
           - component: div
             config:
               class: evrow
@@ -46,7 +46,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Auto 1 · Poort
+                      text: Car 1 · Gate
               - component: div
                 config:
                   class: evtrack
@@ -90,7 +90,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Auto 2 · Poort
+                      text: Car 2 · Gate
               - component: div
                 config:
                   class: evtrack
@@ -134,7 +134,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Auto 3 · Zijkant
+                      text: Car 3 · Side
               - component: div
                 config:
                   class: evtrack
@@ -178,7 +178,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Auto 4 · Binnen
+                      text: Car 4 · Indoor
               - component: div
                 config:
                   class: evtrack

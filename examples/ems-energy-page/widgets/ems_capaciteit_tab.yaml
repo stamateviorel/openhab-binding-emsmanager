@@ -27,7 +27,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Capaciteitstarief — deze maand
+                  text: Capacity tariff — this month
           - component: div
             config:
               class: big
@@ -43,7 +43,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: maandpiek (gefactureerd, min. 2,5 kW)
+                  text: monthly peak (billed, min. 2.5 kW)
           - component: div
             config:
               class: tiles
@@ -71,7 +71,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Huidig kwartier
+                          text: Current 15-min
               - component: div
                 config:
                   class: tile
@@ -94,7 +94,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Projectie kwartier
+                          text: Projected 15-min
           - component: div
             config:
               class: bar
@@ -125,7 +125,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Piekbescherming
+                  text: Peak protection
           - component: div
             config:
               class: stat
@@ -161,7 +161,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Niveau
+                      text: Level
               - component: div
                 config:
                   class: sv
@@ -184,7 +184,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Ingeschakeld
+                      text: Enabled
               - component: oh-toggle
                 config:
                   item: PeakShaving_Enabled
@@ -200,10 +200,10 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Nu forceren
+                      text: Force now
               - component: oh-button
                 config:
-                  text: Activeer
+                  text: Activate
                   action: command
                   actionItem: PeakShaving_Manual_Engage
                   actionCommand: 'ON'
@@ -222,7 +222,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Alles vrijgeven
+                      text: Release all
               - component: oh-button
                 config:
                   text: Reset

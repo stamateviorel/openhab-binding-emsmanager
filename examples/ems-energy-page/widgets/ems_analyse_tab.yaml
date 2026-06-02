@@ -27,7 +27,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Deze maand
+                  text: This month
           - component: div
             config:
               class: tiles
@@ -55,7 +55,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Netkosten
+                          text: Grid cost
               - component: div
                 config:
                   class: tile
@@ -78,7 +78,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Bespaard (zon)
+                          text: Saved (solar)
               - component: div
                 config:
                   class: tile
@@ -101,7 +101,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Verdiend (teruglev.)
+                          text: Earned (feed-in)
               - component: div
                 config:
                   class: tile
@@ -124,7 +124,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: CO₂ vermeden (jaar)
+                          text: CO₂ avoided (year)
       - component: div
         config:
           class: card
@@ -137,7 +137,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Batterij-advies
+                  text: Battery advice
           - component: div
             config:
               class: reco
@@ -145,7 +145,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: '=''Aanbevolen: '''
+                  text: '=''Recommended: '''
           - component: div
             config:
               class: reco
@@ -161,7 +161,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: ='terugverdientijd '+Number((items.EMS_BatterySizing_PaybackYears.state||'0').toString().split(' ')[0]).toFixed(1)+' jaar'
+                  text: ='payback '+Number((items.EMS_BatterySizing_PaybackYears.state||'0').toString().split(' ')[0]).toFixed(1)+' years'
           - component: div
             config:
               class: srow
@@ -174,10 +174,10 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Opnieuw berekenen
+                      text: Recalculate
               - component: oh-button
                 config:
-                  text: Bereken nu
+                  text: Calculate now
                   action: command
                   actionItem: EMS_BatterySizing_Run
                   actionCommand: 'ON'
@@ -196,7 +196,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Tariefvergelijking
+                  text: Tariff comparison
           - component: div
             config:
               class: summary
@@ -212,7 +212,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: '=''Goedkoopste: ''+items.EMS_TariffComparison_Cheapest.state'
+                  text: '=''Cheapest: ''+items.EMS_TariffComparison_Cheapest.state'
           - component: div
             config:
               class: srow
@@ -225,10 +225,10 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Opnieuw berekenen
+                      text: Recalculate
               - component: oh-button
                 config:
-                  text: Bereken nu
+                  text: Calculate now
                   action: command
                   actionItem: EMS_TariffComparison_Run
                   actionCommand: 'ON'

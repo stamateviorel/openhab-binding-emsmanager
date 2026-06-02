@@ -40,7 +40,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Actieve controllers
+                      text: Active controllers
               - component: div
                 config:
                   class: sv
@@ -63,7 +63,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Laatste beslissing
+                      text: Last decision
               - component: div
                 config:
                   class: sv
@@ -86,7 +86,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Schaduwmodus (alleen simuleren)
+                      text: Shadow mode (simulate only)
               - component: oh-toggle
                 config:
                   item: EMS_Bridge_Shadow_Mode
@@ -102,7 +102,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Batterijplan — komende 24 u
+                  text: Battery plan — next 24 h
           - component: div
             config:
               class: stat
@@ -115,7 +115,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Volgende lading
+                      text: Next charge
               - component: div
                 config:
                   class: sv
@@ -125,7 +125,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: =(Number((items.EMS_Optimizer_Next_Charge.state||'0').toString().split(' ')[0])<0?'geen':'over '+Number((items.EMS_Optimizer_Next_Charge.state||'0').toString().split(' ')[0]).toFixed(0)+' u')
+                      text: =(Number((items.EMS_Optimizer_Next_Charge.state||'0').toString().split(' ')[0])<0?'none':'in '+Number((items.EMS_Optimizer_Next_Charge.state||'0').toString().split(' ')[0]).toFixed(0)+' h')
           - component: div
             config:
               class: stat
@@ -138,7 +138,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Volgende ontlading
+                      text: Next discharge
               - component: div
                 config:
                   class: sv
@@ -148,7 +148,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: =(Number((items.EMS_Optimizer_Next_Discharge.state||'0').toString().split(' ')[0])<0?'geen':'over '+Number((items.EMS_Optimizer_Next_Discharge.state||'0').toString().split(' ')[0]).toFixed(0)+' u')
+                      text: =(Number((items.EMS_Optimizer_Next_Discharge.state||'0').toString().split(' ')[0])<0?'none':'in '+Number((items.EMS_Optimizer_Next_Discharge.state||'0').toString().split(' ')[0]).toFixed(0)+' h')
           - component: div
             config:
               class: pl
@@ -184,7 +184,7 @@ slots:
                         background: '#3bb273'
                   - component: Label
                     config:
-                      text: laden
+                      text: charging
               - component: div
                 config:
                   class: lg
@@ -196,7 +196,7 @@ slots:
                         background: '#f0a83c'
                   - component: Label
                     config:
-                      text: ontladen
+                      text: discharging
               - component: div
                 config:
                   class: lg
@@ -208,7 +208,7 @@ slots:
                         background: rgba(127,127,127,0.3)
                   - component: Label
                     config:
-                      text: rust
+                      text: idle
       - component: div
         config:
           class: card
@@ -221,7 +221,7 @@ slots:
               default:
               - component: Label
                 config:
-                  text: Piekbescherming
+                  text: Peak protection
           - component: div
             config:
               class: stat
@@ -257,7 +257,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Ingeschakeld
+                      text: Enabled
               - component: oh-toggle
                 config:
                   item: PeakShaving_Enabled
@@ -273,10 +273,10 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Nu forceren
+                      text: Force now
               - component: oh-button
                 config:
-                  text: Activeer
+                  text: Activate
                   action: command
                   actionItem: PeakShaving_Manual_Engage
                   actionCommand: 'ON'
@@ -295,7 +295,7 @@ slots:
                   default:
                   - component: Label
                     config:
-                      text: Alles vrijgeven
+                      text: Release all
               - component: oh-button
                 config:
                   text: Reset

@@ -7,9 +7,9 @@ props:
 timestamp: May 25, 2026, 10:52:47 AM
 component: f7-card
 config:
-  title: Batterij-besparing per grootte
+  title: Battery savings by size
   headerDivider: true
-  footer: '=items.EMS_BatterySizing_OptimalKwh.state && items.EMS_BatterySizing_OptimalKwh.state!==''NULL'' ? ''Optimaal ''+Number(items.EMS_BatterySizing_OptimalKwh.state).toFixed(1)+'' kWh · terugverdientijd ''+Number(items.EMS_BatterySizing_PaybackYears.state).toFixed(1)+'' jr'' : ''Druk op Bereken nu'''
+  footer: '=items.EMS_BatterySizing_OptimalKwh.state && items.EMS_BatterySizing_OptimalKwh.state!==''NULL'' ? ''Optimal ''+Number(items.EMS_BatterySizing_OptimalKwh.state).toFixed(1)+'' kWh · payback ''+Number(items.EMS_BatterySizing_PaybackYears.state).toFixed(1)+'' yr'' : ''Press Calculate now'''
 slots:
   content:
   - component: f7-card-content
@@ -45,7 +45,7 @@ slots:
                     border-radius: 2px 2px 0 0
       - component: Label
         config:
-          text: 0 -> 30 kWh  (groen = aanbevolen)
+          text: 0 -> 30 kWh  (green = recommended)
           style:
             opacity: 0.6
             font-size: 0.75em

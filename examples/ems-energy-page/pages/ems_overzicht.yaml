@@ -6,7 +6,7 @@ props:
 timestamp: Jun 1, 2026, 3:00:00 AM
 component: oh-layout-page
 config:
-  label: Energie - Overzicht
+  label: Energy - Overview
   sidebar: false
 slots:
   default:

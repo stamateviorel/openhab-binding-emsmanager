@@ -7,9 +7,9 @@ props:
 timestamp: May 25, 2026, 10:52:47 AM
 component: f7-card
 config:
-  title: Tariefvergelijking per leverancier
+  title: Tariff comparison by supplier
   headerDivider: true
-  footer: '=(items.EMS_TariffComparison_LastRunAt.state && items.EMS_TariffComparison_LastRunAt.state!==''NULL'') ? ''Laatst: ''+(items.EMS_TariffComparison_LastRunAt.state||'''').toString().substring(0,16).replace(''T'','' '') : ''Druk op Vergelijk nu'''
+  footer: '=(items.EMS_TariffComparison_LastRunAt.state && items.EMS_TariffComparison_LastRunAt.state!==''NULL'') ? ''Last run: ''+(items.EMS_TariffComparison_LastRunAt.state||'''').toString().substring(0,16).replace(''T'','' '') : ''Press Compare now'''
 slots:
   content:
   - component: f7-card-content

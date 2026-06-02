@@ -5,19 +5,19 @@ props:
 timestamp: Jun 1, 2026, 2:00:00 AM
 component: oh-tabs-page
 config:
-  label: Energie
+  label: Energy
   sidebar: true
   icon: f7:bolt_fill
 slots:
   default:
   - component: oh-tab
     config:
-      title: Overzicht
+      title: Overview
       icon: f7:house_fill
       page: ems_overzicht
   - component: oh-tab
     config:
-      title: Apparaten
+      title: Devices
       icon: f7:bolt_horizontal_fill
       page: ems_apparaten
   - component: oh-tab
@@ -27,21 +27,21 @@ slots:
       page: ems_ev
   - component: oh-tab
     config:
-      title: Analyse
+      title: Analysis
       icon: f7:chart_bar_alt_fill
       page: ems_analyse
   - component: oh-tab
     config:
-      title: Capaciteit
+      title: Capacity
       icon: f7:gauge
       page: ems_capaciteit
   - component: oh-tab
     config:
-      title: Vergelijken
+      title: Compare
       icon: f7:chart_pie_fill
       page: ems_vergelijken
   - component: oh-tab
     config:
-      title: Sturing
+      title: Control
       icon: f7:slider_horizontal_3
       page: ems_sturing
