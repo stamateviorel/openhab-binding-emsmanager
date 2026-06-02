@@ -1,15 +1,11 @@
 # energyflow_dynamic — SITE-SPECIFIC reference (NOT the generic marketplace widget)
 #
-# The live energy-flow widget from the production /etc/openhab install. Unlike the generic
-# ../widgets/energy_flow/ widget (group + oh-repeater driven), this renders each consumer +
-# the sun as FIXED elements hardcoded to this site's items — the fixed elements never flake
-# (no oh-repeater that can render empty after a restart).
-#
-# 2026-06-02: consumers are per-circuit — Airco, Boiler, Keuken, Security, Auto 1-4
-# (EMS_DM_Car1-4_W), Verlichting, and an auto-hidden Overig (= House_load_sum minus the metered
-# lanes). Cars 3/4 are PowerTag-primary with OCPP fallback (car_power_best.js on the site).
-# Idle lanes hide via the opacity>0.05 gate. For reuse, start from
-# ../widgets/energy_flow/energy_flow.yaml and swap the item names.
+# Live energy-flow widget from the production /etc/openhab install. Every consumer + the sun
+# is a FIXED element hardcoded to this site's items (EMS_DM_*_W, Solar_PV_W, ...) so labels
+# never render empty after a restart and positions are pinned (no oh-repeater).
+# Right side = 12 evenly-spaced slots (Net, Accu, then Airco/Boiler/Keuken/Security/Auto1-4/
+# Licht/Algemeen), each opacity-gated to show only when drawing power. Cars shown individually.
+# Only works on this install; for reuse start from ../widgets/energy_flow/energy_flow.yaml.
 #
 uid: energyflow_dynamic
 tags:
@@ -91,7 +87,7 @@ config:
   style:
     padding: 6px
     margin: 0
-  stylesheet: ".ebento { padding: 2px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n.ecard { position: relative; border-radius: 18px; background: var(--f7-card-bg-color, #fff); border: 1px solid rgba(127,127,127,0.18); box-shadow: 0 2px 10px rgba(127,127,127,0.16); padding: 14px 16px; color: var(--f7-text-color); }\n.ec-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }\n.ec-title .dot { width: 8px; height: 8px; border-radius: 3px; }\n.ec-title .out { margin-left: auto; font-size: 12px; font-weight: 500; color: #9aa0a0; }\n.sankey { position: relative; width: 100%; }\n.sankey svg { width: 100%; height: 184px; display: block; }\n.sk-ribbon { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }\n.sk-flow { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 6; stroke-dasharray: 1 13; animation: skflow 1.1s linear infinite; transition: opacity .4s ease; }\n@keyframes skflow { to { stroke-dashoffset: -14; } }\n.bub { position: absolute; transform: translateY(-50%); display: flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 9px;\n  background: var(--f7-card-bg-color, #fff); box-shadow: 0 1px 5px rgba(0,0,0,0.16); white-space: nowrap; transition: opacity .4s ease; z-index: 2; }\n.bub-src { left: 0; border-left: 3px solid; padding-left: 6px; }\n.bub-con { right: 0; flex-direction: row-reverse; border-right: 3px solid; padding-right: 6px; }\n.bub { max-width: 150px; }\n.bub .bnm { font-size: 9px; color: #9aa0a0; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }\n.bub .bkw { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }\n.energy-ring { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: conic-gradient(from 0deg, #f0a83c, #f0902a 18%, #4aa6dd 48%, #6fd0ff 62%, #f0a83c 92%);\n  box-shadow: 0 0 14px rgba(240,144,42,0.6), 0 0 26px rgba(95,208,255,0.5), inset 0 0 12px rgba(255,255,255,0.28); animation: espin 3.4s linear infinite; z-index: 1; }\n.energy-ring2 { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle at 70% 28%, rgba(255,255,255,0.6), rgba(255,255,255,0) 42%); opacity: 0.9; animation: espin2 2.6s linear infinite reverse; z-index: 1; }\n.energy-hub { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle, rgba(10,14,22,0.62) 0%, rgba(10,14,22,0.34) 44%, rgba(10,14,22,0) 70%);\n  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; z-index: 2; }\n.hub-kw { font-size: 15px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.75); }\n.hub-lbl { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.92); text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 2px rgba(0,0,0,0.65); }\n@keyframes espin { to { transform: translate(-50%,-50%) rotate(360deg); } }\n@keyframes espin2 { to { transform: translate(-50%,-50%) rotate(360deg); } }\n.bat-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 8px; border-radius: 9px; border: 1px solid; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }\n\n  .bub .f7-icons { font-size: 11px !important; }\n"
+  stylesheet: ".ebento { padding: 2px; font-family: var(--f7-font-family); color: var(--f7-text-color); }\n.ecard { position: relative; border-radius: 18px; background: var(--f7-card-bg-color, #fff); border: 1px solid rgba(127,127,127,0.18); box-shadow: 0 2px 10px rgba(127,127,127,0.16); padding: 14px 16px; color: var(--f7-text-color); }\n.ec-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 8px; }\n.ec-title .dot { width: 8px; height: 8px; border-radius: 3px; }\n.ec-title .out { margin-left: auto; font-size: 12px; font-weight: 500; color: #9aa0a0; }\n.sankey { position: relative; width: 100%; }\n.sankey svg { width: 100%; height: 184px; display: block; }\n.sk-ribbon { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }\n.sk-flow { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 6; stroke-dasharray: 1 13; animation: skflow 1.1s linear infinite; transition: opacity .4s ease; }\n@keyframes skflow { to { stroke-dashoffset: -14; } }\n.bub { position: absolute; transform: translateY(-50%); display: flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 9px;\n  background: var(--f7-card-bg-color, #fff); box-shadow: 0 1px 5px rgba(0,0,0,0.16); white-space: nowrap; transition: opacity .4s ease; z-index: 2; }\n.bub-src { left: 0; border-left: 3px solid; padding-left: 6px; }\n.bub-con { right: 0; flex-direction: row-reverse; border-right: 3px solid; padding-right: 6px; }\n.bub { max-width: 150px; }\n.bub .bnm { font-size: 9px; color: #9aa0a0; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }\n.bub .bkw { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }\n.energy-ring { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: conic-gradient(from 0deg, #f0a83c, #f0902a 18%, #4aa6dd 48%, #6fd0ff 62%, #f0a83c 92%);\n  box-shadow: 0 0 14px rgba(240,144,42,0.6), 0 0 26px rgba(95,208,255,0.5), inset 0 0 12px rgba(255,255,255,0.28); animation: espin 3.4s linear infinite; z-index: 1; }\n.energy-ring2 { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle at 70% 28%, rgba(255,255,255,0.6), rgba(255,255,255,0) 42%); opacity: 0.9; animation: espin2 2.6s linear infinite reverse; z-index: 1; }\n.energy-hub { position: absolute; left: 45%; top: 50%; width: 74px; height: 74px; transform: translate(-50%,-50%); border-radius: 50%;\n  background: radial-gradient(circle, rgba(10,14,22,0.62) 0%, rgba(10,14,22,0.34) 44%, rgba(10,14,22,0) 70%);\n  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; z-index: 2; }\n.hub-kw { font-size: 15px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.75); }\n.hub-lbl { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.92); text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 2px rgba(0,0,0,0.65); }\n@keyframes espin { to { transform: translate(-50%,-50%) rotate(360deg); } }\n@keyframes espin2 { to { transform: translate(-50%,-50%) rotate(360deg); } }\n.bat-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 8px; border-radius: 9px; border: 1px solid; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }\n\n  .bub .f7-icons { font-size: 11px !important; }\n  /* compact bubbles so the 12 right-side slots never overlap */\n  .bub { padding: 1px 5px !important; gap: 2px !important; }\n  .bub .bkw { font-size: 9px !important; }\n  .bub .bnm { font-size: 8px !important; max-width: 56px; }\n  .bub .f7-icons { font-size: 10px !important; }\n"
 slots:
   default:
   - component: div
@@ -207,7 +203,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,13 260,13 306,13
+                      d: M144,90 C210,11 260,11 306,11
                       stroke: '#7d6cd6'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,(Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*4))
@@ -215,7 +211,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,13 260,13 306,13
+                      d: M144,90 C210,11 260,11 306,11
                       stroke: '#7d6cd6'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,(Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*2))
@@ -223,7 +219,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,34 260,34 306,34
+                      d: M144,90 C210,25 260,25 306,25
                       stroke: '#3bb273'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*4))
@@ -231,7 +227,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,34 260,34 306,34
+                      d: M144,90 C210,25 260,25 306,25
                       stroke: '#3bb273'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*2))
@@ -239,7 +235,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,48 260,48 306,48
+                      d: M144,90 C210,40 260,40 306,40
                       stroke: '#4fa8e0'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Airco_W!=null&&items.EMS_DM_Airco_W.numericState!=null?items.EMS_DM_Airco_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -247,7 +243,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,48 260,48 306,48
+                      d: M144,90 C210,40 260,40 306,40
                       stroke: '#4fa8e0'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Airco_W!=null&&items.EMS_DM_Airco_W.numericState!=null?items.EMS_DM_Airco_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -255,7 +251,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,62 260,62 306,62
+                      d: M144,90 C210,54 260,54 306,54
                       stroke: '#f0902a'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Boiler_W!=null&&items.EMS_DM_Boiler_W.numericState!=null?items.EMS_DM_Boiler_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -263,7 +259,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,62 260,62 306,62
+                      d: M144,90 C210,54 260,54 306,54
                       stroke: '#f0902a'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Boiler_W!=null&&items.EMS_DM_Boiler_W.numericState!=null?items.EMS_DM_Boiler_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -271,7 +267,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,75 260,75 306,75
+                      d: M144,90 C210,68 260,68 306,68
                       stroke: '#ef6b5b'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_HeaterKitchen_W!=null&&items.EMS_DM_HeaterKitchen_W.numericState!=null?items.EMS_DM_HeaterKitchen_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -279,7 +275,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,75 260,75 306,75
+                      d: M144,90 C210,68 260,68 306,68
                       stroke: '#ef6b5b'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_HeaterKitchen_W!=null&&items.EMS_DM_HeaterKitchen_W.numericState!=null?items.EMS_DM_HeaterKitchen_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -287,7 +283,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,89 260,89 306,89
+                      d: M144,90 C210,83 260,83 306,83
                       stroke: '#8b6cd6'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Security_W!=null&&items.EMS_DM_Security_W.numericState!=null?items.EMS_DM_Security_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -295,7 +291,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,89 260,89 306,89
+                      d: M144,90 C210,83 260,83 306,83
                       stroke: '#8b6cd6'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Security_W!=null&&items.EMS_DM_Security_W.numericState!=null?items.EMS_DM_Security_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -303,7 +299,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,102 260,102 306,102
+                      d: M144,90 C210,97 260,97 306,97
                       stroke: '#4caf50'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -311,7 +307,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,102 260,102 306,102
+                      d: M144,90 C210,97 260,97 306,97
                       stroke: '#4caf50'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -319,7 +315,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,116 260,116 306,116
+                      d: M144,90 C210,112 260,112 306,112
                       stroke: '#66bb6a'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -327,7 +323,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,116 260,116 306,116
+                      d: M144,90 C210,112 260,112 306,112
                       stroke: '#66bb6a'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -335,7 +331,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,130 260,130 306,130
+                      d: M144,90 C210,126 260,126 306,126
                       stroke: '#81c784'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -343,7 +339,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,130 260,130 306,130
+                      d: M144,90 C210,126 260,126 306,126
                       stroke: '#81c784'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -351,7 +347,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,143 260,143 306,143
+                      d: M144,90 C210,140 260,140 306,140
                       stroke: '#a5d6a7'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -359,7 +355,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,143 260,143 306,143
+                      d: M144,90 C210,140 260,140 306,140
                       stroke: '#a5d6a7'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -367,7 +363,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,157 260,157 306,157
+                      d: M144,90 C210,155 260,155 306,155
                       stroke: '#f5c518'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Lights_W!=null&&items.EMS_DM_Lights_W.numericState!=null?items.EMS_DM_Lights_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -375,7 +371,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,157 260,157 306,157
+                      d: M144,90 C210,155 260,155 306,155
                       stroke: '#f5c518'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Lights_W!=null&&items.EMS_DM_Lights_W.numericState!=null?items.EMS_DM_Lights_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -383,7 +379,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,170 260,170 306,170
+                      d: M144,90 C210,169 260,169 306,169
                       stroke: '#9aa0a0'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_FlowRest_W!=null&&items.EMS_DM_FlowRest_W.numericState!=null?items.EMS_DM_FlowRest_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -391,7 +387,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,170 260,170 306,170
+                      d: M144,90 C210,169 260,169 306,169
                       stroke: '#9aa0a0'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_FlowRest_W!=null&&items.EMS_DM_FlowRest_W.numericState!=null?items.EMS_DM_FlowRest_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -499,7 +495,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 7%
+                    top: 6%
                     opacity: =(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))<-0.05?1:0
                     border-color: '#7d6cd6'
                 slots:
@@ -532,7 +528,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 19%
+                    top: 14%
                     opacity: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))>0.05?1:0
                     border-color: '#3bb273'
                 slots:
@@ -596,7 +592,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 27%
+                    top: 22%
                     opacity: =((items.EMS_DM_Airco_W!=null&&items.EMS_DM_Airco_W.numericState!=null?items.EMS_DM_Airco_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#4fa8e0'
                 slots:
@@ -629,7 +625,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 34%
+                    top: 30%
                     opacity: =((items.EMS_DM_Boiler_W!=null&&items.EMS_DM_Boiler_W.numericState!=null?items.EMS_DM_Boiler_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#f0902a'
                 slots:
@@ -662,7 +658,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 42%
+                    top: 38%
                     opacity: =((items.EMS_DM_HeaterKitchen_W!=null&&items.EMS_DM_HeaterKitchen_W.numericState!=null?items.EMS_DM_HeaterKitchen_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#ef6b5b'
                 slots:
@@ -695,7 +691,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 49%
+                    top: 46%
                     opacity: =((items.EMS_DM_Security_W!=null&&items.EMS_DM_Security_W.numericState!=null?items.EMS_DM_Security_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#8b6cd6'
                 slots:
@@ -728,7 +724,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 57%
+                    top: 54%
                     opacity: =((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#4caf50'
                 slots:
@@ -761,7 +757,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 64%
+                    top: 62%
                     opacity: =((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#66bb6a'
                 slots:
@@ -794,7 +790,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 72%
+                    top: 70%
                     opacity: =((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#81c784'
                 slots:
@@ -827,7 +823,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 79%
+                    top: 78%
                     opacity: =((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#a5d6a7'
                 slots:
@@ -860,7 +856,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 87%
+                    top: 86%
                     opacity: =((items.EMS_DM_Lights_W!=null&&items.EMS_DM_Lights_W.numericState!=null?items.EMS_DM_Lights_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#f5c518'
                 slots:
