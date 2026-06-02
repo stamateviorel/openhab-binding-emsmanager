@@ -1,12 +1,14 @@
 # energyflow_dynamic — SITE-SPECIFIC reference (NOT the generic marketplace widget)
 #
-# This is the live energy-flow widget from the production /etc/openhab install. Unlike the
-# generic ./widgets/energy_flow/ widget (which renders consumers/generators dynamically from
-# openHAB Group items via oh-repeater), this version renders each consumer + the sun as FIXED
-# elements hardcoded to this site's items (EMS_DM_Airco_W, EMS_DM_Cars_W, Solar_PV_W, ...).
-# Trade-off: it ONLY works on this install, but the fixed elements never flake (no oh-repeater
-# that can render empty after a restart) and positions are pinned so labels can't overlap.
-# Kept here as a reference for the fixed-element layout approach. For reuse, start from
+# The live energy-flow widget from the production /etc/openhab install. Unlike the generic
+# ../widgets/energy_flow/ widget (group + oh-repeater driven), this renders each consumer +
+# the sun as FIXED elements hardcoded to this site's items — the fixed elements never flake
+# (no oh-repeater that can render empty after a restart).
+#
+# 2026-06-02: consumers are per-circuit — Airco, Boiler, Keuken, Security, Auto 1-4
+# (EMS_DM_Car1-4_W), Verlichting, and an auto-hidden Overig (= House_load_sum minus the metered
+# lanes). Cars 3/4 are PowerTag-primary with OCPP fallback (car_power_best.js on the site).
+# Idle lanes hide via the opacity>0.05 gate. For reuse, start from
 # ../widgets/energy_flow/energy_flow.yaml and swap the item names.
 #
 uid: energyflow_dynamic
@@ -237,7 +239,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,56 260,56 306,56
+                      d: M144,90 C210,48 260,48 306,48
                       stroke: '#4fa8e0'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Airco_W!=null&&items.EMS_DM_Airco_W.numericState!=null?items.EMS_DM_Airco_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -245,7 +247,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,56 260,56 306,56
+                      d: M144,90 C210,48 260,48 306,48
                       stroke: '#4fa8e0'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Airco_W!=null&&items.EMS_DM_Airco_W.numericState!=null?items.EMS_DM_Airco_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -253,7 +255,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,74 260,74 306,74
+                      d: M144,90 C210,62 260,62 306,62
                       stroke: '#f0902a'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Boiler_W!=null&&items.EMS_DM_Boiler_W.numericState!=null?items.EMS_DM_Boiler_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -261,7 +263,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,74 260,74 306,74
+                      d: M144,90 C210,62 260,62 306,62
                       stroke: '#f0902a'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Boiler_W!=null&&items.EMS_DM_Boiler_W.numericState!=null?items.EMS_DM_Boiler_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -269,7 +271,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,92 260,92 306,92
+                      d: M144,90 C210,75 260,75 306,75
                       stroke: '#ef6b5b'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_HeaterKitchen_W!=null&&items.EMS_DM_HeaterKitchen_W.numericState!=null?items.EMS_DM_HeaterKitchen_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -277,7 +279,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,92 260,92 306,92
+                      d: M144,90 C210,75 260,75 306,75
                       stroke: '#ef6b5b'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_HeaterKitchen_W!=null&&items.EMS_DM_HeaterKitchen_W.numericState!=null?items.EMS_DM_HeaterKitchen_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -285,7 +287,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,110 260,110 306,110
+                      d: M144,90 C210,89 260,89 306,89
                       stroke: '#8b6cd6'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Security_W!=null&&items.EMS_DM_Security_W.numericState!=null?items.EMS_DM_Security_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -293,7 +295,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,110 260,110 306,110
+                      d: M144,90 C210,89 260,89 306,89
                       stroke: '#8b6cd6'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Security_W!=null&&items.EMS_DM_Security_W.numericState!=null?items.EMS_DM_Security_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -301,23 +303,71 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,128 260,128 306,128
-                      stroke: '#3bb273'
+                      d: M144,90 C210,102 260,102 306,102
+                      stroke: '#4caf50'
                       style:
-                        stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Cars_W!=null&&items.EMS_DM_Cars_W.numericState!=null?items.EMS_DM_Cars_W.numericState:0)/(props.consumerDivisor||1000))*4))
-                        opacity: =((items.EMS_DM_Cars_W!=null&&items.EMS_DM_Cars_W.numericState!=null?items.EMS_DM_Cars_W.numericState:0)/(props.consumerDivisor||1000))>0.05?0.4:0
+                        stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))*4))
+                        opacity: =((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))>0.05?0.4:0
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,128 260,128 306,128
-                      stroke: '#3bb273'
+                      d: M144,90 C210,102 260,102 306,102
+                      stroke: '#4caf50'
                       style:
-                        stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Cars_W!=null&&items.EMS_DM_Cars_W.numericState!=null?items.EMS_DM_Cars_W.numericState:0)/(props.consumerDivisor||1000))*2))
-                        opacity: =((items.EMS_DM_Cars_W!=null&&items.EMS_DM_Cars_W.numericState!=null?items.EMS_DM_Cars_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                        stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))*2))
+                        opacity: =((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,146 260,146 306,146
+                      d: M144,90 C210,116 260,116 306,116
+                      stroke: '#66bb6a'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))*4))
+                        opacity: =((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))>0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M144,90 C210,116 260,116 306,116
+                      stroke: '#66bb6a'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))*2))
+                        opacity: =((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M144,90 C210,130 260,130 306,130
+                      stroke: '#81c784'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))*4))
+                        opacity: =((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))>0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M144,90 C210,130 260,130 306,130
+                      stroke: '#81c784'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))*2))
+                        opacity: =((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M144,90 C210,143 260,143 306,143
+                      stroke: '#a5d6a7'
+                      style:
+                        stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))*4))
+                        opacity: =((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))>0.05?0.4:0
+                  - component: path
+                    config:
+                      class: sk-flow
+                      d: M144,90 C210,143 260,143 306,143
+                      stroke: '#a5d6a7'
+                      style:
+                        stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))*2))
+                        opacity: =((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                  - component: path
+                    config:
+                      class: sk-ribbon
+                      d: M144,90 C210,157 260,157 306,157
                       stroke: '#f5c518'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_Lights_W!=null&&items.EMS_DM_Lights_W.numericState!=null?items.EMS_DM_Lights_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -325,7 +375,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,146 260,146 306,146
+                      d: M144,90 C210,157 260,157 306,157
                       stroke: '#f5c518'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_Lights_W!=null&&items.EMS_DM_Lights_W.numericState!=null?items.EMS_DM_Lights_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -333,7 +383,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M144,90 C210,164 260,164 306,164
+                      d: M144,90 C210,170 260,170 306,170
                       stroke: '#9aa0a0'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,((items.EMS_DM_FlowRest_W!=null&&items.EMS_DM_FlowRest_W.numericState!=null?items.EMS_DM_FlowRest_W.numericState:0)/(props.consumerDivisor||1000))*4))
@@ -341,7 +391,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M144,90 C210,164 260,164 306,164
+                      d: M144,90 C210,170 260,170 306,170
                       stroke: '#9aa0a0'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,((items.EMS_DM_FlowRest_W!=null&&items.EMS_DM_FlowRest_W.numericState!=null?items.EMS_DM_FlowRest_W.numericState:0)/(props.consumerDivisor||1000))*2))
@@ -513,9 +563,40 @@ slots:
                           text: =(Math.max(0,(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000)))).toFixed(1)+' kW'
               - component: div
                 config:
+                  class: energy-ring
+                  style:
+                    animation-duration: =( Math.max(0.8, 3.5 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.22) ) + 's'
+              - component: div
+                config:
+                  class: energy-ring2
+                  style:
+                    animation-duration: =( Math.max(0.6, 2.6 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.18) ) + 's'
+              - component: div
+                config:
+                  class: energy-hub
+                slots:
+                  default:
+                  - component: div
+                    config:
+                      class: hub-kw
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((items[props.houseItem]!=null&&items[props.houseItem].numericState!=null?items[props.houseItem].numericState:0)/(props.powerDivisor||1000)).toFixed(2)+' kW'
+                  - component: div
+                    config:
+                      class: hub-lbl
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Verbruik
+              - component: div
+                config:
                   class: bub bub-con
                   style:
-                    top: 31%
+                    top: 27%
                     opacity: =((items.EMS_DM_Airco_W!=null&&items.EMS_DM_Airco_W.numericState!=null?items.EMS_DM_Airco_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#4fa8e0'
                 slots:
@@ -548,7 +629,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 41%
+                    top: 34%
                     opacity: =((items.EMS_DM_Boiler_W!=null&&items.EMS_DM_Boiler_W.numericState!=null?items.EMS_DM_Boiler_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#f0902a'
                 slots:
@@ -581,7 +662,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 51%
+                    top: 42%
                     opacity: =((items.EMS_DM_HeaterKitchen_W!=null&&items.EMS_DM_HeaterKitchen_W.numericState!=null?items.EMS_DM_HeaterKitchen_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#ef6b5b'
                 slots:
@@ -614,7 +695,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 61%
+                    top: 49%
                     opacity: =((items.EMS_DM_Security_W!=null&&items.EMS_DM_Security_W.numericState!=null?items.EMS_DM_Security_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#8b6cd6'
                 slots:
@@ -647,9 +728,9 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 71%
-                    opacity: =((items.EMS_DM_Cars_W!=null&&items.EMS_DM_Cars_W.numericState!=null?items.EMS_DM_Cars_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
-                    border-color: '#3bb273'
+                    top: 57%
+                    opacity: =((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                    border-color: '#4caf50'
                 slots:
                   default:
                   - component: f7-icon
@@ -657,7 +738,7 @@ slots:
                       f7: bolt_car
                       size: 11
                       style:
-                        color: '#3bb273'
+                        color: '#4caf50'
                   - component: div
                     config:
                       class: bnm
@@ -665,22 +746,121 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Auto's
+                          text: Auto 1
                   - component: div
                     config:
                       class: bkw
                       style:
-                        color: '#3bb273'
+                        color: '#4caf50'
                     slots:
                       default:
                       - component: Label
                         config:
-                          text: =((items.EMS_DM_Cars_W!=null&&items.EMS_DM_Cars_W.numericState!=null?items.EMS_DM_Cars_W.numericState:0)/(props.consumerDivisor||1000)).toFixed(1)+' kW'
+                          text: =((items.EMS_DM_Car1_W!=null&&items.EMS_DM_Car1_W.numericState!=null?items.EMS_DM_Car1_W.numericState:0)/(props.consumerDivisor||1000)).toFixed(1)+' kW'
               - component: div
                 config:
                   class: bub bub-con
                   style:
-                    top: 81%
+                    top: 64%
+                    opacity: =((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                    border-color: '#66bb6a'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: bolt_car
+                      size: 11
+                      style:
+                        color: '#66bb6a'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 2
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#66bb6a'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((items.EMS_DM_Car2_W!=null&&items.EMS_DM_Car2_W.numericState!=null?items.EMS_DM_Car2_W.numericState:0)/(props.consumerDivisor||1000)).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-con
+                  style:
+                    top: 72%
+                    opacity: =((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                    border-color: '#81c784'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: bolt_car
+                      size: 11
+                      style:
+                        color: '#81c784'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 3
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#81c784'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((items.EMS_DM_Car3_W!=null&&items.EMS_DM_Car3_W.numericState!=null?items.EMS_DM_Car3_W.numericState:0)/(props.consumerDivisor||1000)).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-con
+                  style:
+                    top: 79%
+                    opacity: =((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
+                    border-color: '#a5d6a7'
+                slots:
+                  default:
+                  - component: f7-icon
+                    config:
+                      f7: bolt_car
+                      size: 11
+                      style:
+                        color: '#a5d6a7'
+                  - component: div
+                    config:
+                      class: bnm
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: Auto 4
+                  - component: div
+                    config:
+                      class: bkw
+                      style:
+                        color: '#a5d6a7'
+                    slots:
+                      default:
+                      - component: Label
+                        config:
+                          text: =((items.EMS_DM_Car4_W!=null&&items.EMS_DM_Car4_W.numericState!=null?items.EMS_DM_Car4_W.numericState:0)/(props.consumerDivisor||1000)).toFixed(1)+' kW'
+              - component: div
+                config:
+                  class: bub bub-con
+                  style:
+                    top: 87%
                     opacity: =((items.EMS_DM_Lights_W!=null&&items.EMS_DM_Lights_W.numericState!=null?items.EMS_DM_Lights_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#f5c518'
                 slots:
@@ -698,7 +878,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Licht
+                          text: Verlichting
                   - component: div
                     config:
                       class: bkw
@@ -713,7 +893,7 @@ slots:
                 config:
                   class: bub bub-con
                   style:
-                    top: 91%
+                    top: 94%
                     opacity: =((items.EMS_DM_FlowRest_W!=null&&items.EMS_DM_FlowRest_W.numericState!=null?items.EMS_DM_FlowRest_W.numericState:0)/(props.consumerDivisor||1000))>0.05?1:0
                     border-color: '#9aa0a0'
                 slots:
@@ -731,7 +911,7 @@ slots:
                       default:
                       - component: Label
                         config:
-                          text: Algemeen
+                          text: Overig
                   - component: div
                     config:
                       class: bkw
@@ -742,34 +922,3 @@ slots:
                       - component: Label
                         config:
                           text: =((items.EMS_DM_FlowRest_W!=null&&items.EMS_DM_FlowRest_W.numericState!=null?items.EMS_DM_FlowRest_W.numericState:0)/(props.consumerDivisor||1000)).toFixed(1)+' kW'
-              - component: div
-                config:
-                  class: energy-ring
-                  style:
-                    animation-duration: =( Math.max(0.8, 3.5 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.22) ) + 's'
-              - component: div
-                config:
-                  class: energy-ring2
-                  style:
-                    animation-duration: =( Math.max(0.6, 2.6 - ((items[props.solarItem]!=null&&items[props.solarItem].numericState!=null?items[props.solarItem].numericState:0)/(props.powerDivisor||1000)+Math.abs(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))+Math.abs(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000)))*0.18) ) + 's'
-              - component: div
-                config:
-                  class: energy-hub
-                slots:
-                  default:
-                  - component: div
-                    config:
-                      class: hub-kw
-                    slots:
-                      default:
-                      - component: Label
-                        config:
-                          text: =((items[props.houseItem]!=null&&items[props.houseItem].numericState!=null?items[props.houseItem].numericState:0)/(props.powerDivisor||1000)).toFixed(2)+' kW'
-                  - component: div
-                    config:
-                      class: hub-lbl
-                    slots:
-                      default:
-                      - component: Label
-                        config:
-                          text: Verbruik
