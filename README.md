@@ -126,6 +126,22 @@ One per EV. Config: `carKey`, and the per-charger item names (`modeItem`, `cable
 
 [`examples/`](examples/) contains a complete `demo.things` + `demo.items` for a SolarEdge-class inverter + battery + two EV chargers + a heat pump, plus the recommended persistence strategies. The internal design (the tick loop, `EnergyContext`, controller contract, asset handlers, the statistics tier) is in [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md), and the device-capability abstraction (the layer that normalizes item names + sign conventions) in [`doc/CAPABILITIES.md`](doc/CAPABILITIES.md).
 
+## Dashboards & widgets
+
+Two ready-made MainUI front-ends ship with this repo:
+
+### EMS Energy Cockpit — [`examples/ems-energy-page/`](examples/ems-energy-page/)
+
+A 7-tab `oh-tabs-page` dashboard (Overview · Devices · EV · Analysis · Capacity · Compare · Control) that renders the binding's `EMS_*` analytics end-to-end: a gradient Sankey distribution, four self-sufficiency gauges, a per-device breakdown with anomaly flags, EV charging cards, cost / CO₂ / battery-sizing / tariff analytics, the Belgian capacity tariff, comparison charts, and the controller + peak-shaving control panel. Paste-in pages + widgets; full walkthrough and per-tab screenshots in its [README](examples/ems-energy-page/README.md).
+
+![EMS Energy Cockpit — Overview](examples/ems-energy-page/img/overview.png)
+
+### Energy Flow widget — [`widgets/energy_flow/`](widgets/energy_flow/)
+
+A standalone animated Sankey power-flow widget: solar/generators feed a glowing centre hub, grid and battery swap sides depending on import/export, and consumers fan out on auto-compacting lanes. Theme-adaptive, flat, dependency-free and fully configurable — it works with any `Number:Power` items, not just this binding. See its [README](widgets/energy_flow/README.md).
+
+![Energy Flow widget](widgets/energy_flow/energy_flow_small.gif)
+
 ## Known limitations (honest)
 
 - **One reference installation** has been exercised end-to-end; other setups may surface convention/unit edge cases — start in shadow mode.
