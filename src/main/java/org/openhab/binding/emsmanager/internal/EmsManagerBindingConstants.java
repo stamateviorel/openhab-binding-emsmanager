@@ -179,6 +179,7 @@ public final class EmsManagerBindingConstants {
     public static final int PRIO_SOFT_PEAK_SHAVING = 50;
     public static final int PRIO_EV_COORDINATOR = 60;
     public static final int PRIO_EV_CHARGING_PLAN = 65; // observer; runs after EV coordinator to read its effects
+    public static final int PRIO_BOILER_PLAN = 67; // DHW deadline planner; runs before SolarSurplus
     public static final int PRIO_HEATPUMP_OPTIMIZER = 85; // observer; runs after battery TOU + before self-consumption
     public static final int PRIO_SOLAR_SURPLUS = 70;
     public static final int PRIO_BATTERY_TOU = 80;

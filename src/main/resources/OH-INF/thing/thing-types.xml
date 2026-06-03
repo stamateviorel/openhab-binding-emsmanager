@@ -296,6 +296,39 @@
 				<default>false</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="boilerDailyTargetKwh" type="decimal" required="false">
+				<label>DHW daily energy target (kWh)</label>
+				<description>Domestic-hot-water boiler planner: guarantee this many kWh into the boiler each day,
+					solar-first then
+					topping up the gap at the cheapest spot hours before the "ready by" hour. 0 disables
+					the planner.</description>
+				<default>0</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="boilerReadyByHour" type="integer" min="0" max="23" required="false">
+				<label>DHW ready-by hour</label>
+				<description>Local hour by which the daily DHW target must be met (e.g. 7 = 07:00). The cheapest-hour
+					top-up runs
+					overnight before this hour.</description>
+				<default>7</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="boilerRatedKw" type="decimal" required="false">
+				<label>Boiler rated power (kW)</label>
+				<description>Electrical power the boiler draws when on, used to convert the energy gap into heating hours.
+					Set to
+					your element's rating.</description>
+				<default>3</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="boilerPlanShadow" type="boolean" required="false">
+				<label>DHW planner shadow mode</label>
+				<description>When true, the boiler planner logs its decisions but does not switch the boiler — validate the
+					plan
+					before going live. Set false to let it act.</description>
+				<default>true</default>
+				<advanced>true</advanced>
+			</parameter>
 		</config-description>
 	</bridge-type>
 

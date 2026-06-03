@@ -134,6 +134,15 @@ public class EmsBridgeConfig {
     // safety, not a policy). Default false keeps the shed-ECO-first behaviour.
     public boolean evEcoSacrosanct = false;
 
+    // DHW boiler planner (BoilerPlanController): guarantee a daily hot-water energy
+    // target by a "ready by" hour, solar-first during the day and topping up the gap
+    // at the cheapest spot hours overnight. Disabled when boilerDailyTargetKwh <= 0.
+    // boilerPlanShadow keeps it logging decisions without acting until validated.
+    public double boilerDailyTargetKwh = 0.0;
+    public int boilerReadyByHour = 7;
+    public double boilerRatedKw = 3.0;
+    public boolean boilerPlanShadow = true;
+
     // Assumed EV charge rate for the "cheapest" plan projection.
     // Defaults to a single-phase 32 A equivalent.
     public double evDefaultChargeRateKw = 7.0;

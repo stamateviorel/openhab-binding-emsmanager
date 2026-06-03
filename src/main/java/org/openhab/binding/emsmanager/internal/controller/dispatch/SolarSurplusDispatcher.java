@@ -17,6 +17,7 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 import java.util.List;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.emsmanager.internal.core.CapabilityCheck;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.Controller;
@@ -51,12 +52,14 @@ public final class SolarSurplusDispatcher implements Controller {
     public static final String NAME = "solar-surplus-dispatcher";
 
     private final boolean shadowMode;
+    private final @Nullable BoilerPlanController boilerPlan;
 
     // Diagnostic state for the bridge to surface as channels.
     private volatile int lastOnThresholdW = SURPLUS_DEFAULT_ON_THRESHOLD_W;
 
-    public SolarSurplusDispatcher(boolean shadowMode) {
+    public SolarSurplusDispatcher(boolean shadowMode, @Nullable BoilerPlanController boilerPlan) {
         this.shadowMode = shadowMode;
+        this.boilerPlan = boilerPlan;
     }
 
     @Override
@@ -123,8 +126,15 @@ public final class SolarSurplusDispatcher implements Controller {
                             cloudiness, ctx.batteryBelowReserve())));
         }
 
-        // Step 5 — significant import → boiler off.
+        // Step 5 — significant import → boiler off. But NOT while the DHW plan is
+        // actively topping up at cheap hours: the boiler's own draw IS the import,
+        // and turning it off here would oscillate the relay. BoilerPlan runs at a
+        // lower priority, so its decision for this tick is already set.
         if (avg5min < SURPLUS_OFF_THRESHOLD_W && ctx.boilerOn()) {
+            BoilerPlanController bp = boilerPlan;
+            if (bp != null && !bp.shadowMode() && bp.wantsBoilerOn()) {
+                return List.of();
+            }
             return List.of(new SetpointRequest(ASSET_BOILER, SetpointRequest.Kind.ONOFF, 0.0, priority(), NAME,
                     String.format("5-min avg %.0fW < %dW — boiler off", avg5min, SURPLUS_OFF_THRESHOLD_W)));
         }

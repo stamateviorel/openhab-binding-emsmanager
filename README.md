@@ -10,7 +10,7 @@ It is **vendor-agnostic**: it does not talk to hardware directly. You point it a
 
 ## Features
 
-- **Priority controller scheduler** — 18 controllers from a hard safety breaker down to read-only observers; higher priority wins on conflict.
+- **Priority controller scheduler** — 19 controllers from a hard safety breaker down to read-only observers; higher priority wins on conflict.
 - **Solar self-consumption** — routes surplus to boiler / battery / EVs before exporting.
 - **Peak shaving** — soft (sticky EWMA band), hard (multi-tier progressive shedding), and a configurable demand/capacity-tariff controller.
 - **EV charging** — multi-car coordinator with breaker-aware current sharing, plus a departure/target planner (now / cheapest / solar-first).
@@ -65,6 +65,8 @@ All parameters are documented in `thing-types.xml`; the important groups:
 
 **ECO protection:** `evEcoSacrosanct` (default `false`). When `true`, the capacity-tariff and hard peak-shaving controllers never pause an EV in ECO mode — they shed the boiler and air-conditioning instead. The hardware breaker-headroom limit still applies. Use it when ECO means "always charging — minimal floor, ramp with solar" and a paused car would look broken to users.
 
+**DHW planner:** `boilerDailyTargetKwh` (0 disables), `boilerReadyByHour`, `boilerRatedKw`, `boilerPlanShadow` — guarantee a daily hot-water energy target by a "ready by" hour: solar-first during the day, topping up the remaining gap at the cheapest spot hours overnight (flat tariff → heats just before the deadline). `boilerPlanShadow` logs decisions without acting.
+
 **CO₂:** `gridCo2GramsPerKWh`, `injectionCo2OffsetGramsPerKWh`, `emissionsProvider` (`fixed`/`electricitymaps`), `electricityMapsApiKey`, `electricityMapsZone`.
 
 **Forecast location:** `latitude`, `longitude` (OpenMeteo temperature forecast for the heat-pump planner; no API key).
@@ -87,6 +89,7 @@ Run order (lowest priority first; later controllers can defer to earlier ones). 
 | 50 | SoftPeakShaving | Sticky EWMA band that caps EV current early. |
 | 60 | EvCoordinator | Multi-car breaker-aware current sharing + auto start. |
 | 65 | EvChargingPlan | Departure/target planner (now / cheapest / solar-first). |
+| 67 | BoilerPlan | Deadline-aware DHW: solar-first by day, cheapest-hour grid top-up overnight to hit a daily energy target. |
 | 70 | SolarSurplusDispatcher | Routes surplus to the boiler. |
 | 80 | BatteryTouDispatcher | Time-of-use battery charge/discharge (gated by control mode). |
 | 85 | HeatPumpOptimizer | SCOP + thermal-model pre-heat planning. |

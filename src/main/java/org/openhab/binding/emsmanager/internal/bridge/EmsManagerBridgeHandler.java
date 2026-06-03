@@ -43,6 +43,7 @@ import org.openhab.binding.emsmanager.internal.controller.analytics.CostAnalytic
 import org.openhab.binding.emsmanager.internal.controller.analytics.LongTermStatsController;
 import org.openhab.binding.emsmanager.internal.controller.capacity.CapacityTariffShavingController;
 import org.openhab.binding.emsmanager.internal.controller.dispatch.BatteryTouDispatcher;
+import org.openhab.binding.emsmanager.internal.controller.dispatch.BoilerPlanController;
 import org.openhab.binding.emsmanager.internal.controller.dispatch.BoilerScheduleController;
 import org.openhab.binding.emsmanager.internal.controller.dispatch.HeatPumpOptimizerController;
 import org.openhab.binding.emsmanager.internal.controller.dispatch.ProductionShavingDispatcher;
@@ -195,7 +196,19 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // integrates session kWh, publishes required / projected cost / status
         // for the UI. Does not emit setpoints (the UI prompts the user).
         controllerScheduler.register(new EvChargingPlanController(eventPublisher, itemRegistry));
-        SolarSurplusDispatcher surplus = new SolarSurplusDispatcher(shadowMode);
+        // Deadline-aware DHW boiler planner — solar-first, cheapest-hour overnight
+        // top-up. Registered before SolarSurplus so the surplus dispatcher sees its
+        // decision and won't turn the boiler off (import) mid-top-up. Its own shadow
+        // flag lets it log decisions for monitoring before it acts.
+        BoilerPlanController boilerPlan = new BoilerPlanController(config.boilerPlanShadow, config.boilerDailyTargetKwh,
+                config.boilerReadyByHour, config.boilerRatedKw, hard);
+        controllerScheduler.register(boilerPlan);
+        if (boilerPlan.enabled()) {
+            logger.info("BoilerPlanController: target={}kWh by {}:00, rated={}kW, shadow={}",
+                    config.boilerDailyTargetKwh, config.boilerReadyByHour, config.boilerRatedKw,
+                    config.boilerPlanShadow);
+        }
+        SolarSurplusDispatcher surplus = new SolarSurplusDispatcher(shadowMode, boilerPlan);
         this.solarSurplus = surplus;
         controllerScheduler.register(surplus);
         // BatteryTouDispatcher follows the bridge shadow. The
