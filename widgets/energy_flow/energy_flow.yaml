@@ -177,7 +177,7 @@ slots:
                       - component: path
                         config:
                           class: sk-ribbon
-                          d: ="M22,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" C82,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" 110,90 144,90"
+                          d: ="M4,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" C82,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" 110,90 144,90"
                           stroke: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
                           style:
                             stroke-width: =Math.max(7,Math.min(22,(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))*4))
@@ -185,7 +185,7 @@ slots:
                       - component: path
                         config:
                           class: sk-flow
-                          d: ="M22,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" C82,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" 110,90 144,90"
+                          d: ="M4,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" C82,"+((30+(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))<=1?10:52*(loop.g_idx/(((loop.g_source&&loop.g_source.length?loop.g_source.length:1))-1)))))+" 110,90 144,90"
                           stroke: ='hsl('+((loop.g_idx*60+40)%360)+',72%,52%)'
                           style:
                             stroke-width: =Math.max(6,Math.min(13,(((items[loop.g.name]!=null&&items[loop.g.name].numericState!=null?items[loop.g.name].numericState:0)/(props.powerDivisor||1000)))*2))
@@ -193,7 +193,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M22,90 C82,90 110,90 144,90
+                      d: M4,90 C82,90 110,90 144,90
                       stroke: '#7d6cd6'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))*4))
@@ -201,7 +201,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M22,90 C82,90 110,90 144,90
+                      d: M4,90 C82,90 110,90 144,90
                       stroke: '#7d6cd6'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,(((props.gridExportPositive?-1:1)*(items[props.gridItem]!=null&&items[props.gridItem].numericState!=null?items[props.gridItem].numericState:0))/(props.powerDivisor||1000))*2))
@@ -209,7 +209,7 @@ slots:
                   - component: path
                     config:
                       class: sk-ribbon
-                      d: M22,135 C82,135 110,90 144,90
+                      d: M4,135 C82,135 110,90 144,90
                       stroke: '#3bb273'
                       style:
                         stroke-width: =Math.max(7,Math.min(22,(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*4))
@@ -217,7 +217,7 @@ slots:
                   - component: path
                     config:
                       class: sk-flow
-                      d: M22,135 C82,135 110,90 144,90
+                      d: M4,135 C82,135 110,90 144,90
                       stroke: '#3bb273'
                       style:
                         stroke-width: =Math.max(6,Math.min(13,(Math.max(0,-(((props.batteryChargePositive?1:-1)*(items[props.batteryItem]!=null&&items[props.batteryItem].numericState!=null?items[props.batteryItem].numericState:0))/(props.powerDivisor||1000))))*2))
