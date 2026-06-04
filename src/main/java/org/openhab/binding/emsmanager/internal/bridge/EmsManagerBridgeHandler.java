@@ -201,7 +201,8 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // decision and won't turn the boiler off (import) mid-top-up. Its own shadow
         // flag lets it log decisions for monitoring before it acts.
         BoilerPlanController boilerPlan = new BoilerPlanController(config.boilerPlanShadow, config.boilerDailyTargetKwh,
-                config.boilerReadyByHour, config.boilerRatedKw, hard);
+                config.boilerReadyByHour, config.boilerRatedKw, hard, eventPublisher, itemRegistry,
+                config.boilerPowerItem);
         controllerScheduler.register(boilerPlan);
         if (boilerPlan.enabled()) {
             logger.info("BoilerPlanController: target={}kWh by {}:00, rated={}kW, shadow={}",

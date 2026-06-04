@@ -142,6 +142,9 @@ public class EmsBridgeConfig {
     public int boilerReadyByHour = 7;
     public double boilerRatedKw = 3.0;
     public boolean boilerPlanShadow = true;
+    // Optional W power item for the planner to measure delivered energy accurately
+    // (rating-independent). Blank → fall back to boilerRatedKw × on-time.
+    public String boilerPowerItem = "";
 
     // Assumed EV charge rate for the "cheapest" plan projection.
     // Defaults to a single-phase 32 A equivalent.

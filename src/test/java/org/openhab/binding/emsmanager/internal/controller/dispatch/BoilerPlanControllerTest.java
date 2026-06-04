@@ -60,7 +60,7 @@ class BoilerPlanControllerTest {
 
     @Test
     void disabledWhenTargetZero() {
-        BoilerPlanController c = new BoilerPlanController(false, 0.0, 7, 3.0, idleHard());
+        BoilerPlanController c = new BoilerPlanController(false, 0.0, 7, 3.0, idleHard(), null, null, null);
         assertFalse(c.enabled(), "target 0 disables the planner");
         List<SetpointRequest> out = c.evaluate(ctxAt(3, false, false, FLAT, false));
         assertTrue(out.isEmpty());
@@ -69,7 +69,7 @@ class BoilerPlanControllerTest {
 
     @Test
     void overnightBelowTargetHeatsAtCheapestHour() {
-        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard());
+        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard(), null, null, null);
         double[] sched = new double[24];
         java.util.Arrays.fill(sched, 0.30);
         sched[3] = 0.10; // hour 3 cheapest
@@ -82,7 +82,7 @@ class BoilerPlanControllerTest {
 
     @Test
     void overnightWaitsForACheaperHour() {
-        BoilerPlanController c = new BoilerPlanController(false, 1.0, 7, 3.0, idleHard());
+        BoilerPlanController c = new BoilerPlanController(false, 1.0, 7, 3.0, idleHard(), null, null, null);
         double[] sched = new double[24];
         java.util.Arrays.fill(sched, 0.30);
         sched[6] = 0.05; // cheapest is later (hour 6)
@@ -94,7 +94,7 @@ class BoilerPlanControllerTest {
 
     @Test
     void daytimeDefersToSolar() {
-        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard());
+        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard(), null, null, null);
         // 14:00 is past the ready-by hour — grid top-up is off; solar (SolarSurplus) owns the day.
         List<SetpointRequest> out = c.evaluate(ctxAt(14, false, false, FLAT, false));
         assertTrue(out.isEmpty());
@@ -108,7 +108,7 @@ class BoilerPlanControllerTest {
         hard.evaluate(ctxAt(3, false, false, FLAT, true)); // engage tier 1 → level > 0
         assertTrue(hard.level() > 0, "precondition: hard peak-shaving engaged");
 
-        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, hard);
+        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, hard, null, null, null);
         List<SetpointRequest> out = c.evaluate(ctxAt(3, false, false, FLAT, true));
         assertTrue(out.isEmpty(), "must not add boiler load during a hard peak event");
         assertFalse(c.wantsBoilerOn());
@@ -116,7 +116,7 @@ class BoilerPlanControllerTest {
 
     @Test
     void respectsUserOverride() {
-        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard());
+        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard(), null, null, null);
         List<SetpointRequest> out = c.evaluate(ctxAt(3, false, true, FLAT, false));
         assertTrue(out.isEmpty(), "user override owns the boiler");
         assertFalse(c.wantsBoilerOn());
@@ -124,7 +124,7 @@ class BoilerPlanControllerTest {
 
     @Test
     void stopsOnceTargetMet() {
-        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard());
+        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard(), null, null, null);
         c.evaluate(ctxAt(2, true, false, FLAT, false)); // first tick: no integration yet
         c.evaluate(ctxAt(3, true, false, FLAT, false)); // +1 h on at 3 kW → 3 kWh
         List<SetpointRequest> out = c.evaluate(ctxAt(4, true, false, FLAT, false)); // +1 h → 6 kWh ≥ 4.5

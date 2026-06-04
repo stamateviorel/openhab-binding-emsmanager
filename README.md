@@ -65,7 +65,7 @@ All parameters are documented in `thing-types.xml`; the important groups:
 
 **ECO protection:** `evEcoSacrosanct` (default `false`). When `true`, the capacity-tariff and hard peak-shaving controllers never pause an EV in ECO mode — they shed the boiler and air-conditioning instead. The hardware breaker-headroom limit still applies. Use it when ECO means "always charging — minimal floor, ramp with solar" and a paused car would look broken to users.
 
-**DHW planner:** `boilerDailyTargetKwh` (0 disables), `boilerReadyByHour`, `boilerRatedKw`, `boilerPlanShadow` — guarantee a daily hot-water energy target by a "ready by" hour: solar-first during the day, topping up the remaining gap at the cheapest spot hours overnight (flat tariff → heats just before the deadline). `boilerPlanShadow` logs decisions without acting.
+**DHW planner:** `boilerDailyTargetKwh` (0 disables), `boilerReadyByHour`, `boilerRatedKw`, `boilerPowerItem`, `boilerPlanShadow` — guarantee a daily hot-water energy target by a "ready by" hour: solar-first during the day, topping up the remaining gap at the cheapest spot hours overnight (flat tariff → heats just before the deadline). Point `boilerPowerItem` at the boiler's power meter and delivered energy is measured directly (rating-independent) rather than estimated from `boilerRatedKw` × on-time; the running total and target window persist to items, so a restart mid-window resumes instead of re-heating from zero. `boilerPlanShadow` logs decisions without acting.
 
 **CO₂:** `gridCo2GramsPerKWh`, `injectionCo2OffsetGramsPerKWh`, `emissionsProvider` (`fixed`/`electricitymaps`), `electricityMapsApiKey`, `electricityMapsZone`.
 

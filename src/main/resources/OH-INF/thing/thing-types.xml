@@ -329,6 +329,12 @@
 				<default>true</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="boilerPowerItem" type="text" required="false">
+				<label>Boiler power item (W)</label>
+				<description>Optional W power item the planner uses to measure delivered energy accurately. Blank estimates from
+					rated power x on-time.</description>
+				<advanced>true</advanced>
+			</parameter>
 		</config-description>
 	</bridge-type>
 
