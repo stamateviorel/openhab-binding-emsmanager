@@ -45,7 +45,7 @@ class ThermalPlannerTest {
             tariff[i] = 0.50;
         }
 
-        var plan = ThermalPlanner.plan(20.0, 20.0, 0.5, tOut, tariff, R, C, P_HP, COP);
+        var plan = ThermalPlanner.plan(20.0, 20.0, 0.5, tOut, tariff, R, C, P_HP, COP, false);
 
         // Count heating hours in each half
         int heatCheap = 0, heatExp = 0;
@@ -66,7 +66,7 @@ class ThermalPlannerTest {
         double[] tariff = new double[24];
         java.util.Arrays.fill(tOut, 15);
         java.util.Arrays.fill(tariff, 0.30);
-        var plan = ThermalPlanner.plan(23.0, 20.0, 0.5, tOut, tariff, R, C, P_HP, COP);
+        var plan = ThermalPlanner.plan(23.0, 20.0, 0.5, tOut, tariff, R, C, P_HP, COP, false);
         int totalHeat = 0;
         for (int a : plan.action()) {
             totalHeat += a;
@@ -76,13 +76,14 @@ class ThermalPlannerTest {
 
     @Test
     void emptyInputsReturnEmptyPlan() {
-        var plan = ThermalPlanner.plan(20.0, 20.0, 0.5, new double[0], new double[0], R, C, P_HP, COP);
+        var plan = ThermalPlanner.plan(20.0, 20.0, 0.5, new double[0], new double[0], R, C, P_HP, COP, false);
         assertEquals(0, plan.action().length);
     }
 
     @Test
     void invalidModelParamsReturnEmpty() {
-        var plan = ThermalPlanner.plan(20.0, 20.0, 0.5, new double[24], new double[24], Double.NaN, C, P_HP, COP);
+        var plan = ThermalPlanner.plan(20.0, 20.0, 0.5, new double[24], new double[24], Double.NaN, C, P_HP, COP,
+                false);
         assertEquals(0, plan.action().length);
     }
 
@@ -92,7 +93,46 @@ class ThermalPlannerTest {
         double[] tariff = new double[24];
         java.util.Arrays.fill(tOut, 0); // cold outside, will require heating
         java.util.Arrays.fill(tariff, 0.30);
-        var plan = ThermalPlanner.plan(19.0, 20.0, 0.5, tOut, tariff, R, C, P_HP, COP);
+        var plan = ThermalPlanner.plan(19.0, 20.0, 0.5, tOut, tariff, R, C, P_HP, COP, false);
         assertTrue(plan.totalCost() >= 0, "plan cost must be non-negative");
+    }
+
+    @Test
+    void coolingPrefersCheapHours() {
+        // Cooling: first 12 h cheap, last 12 expensive; hot outside; target 24 °C.
+        // The planner should pre-cool in the cheap window.
+        double[] tOut = new double[24];
+        double[] tariff = new double[24];
+        java.util.Arrays.fill(tOut, 32);
+        for (int i = 0; i < 12; i++) {
+            tariff[i] = 0.10;
+        }
+        for (int i = 12; i < 24; i++) {
+            tariff[i] = 0.50;
+        }
+        var plan = ThermalPlanner.plan(24.0, 24.0, 0.5, tOut, tariff, R, C, P_HP, COP, true);
+        int coolCheap = 0, coolExp = 0;
+        for (int h = 0; h < 12; h++) {
+            coolCheap += plan.action()[h];
+        }
+        for (int h = 12; h < 24; h++) {
+            coolExp += plan.action()[h];
+        }
+        assertTrue(coolCheap >= coolExp,
+                "cooling should run at least as much in the cheap window; cheap=" + coolCheap + " exp=" + coolExp);
+    }
+
+    @Test
+    void coolingRunsWhenHot() {
+        double[] tOut = new double[24];
+        double[] tariff = new double[24];
+        java.util.Arrays.fill(tOut, 35); // hot → cooling needed to hold target
+        java.util.Arrays.fill(tariff, 0.30);
+        var plan = ThermalPlanner.plan(24.0, 24.0, 0.5, tOut, tariff, R, C, P_HP, COP, true);
+        int totalCool = 0;
+        for (int a : plan.action()) {
+            totalCool += a;
+        }
+        assertTrue(totalCool > 0, "cooling should run when it's hot outside; got " + totalCool);
     }
 }

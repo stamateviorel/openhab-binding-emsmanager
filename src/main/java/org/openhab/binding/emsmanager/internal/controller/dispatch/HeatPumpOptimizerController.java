@@ -166,9 +166,13 @@ public final class HeatPumpOptimizerController implements Controller {
         double effectivePrice = (Double.isNaN(tariffNow) || cop <= 0) ? Double.NaN : tariffNow / cop;
         double dailyKwhEst = Double.isNaN(powerW) ? Double.NaN : (24.0 * Math.abs(powerW) / 1000.0);
 
+        // Resolve the climate direction (heat / cool / idle) for this unit.
+        Dir dir = resolveDir(cfg);
+
         // Feed the thermal model + run the DP planner (publishes model channels).
         // Independent of the reactive mode decision below.
-        boolean preheatNow = runPredictive(hp, cfg, ctx, currentTemp, targetTemp, outdoorTemp, powerW, cop, dayAvg);
+        boolean preconditionNow = runPredictive(hp, cfg, ctx, currentTemp, targetTemp, outdoorTemp, powerW, cop, dayAvg,
+                dir);
 
         String mode;
         String reason;
@@ -183,46 +187,57 @@ public final class HeatPumpOptimizerController implements Controller {
             return;
         }
 
-        // 1b) Predictive pre-heat — the DP planner says heat now (cheap window before
-        // an upcoming expensive one). Takes precedence over the reactive branches.
-        if (preheatNow) {
+        // Unit not actively heating or cooling (auto/fan/dry/off in auto-mode) — no
+        // direction to optimize; fall through to comfort.
+        if (dir == Dir.IDLE) {
+            hp.publishDecision("COMFORT", "Comfort — unit not in a heat/cool mode", effectivePrice, dailyKwhEst, false);
+            return;
+        }
+        boolean cooling = dir == Dir.COOL;
+        String pre = cooling ? "pre-cooling" : "pre-heating";
+
+        // 1b) Predictive — the DP planner says condition now (cheap window ahead of an
+        // expensive one). Takes precedence over the reactive branches.
+        if (preconditionNow) {
             mode = "BOOST";
-            reason = "🔮 Predictive pre-heating (DP plan ahead of a tariff peak)";
+            reason = "🔮 Predictive " + pre + " (DP plan ahead of a tariff peak)";
             optimizerActive = true;
             hp.publishDecision(mode, reason, effectivePrice, dailyKwhEst, optimizerActive);
             return;
         }
 
-        // 2) Solar excess > threshold AND allowed → BOOST (pre-heat).
+        // 2) Solar excess > threshold AND allowed → BOOST (pre-condition).
         double excess = ctx.availableExcessW();
         boolean bigSurplus = !Double.isNaN(excess) && excess > cfg.boostSurplusThresholdW;
-        boolean canBoostHeat = Double.isNaN(targetTemp) || Double.isNaN(currentTemp)
-                || currentTemp < (targetTemp + 2.0); // up to 2 °C overshoot allowed
-        if (cfg.allowBoostOnSurplus && bigSurplus && canBoostHeat) {
+        boolean canBoost = Double.isNaN(targetTemp) || Double.isNaN(currentTemp)
+                || (cooling ? currentTemp > (targetTemp - 2.0) : currentTemp < (targetTemp + 2.0));
+        if (cfg.allowBoostOnSurplus && bigSurplus && canBoost) {
             mode = "BOOST";
-            reason = String.format("☀️ Solar surplus %.1f kW — pre-heating", excess / 1000.0);
+            reason = String.format("☀️ Solar surplus %.1f kW — %s", excess / 1000.0, pre);
             optimizerActive = true;
             hp.publishDecision(mode, reason, effectivePrice, dailyKwhEst, optimizerActive);
             return;
         }
 
-        // 3) Cheap tariff + temp below target → BOOST/ON
-        boolean tempBelow = !Double.isNaN(currentTemp) && !Double.isNaN(targetTemp)
-                && currentTemp < (targetTemp - cfg.tempDeadbandC);
+        // 3) Cheap tariff + comfort demand on the active side → BOOST.
+        boolean tempNeeds = !Double.isNaN(currentTemp) && !Double.isNaN(targetTemp)
+                && (cooling ? currentTemp > (targetTemp + cfg.tempDeadbandC)
+                        : currentTemp < (targetTemp - cfg.tempDeadbandC));
         if (!Double.isNaN(tariffNow) && !Double.isNaN(dayAvg) && tariffNow < dayAvg * cfg.cheapPriceThresholdRatio
-                && tempBelow) {
+                && tempNeeds) {
             mode = "BOOST";
-            reason = String.format("💰 Cheap tariff (€%.3f/kWh, avg €%.3f) — pre-heating", tariffNow, dayAvg);
+            reason = String.format("💰 Cheap tariff (€%.3f/kWh, avg €%.3f) — %s", tariffNow, dayAvg, pre);
             optimizerActive = true;
             hp.publishDecision(mode, reason, effectivePrice, dailyKwhEst, optimizerActive);
             return;
         }
 
-        // 4) Expensive tariff + temp comfortable → defer (OFF/ECO).
-        boolean tempOk = Double.isNaN(currentTemp) || Double.isNaN(targetTemp)
-                || currentTemp >= (targetTemp - cfg.tempDeadbandC);
+        // 4) Expensive tariff + comfortable → defer (ECO).
+        boolean tempComfortable = Double.isNaN(currentTemp) || Double.isNaN(targetTemp)
+                || (cooling ? currentTemp <= (targetTemp + cfg.tempDeadbandC)
+                        : currentTemp >= (targetTemp - cfg.tempDeadbandC));
         if (cfg.allowDeferOnPeak && !Double.isNaN(tariffNow) && !Double.isNaN(dayAvg)
-                && tariffNow > dayAvg * cfg.expensivePriceThresholdRatio && tempOk) {
+                && tariffNow > dayAvg * cfg.expensivePriceThresholdRatio && tempComfortable) {
             mode = "ECO";
             reason = String.format("📈 Expensive tariff (€%.3f/kWh) — deferring", tariffNow);
             optimizerActive = true;
@@ -250,7 +265,7 @@ public final class HeatPumpOptimizerController implements Controller {
      * if the plan's first hour says "heat now".
      */
     private boolean runPredictive(HeatPumpAssetHandler hp, HeatPumpConfig cfg, EnergyContext ctx, double currentTemp,
-            double targetTemp, double outdoorTemp, double powerW, double cop, double dayAvg) {
+            double targetTemp, double outdoorTemp, double powerW, double cop, double dayAvg, Dir dir) {
         if (!cfg.enablePredictive || Double.isNaN(outdoorTemp) || Double.isNaN(currentTemp)) {
             return false;
         }
@@ -262,8 +277,10 @@ public final class HeatPumpOptimizerController implements Controller {
         double[] prev = lastSample.get(id);
         if (prev != null) {
             double dt = (nowMs - (long) prev[2]) / 1000.0;
-            // Heat input = electrical power × COP (thermal). Solar/internal folded into Q0≈0 for v1.
-            double heatThermalW = (Double.isNaN(powerW) ? 0 : Math.abs(powerW)) * (cop > 0 ? cop : 1);
+            // Thermal input = electrical power × COP, signed by direction (cooling removes
+            // heat; idle/fan/dry ≈ passive). Solar/internal folded into Q0≈0 for v1.
+            double mag = (Double.isNaN(powerW) ? 0 : Math.abs(powerW)) * (cop > 0 ? cop : 1);
+            double heatThermalW = dir == Dir.COOL ? -mag : (dir == Dir.HEAT ? mag : 0.0);
             est.update(dt, prev[0], currentTemp, prev[1], heatThermalW);
         }
         lastSample.put(id, new double[] { currentTemp, outdoorTemp, nowMs });
@@ -274,8 +291,8 @@ public final class HeatPumpOptimizerController implements Controller {
 
         // Need a converged model + a tariff schedule to plan.
         double[] sched = ctx.tariffSchedule24h();
-        boolean planValid = est.sampleCount() > 200 && !Double.isNaN(r) && !Double.isNaN(c) && r > 0 && c > 0
-                && sched != null && sched.length >= 24 && !Double.isNaN(targetTemp);
+        boolean planValid = dir != Dir.IDLE && est.sampleCount() > 200 && !Double.isNaN(r) && !Double.isNaN(c) && r > 0
+                && c > 0 && sched != null && sched.length >= 24 && !Double.isNaN(targetTemp);
 
         boolean preheatNow = false;
         java.time.ZonedDateTime preheatAt = null;
@@ -296,7 +313,7 @@ public final class HeatPumpOptimizerController implements Controller {
                 }
             }
             ThermalPlanner.Plan plan = ThermalPlanner.plan(currentTemp, targetTemp, cfg.tempDeadbandC, tOutForecast,
-                    sched, r, c, cfg.heatPowerW, cop > 0 ? cop : 1);
+                    sched, r, c, cfg.heatPowerW, cop > 0 ? cop : 1, dir == Dir.COOL);
             if (plan.action().length > 0) {
                 preheatNow = plan.action()[0] == 1;
                 planCost = plan.totalCost() >= 1e17 ? Double.NaN : plan.totalCost();
@@ -313,6 +330,39 @@ public final class HeatPumpOptimizerController implements Controller {
 
         hp.publishModel(r, c, rmse, preheatAt, planCost);
         return preheatNow;
+    }
+
+    /** Climate direction for a unit. */
+    private enum Dir {
+        HEAT,
+        COOL,
+        IDLE
+    }
+
+    /**
+     * Resolve a unit's climate direction. "heat"/"cool" are fixed; "auto" reads the
+     * unit's mode item and maps the configured heat/cool values (e.g. a KNX airco's
+     * OPERATINGMODE 1=heat, 3=cool). Anything else (auto/fan/dry/off) → IDLE.
+     */
+    private Dir resolveDir(HeatPumpConfig cfg) {
+        String m = cfg.mode == null ? "heat" : cfg.mode.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("cool".equals(m)) {
+            return Dir.COOL;
+        }
+        if ("auto".equals(m)) {
+            double mv = readNumber(cfg.modeItem);
+            if (Double.isNaN(mv)) {
+                return Dir.IDLE;
+            }
+            if (Math.abs(mv - cfg.coolModeValue) < 0.5) {
+                return Dir.COOL;
+            }
+            if (Math.abs(mv - cfg.heatModeValue) < 0.5) {
+                return Dir.HEAT;
+            }
+            return Dir.IDLE;
+        }
+        return Dir.HEAT;
     }
 
     private static double avg(double @Nullable [] arr) {

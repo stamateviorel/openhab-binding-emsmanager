@@ -85,4 +85,13 @@ public final class HeatPumpConfig {
 
     /** Hysteresis band around target temp in °C — won't override above target. */
     public double tempDeadbandC = 0.5;
+
+    /** Climate direction: "heat" (default), "cool", or "auto" (read modeItem and map). */
+    public String mode = "heat";
+
+    /** For mode="auto": the modeItem numeric value that means heating (e.g. KNX airco 1). */
+    public double heatModeValue = 1.0;
+
+    /** For mode="auto": the modeItem numeric value that means cooling (e.g. KNX airco 3). */
+    public double coolModeValue = 3.0;
 }

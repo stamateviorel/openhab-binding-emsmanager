@@ -1085,6 +1085,28 @@
 				<label>Temp deadband (°C)</label>
 				<default>0.5</default>
 			</parameter>
+			<parameter name="mode" type="text" required="false">
+				<label>Climate direction</label>
+				<description>heat (default), cool, or auto (follow the unit's mode item across seasons).</description>
+				<options>
+					<option value="heat">heat</option>
+					<option value="cool">cool</option>
+					<option value="auto">auto (from mode item)</option>
+				</options>
+				<default>heat</default>
+			</parameter>
+			<parameter name="heatModeValue" type="decimal" required="false">
+				<label>Mode value = heating (auto)</label>
+				<description>For mode=auto: the mode-item numeric value that means heating (e.g. KNX airco 1).</description>
+				<default>1</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="coolModeValue" type="decimal" required="false">
+				<label>Mode value = cooling (auto)</label>
+				<description>For mode=auto: the mode-item numeric value that means cooling (e.g. KNX airco 3).</description>
+				<default>3</default>
+				<advanced>true</advanced>
+			</parameter>
 		</config-description>
 	</thing-type>
 

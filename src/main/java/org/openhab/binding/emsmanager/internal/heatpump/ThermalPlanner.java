@@ -22,8 +22,9 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
  * <p>
  * Given a learned thermal model (R, C), forecasts of outdoor temperature
  * and electricity tariff over the next N hours, and a target indoor temp
- * with deadband, find the on/off heating schedule that minimises cost
- * subject to T_in ≥ target − deadband at every hour.
+ * with deadband, find the on/off conditioning schedule that minimises cost
+ * subject to T_in ≥ target − deadband (heating) or T_in ≤ target + deadband
+ * (cooling) at every hour.
  *
  * <p>
  * State space: T_in discretised into bins; 70 bins × 24 hours × 2
@@ -54,16 +55,18 @@ public final class ThermalPlanner {
      * @param c thermal capacitance J/K
      * @param heatPowerW heat pump electrical input when ON (W); thermal output assumed COP×P
      * @param cop coefficient of performance for the heat pump
+     * @param cooling false = heating (keep T above floor); true = cooling (keep T below ceiling)
      * @return optimal plan
      */
     public static Plan plan(double tInNow, double targetT, double deadbandC, double[] tOutForecast,
-            double[] tariffPrices, double r, double c, double heatPowerW, double cop) {
+            double[] tariffPrices, double r, double c, double heatPowerW, double cop, boolean cooling) {
         int n = Math.min(tOutForecast.length, tariffPrices.length);
         if (n == 0 || !Double.isFinite(r) || !Double.isFinite(c) || r <= 0 || c <= 0) {
             return new Plan(new int[0], new double[0], 0);
         }
-        double tMin = targetT - T_WINDOW_BELOW_C;
-        double tMax = targetT + T_WINDOW_ABOVE_C;
+        // More headroom on the side we drive toward: down for cooling, up for heating.
+        double tMin = cooling ? targetT - T_WINDOW_ABOVE_C : targetT - T_WINDOW_BELOW_C;
+        double tMax = cooling ? targetT + T_WINDOW_BELOW_C : targetT + T_WINDOW_ABOVE_C;
         int nBins = (int) Math.ceil((tMax - tMin) / T_BIN_STEP_C) + 1;
 
         // cost[h][b]: minimum cost to reach state-bin b at hour h (start of hour h)
@@ -90,11 +93,12 @@ public final class ThermalPlanner {
                 double tIn = binToTemp(b, tMin);
 
                 for (int a = 0; a <= 1; a++) {
-                    double q = (a == 1) ? heatThermalW : 0;
+                    // ON drives temperature up (heating) or down (cooling).
+                    double q = (a == 1) ? (cooling ? -heatThermalW : heatThermalW) : 0;
                     double dTdt = ((tOut - tIn) / r + q) / c;
                     double tInNext = tIn + dTdt * 3600.0;
-                    // Enforce comfort constraint at end of this hour:
-                    if (tInNext < targetT - deadbandC) {
+                    // Comfort constraint at end of hour: heating floor / cooling ceiling.
+                    if (cooling ? (tInNext > targetT + deadbandC) : (tInNext < targetT - deadbandC)) {
                         continue;
                     }
                     int nextBin = clamp(tempToBin(tInNext, tMin), 0, nBins - 1);

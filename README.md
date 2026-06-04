@@ -15,7 +15,7 @@ It is **vendor-agnostic**: it does not talk to hardware directly. You point it a
 - **Peak shaving** — soft (sticky EWMA band), hard (multi-tier progressive shedding), and a configurable demand/capacity-tariff controller.
 - **EV charging** — multi-car coordinator with breaker-aware current sharing, plus a departure/target planner (now / cheapest / solar-first).
 - **Battery** — time-of-use dispatcher with `auto` / `fixed` / `readonly` control modes.
-- **Heat pump** — SCOP-aware optimizer with an online-learned RC thermal model and a dynamic-programming pre-heat planner.
+- **Heat pump / reversible AC** — SCOP-aware optimizer that **heats or cools** (auto-following the unit's mode item across seasons) with an online-learned RC thermal model and a dynamic-programming pre-condition planner.
 - **Pluggable providers** — tariff (flat / day-night / time-of-use / dynamic spot: ENTSO-E, Tibber, aWATTar, CSV), solar forecast (Forecast.Solar), emissions (fixed factors / Electricity Maps).
 - **Analytics** — cost / savings / feed-in earnings, self-consumption / feed-in / supply, CO₂, per-device attribution, median±MAD anomaly detection, battery-sizing payback simulation, supplier tariff comparison.
 - **Long-term statistics tier** — writes one clean datapoint per day so month/year charts stay fast.
@@ -92,7 +92,7 @@ Run order (lowest priority first; later controllers can defer to earlier ones). 
 | 67 | BoilerPlan | Deadline-aware DHW: solar-first by day, cheapest-hour grid top-up overnight to hit a daily energy target. |
 | 70 | SolarSurplusDispatcher | Routes surplus to the boiler. |
 | 80 | BatteryTouDispatcher | Time-of-use battery charge/discharge (gated by control mode). |
-| 85 | HeatPumpOptimizer | SCOP + thermal-model pre-heat planning. |
+| 85 | HeatPumpOptimizer | SCOP + thermal-model pre-condition planning; reversible (heat & cool, auto-detected from the unit's mode). |
 | 90 | SelfConsumptionOptimizer | 24 h cheap/expensive-hour plan. |
 | 100 | ProductionShavingDispatcher | Anti-curtailment dump load. |
 | 110 | CostAnalytics | Cost / savings / earnings + kWh accounting (observer). |
