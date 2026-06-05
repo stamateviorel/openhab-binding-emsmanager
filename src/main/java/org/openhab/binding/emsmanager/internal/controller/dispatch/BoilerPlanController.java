@@ -136,6 +136,11 @@ public final class BoilerPlanController implements Controller {
         return lastStatus;
     }
 
+    /** Energy credited to the current target window, in kWh (exposed for tests). */
+    double deliveredKwh() {
+        return deliveredKwh;
+    }
+
     @Override
     public List<SetpointRequest> evaluate(EnergyContext ctx) {
         if (dailyTargetKwh <= 0) {
@@ -173,7 +178,8 @@ public final class BoilerPlanController implements Controller {
         if (prev != null) {
             long ms = Duration.between(prev, nowI).toMillis();
             if (ms > 0 && ms <= 600_000L) {
-                deliveredKwh += boilerWatts(ctx) * (ms / 3_600_000.0);
+                // boilerWatts is in W — convert to kW before integrating over hours → kWh.
+                deliveredKwh += (boilerWatts(ctx) / 1000.0) * (ms / 3_600_000.0);
             }
         }
 

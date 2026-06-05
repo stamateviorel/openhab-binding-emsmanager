@@ -47,6 +47,12 @@ class BoilerPlanControllerTest {
     private EnergyContext ctxAt(int hour, boolean boilerOn, boolean userOverride, double[] schedule,
             boolean peakEnabled) {
         Instant t = ZonedDateTime.of(2026, 6, 3, hour, 0, 0, 0, ZoneId.systemDefault()).toInstant();
+        return ctxAtInstant(t, boilerOn, userOverride, schedule, peakEnabled);
+    }
+
+    /** Build a context at a precise instant — for sub-hour energy-integration tests. */
+    private EnergyContext ctxAtInstant(Instant t, boolean boilerOn, boolean userOverride, double[] schedule,
+            boolean peakEnabled) {
         Map<String, CarSnapshot> noCars = Map.of();
         return new EnergyContext(t, 0, 0, 0, 0, 0, 50, 30, false, 0, EnergyContext.Mode.GRID_IMPORT, noCars, 0, 0, 0,
                 true, boilerOn, false, peakEnabled, 0, 0, userOverride, 0, 0, 60_000L, 0.30, schedule, Double.NaN,
@@ -124,11 +130,26 @@ class BoilerPlanControllerTest {
 
     @Test
     void stopsOnceTargetMet() {
-        BoilerPlanController c = new BoilerPlanController(false, 4.5, 7, 3.0, idleHard(), null, null, null);
-        c.evaluate(ctxAt(2, true, false, FLAT, false)); // first tick: no integration yet
-        c.evaluate(ctxAt(3, true, false, FLAT, false)); // +1 h on at 3 kW → 3 kWh
-        List<SetpointRequest> out = c.evaluate(ctxAt(4, true, false, FLAT, false)); // +1 h → 6 kWh ≥ 4.5
+        // 10 kW over two 5-min ticks ≈ 1.67 kWh ≥ the 0.5 kWh target → stop. Short ticks
+        // matter: the integrator caps gaps at 10 min, so hour-spaced ticks never accrue.
+        BoilerPlanController c = new BoilerPlanController(false, 0.5, 7, 10.0, idleHard(), null, null, null);
+        Instant t0 = ZonedDateTime.of(2026, 6, 3, 3, 0, 0, 0, ZoneId.systemDefault()).toInstant();
+        c.evaluate(ctxAtInstant(t0, true, false, FLAT, false)); // first tick: establishes lastTick
+        c.evaluate(ctxAtInstant(t0.plusSeconds(300), true, false, FLAT, false)); // +5 min at 10 kW
+        List<SetpointRequest> out = c.evaluate(ctxAtInstant(t0.plusSeconds(600), true, false, FLAT, false));
         assertTrue(out.isEmpty(), "target met → stop heating");
         assertFalse(c.wantsBoilerOn());
+        assertTrue(c.lastStatus().startsWith("target met"), "status reports target met");
+    }
+
+    @Test
+    void integratesDeliveredEnergyInKwhNotWh() {
+        // The Wh/kWh trap: 10 kW for 0.1 h is 1.0 kWh, not 1000. Target is huge so the
+        // planner never flips to "met" and the raw integral stays observable.
+        BoilerPlanController c = new BoilerPlanController(false, 100.0, 7, 10.0, idleHard(), null, null, null);
+        Instant t0 = ZonedDateTime.of(2026, 6, 3, 3, 0, 0, 0, ZoneId.systemDefault()).toInstant();
+        c.evaluate(ctxAtInstant(t0, true, false, FLAT, false)); // first tick: no integration
+        c.evaluate(ctxAtInstant(t0.plusSeconds(360), true, false, FLAT, false)); // +6 min at 10 kW
+        assertEquals(1.0, c.deliveredKwh(), 1e-6, "delivered must be kWh (10 kW × 0.1 h), not Wh");
     }
 }
