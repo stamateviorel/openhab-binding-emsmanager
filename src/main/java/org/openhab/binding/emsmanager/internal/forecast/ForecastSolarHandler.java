@@ -66,6 +66,10 @@ public final class ForecastSolarHandler extends BaseThingHandler {
     private volatile ForecastSnapshot lastSnapshot = ForecastSnapshot.EMPTY;
     private volatile long rateLimitedUntilMs = 0L;
     private int refreshIntervalMin = 30;
+    // Don't flap OFFLINE on a single transient fetch failure — keep the last good
+    // forecast on the channels and only drop OFFLINE after several misses in a row.
+    private static final int OFFLINE_AFTER_FAILS = 3;
+    private int consecutiveFailures = 0;
 
     public ForecastSolarHandler(Thing thing, HttpClient httpClient) {
         super(thing);
@@ -137,6 +141,8 @@ public final class ForecastSolarHandler extends BaseThingHandler {
 
     private SolarForecastProvider buildProvider(ForecastSolarConfig cfg) {
         switch (cfg.kind) {
+            case "open-meteo":
+                return new OpenMeteoForecast(httpClient, cfg);
             case "forecast-solar-free":
             default:
                 return new ForecastSolarFreeTier(httpClient, cfg);
@@ -157,25 +163,34 @@ public final class ForecastSolarHandler extends BaseThingHandler {
         }
         try {
             ForecastSnapshot snap = p.fetch();
-            lastSnapshot = snap;
             String err = snap.lastError();
-            if (err != null) {
-                if (err.contains("429")) {
-                    rateLimitedUntilMs = now + RATE_LIMITED_BACKOFF_MS;
-                    updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR,
-                            "rate limited — retry in 60 min");
-                    logger.warn("Forecast fetch hit rate limit (429) — backing off 60 min");
-                } else {
-                    updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, err);
-                    logger.warn("Forecast fetch failed: {}", err);
-                }
-            } else {
+            if (err == null) {
+                consecutiveFailures = 0;
+                lastSnapshot = snap;
                 updateStatus(ThingStatus.ONLINE);
                 ForecastCache.save(snap); // persist for next reload
+                publish(snap);
                 logger.info("Forecast refreshed: nowW={}, todayKwh={}, tomorrowKwh={}, rateLimitRemaining={}",
                         fmt(snap.nowW()), fmt(snap.todayKwh()), fmt(snap.tomorrowKwh()), snap.rateLimitRemaining());
+            } else if (err.contains("429")) {
+                rateLimitedUntilMs = now + RATE_LIMITED_BACKOFF_MS;
+                updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR,
+                        "rate limited — retry in 60 min");
+                logger.warn("Forecast fetch hit rate limit (429) — backing off 60 min");
+                updateState(FC_CHANNEL_LAST_ERROR, new StringType(err));
+            } else {
+                // Transient failure: keep the last good snapshot on the channels and
+                // only drop OFFLINE after several consecutive misses (no flapping).
+                consecutiveFailures++;
+                if (consecutiveFailures >= OFFLINE_AFTER_FAILS) {
+                    updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, err);
+                    logger.warn("Forecast fetch failed {}x in a row: {}", consecutiveFailures, err);
+                } else {
+                    logger.info("Forecast fetch transient failure ({}/{}), keeping last forecast: {}",
+                            consecutiveFailures, OFFLINE_AFTER_FAILS, err);
+                }
+                updateState(FC_CHANNEL_LAST_ERROR, new StringType(err));
             }
-            publish(snap);
         } catch (Throwable t) {
             logger.warn("ForecastSolar poll threw", t);
         }

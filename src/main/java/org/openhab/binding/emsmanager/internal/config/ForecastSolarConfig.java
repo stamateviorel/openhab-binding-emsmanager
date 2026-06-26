@@ -32,4 +32,6 @@ public class ForecastSolarConfig {
     public double azimuth = 0.0; // 0 = south
     public double kwp = 25.0; // matches the CLAUDE.md site
     public int refreshIntervalMin = 30;
+    // Open-Meteo only: GTI->AC derate (inverter, temperature, soiling, wiring).
+    public double performanceRatio = 0.85;
 }

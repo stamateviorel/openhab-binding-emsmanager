@@ -737,7 +737,8 @@
 				<label>Provider kind</label>
 				<description>Which forecast provider to use. Currently ships the free tier.</description>
 				<options>
-					<option value="forecast-solar-free">forecast.solar free tier (default; 12 calls/h, single plane)</option>
+					<option value="open-meteo">Open-Meteo (keyless, reliable; irradiance to PV via kWp x performance ratio)</option>
+					<option value="forecast-solar-free">forecast.solar free tier (12 calls/h, single plane; free public endpoint can be flaky)</option>
 				</options>
 				<default>forecast-solar-free</default>
 			</parameter>
@@ -772,6 +773,12 @@
 				<label>Peak power (kWp)</label>
 				<description>Installed solar peak power.</description>
 				<default>25</default>
+			</parameter>
+			<parameter name="performanceRatio" type="decimal" min="0.1" max="1.0" step="0.01" required="false">
+				<label>Performance ratio (open-meteo)</label>
+				<description>open-meteo only: derate from plane-of-array irradiance to AC output (inverter, temperature, soiling,
+					wiring). Typical 0.80-0.88.</description>
+				<default>0.85</default>
 			</parameter>
 			<parameter name="refreshIntervalMin" type="integer" min="5" max="240">
 				<label>Refresh interval (min)</label>
