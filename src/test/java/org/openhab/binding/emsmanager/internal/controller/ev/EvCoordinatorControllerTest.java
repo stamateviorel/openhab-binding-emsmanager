@@ -87,4 +87,66 @@ class EvCoordinatorControllerTest {
                 .anyMatch(r -> r.assetId().equals("car1") && r.kind() == SetpointRequest.Kind.AMPS);
         assertTrue(hasAmps, "SNEL with cable connected must push a current-limit setpoint");
     }
+
+    private boolean hasStart(List<SetpointRequest> out) {
+        return out.stream().anyMatch(r -> r.assetId().equals("car1") && r.kind() == SetpointRequest.Kind.CHARGE_START);
+    }
+
+    /**
+     * A charger wedged in "Preparing" (Rejects every RemoteStart) must get a
+     * short burst of quick attempts and then back off entirely — no RemoteStart
+     * spam and, once backed off, no pointless current-limit re-sends either.
+     */
+    @Test
+    void backoffStopsHammeringAWedgedCar() {
+        EvCoordinatorController controller = newController();
+        CarSnapshot wedged = car("car1", CarSnapshot.Mode.SNEL, false, "Preparing");
+
+        int starts = 0;
+        int silentTicks = 0;
+        for (int tick = 1; tick <= 10; tick++) {
+            List<SetpointRequest> out = controller.evaluate(ctxWith(wedged));
+            if (hasStart(out)) {
+                starts++;
+            }
+            if (out.stream().noneMatch(r -> r.assetId().equals("car1"))) {
+                silentTicks++;
+            }
+        }
+
+        assertEquals(5, starts, "a wedged charger must get exactly the 5-attempt burst, then stop hammering");
+        assertEquals(5, silentTicks,
+                "once backed off a wedged car must emit nothing — not even a current-limit re-send");
+    }
+
+    @Test
+    void replugResetsBackoff() {
+        EvCoordinatorController controller = newController();
+        CarSnapshot wedged = car("car1", CarSnapshot.Mode.SNEL, false, "Preparing");
+        for (int i = 0; i < 8; i++) {
+            controller.evaluate(ctxWith(wedged)); // drive past the burst into backoff
+        }
+        // Cable unplugged for one tick — clears the backoff counter.
+        CarSnapshot unplugged = new CarSnapshot("car1", CarSnapshot.Mode.SNEL, false, "Available", 0.0, 0.0, 0.0, 0.0,
+                0.0, false);
+        controller.evaluate(ctxWith(unplugged));
+
+        List<SetpointRequest> out = controller.evaluate(ctxWith(wedged));
+        assertTrue(hasStart(out), "a physical replug must reset the backoff and earn a fresh RemoteStart");
+    }
+
+    @Test
+    void chargingResetsBackoff() {
+        EvCoordinatorController controller = newController();
+        CarSnapshot wedged = car("car1", CarSnapshot.Mode.SNEL, false, "Preparing");
+        for (int i = 0; i < 8; i++) {
+            controller.evaluate(ctxWith(wedged)); // into backoff
+        }
+        // A successful charge leaves the start-states → counter resets.
+        controller.evaluate(ctxWith(car("car1", CarSnapshot.Mode.SNEL, false, "Charging")));
+
+        List<SetpointRequest> out = controller.evaluate(ctxWith(wedged));
+        assertTrue(hasStart(out),
+                "a completed charge must reset the backoff so a later Preparing earns fresh attempts");
+    }
 }

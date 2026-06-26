@@ -27,6 +27,8 @@ import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Per-car EV charging coordinator. Implements the ECO budget solver with
@@ -52,6 +54,19 @@ public final class EvCoordinatorController implements Controller {
 
     public static final String NAME = "ev-coordinator";
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(EvCoordinatorController.class);
+
+    /**
+     * Auto-RemoteStart backoff. A wedged charger (e.g. a CHARX stuck in
+     * "Preparing") Rejects every RemoteStart, so the start-state never clears
+     * and a naive rule re-sends every ~15 s tick forever. After this many
+     * consecutive futile attempts we stop hammering and drop to a slow retry.
+     */
+    private static final int CHARGE_START_MAX_ATTEMPTS = 5;
+
+    /** Once backed off, retry RemoteStart only once every N ticks (~5 min). */
+    private static final int CHARGE_START_SLOW_RETRY_TICKS = 20;
+
     private final boolean shadowMode;
     private final HardPeakShavingController hard;
     private final SoftPeakShavingController soft;
@@ -59,6 +74,14 @@ public final class EvCoordinatorController implements Controller {
 
     /** Last AMPS we emitted, per car key. NaN = never emitted. */
     private final Map<String, Double> lastSentAmps = new HashMap<>();
+
+    /**
+     * Consecutive auto-RemoteStart attempts since the car last left a
+     * start-state. Drives the backoff that stops a wedged charger from being
+     * hammered every tick. Reset the instant the car charges (status leaves
+     * the start-states) or the cable is unplugged.
+     */
+    private final Map<String, Integer> chargeStartAttempts = new HashMap<>();
 
     public EvCoordinatorController(boolean shadowMode, HardPeakShavingController hard, SoftPeakShavingController soft,
             int gridSafetyMarginW) {
@@ -104,6 +127,8 @@ public final class EvCoordinatorController implements Controller {
     private void handleCar(EnergyContext ctx, CarSnapshot car,
             @org.eclipse.jdt.annotation.Nullable Double ecoBudgetPerCarW, List<SetpointRequest> out) {
         if (!car.cableConnected()) {
+            // Cable out — clear any backoff so a fresh plug-in earns a full burst.
+            chargeStartAttempts.remove(car.carKey());
             return;
         }
 
@@ -157,12 +182,42 @@ public final class EvCoordinatorController implements Controller {
         // Auto-RemoteStart when no transaction is open. Behaviour varies by
         // charger: some stay "Available" with the cable in, some report
         // "Preparing", and some briefly enter SuspendedEVSE between transactions.
-        // Dedupe in the asset handler prevents spam.
+        //
+        // Backoff: a wedged charger (classic CHARX stuck in "Preparing") Rejects
+        // every RemoteStart, so a transaction never opens and a naive rule re-sends
+        // every tick forever (thousands of pointless CALLs/day). After
+        // CHARGE_START_MAX_ATTEMPTS consecutive futile attempts we declare the car
+        // wedged: drop to a slow retry and emit NOTHING else for it (no point
+        // re-pushing a current limit to a charger that won't start a transaction).
+        //
+        // The counter is cleared ONLY by a real charge ("Charging") or a cable
+        // unplug (top of handleCar) — never by a transient non-start state. A
+        // wedged CHARX flickers Preparing/Available/Finishing/SuspendedEV while
+        // stuck; resetting on any of those would let it earn a fresh burst every
+        // few seconds and defeat the backoff. A physical replug still self-heals
+        // (cable-out clears it), and a successful start re-arms the next session.
         String status = car.ocppStatus();
-        if ("Available".equals(status) || "Preparing".equals(status) || "SuspendedEVSE".equals(status)) {
-            out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.CHARGE_START, 1.0, priority(), NAME,
-                    "auto-RemoteStart (status=" + status + ")"));
+        boolean startState = "Available".equals(status) || "Preparing".equals(status) || "SuspendedEVSE".equals(status);
+        if ("Charging".equals(status)) {
+            chargeStartAttempts.remove(car.carKey());
+        } else if (startState) {
+            int attempts = chargeStartAttempts.getOrDefault(car.carKey(), 0) + 1;
+            chargeStartAttempts.put(car.carKey(), attempts);
+            LOGGER.debug("ev-coordinator[{}]: auto-RemoteStart attempt {} (status={})", car.carKey(), attempts, status);
+            if (attempts <= CHARGE_START_MAX_ATTEMPTS) {
+                out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.CHARGE_START, 1.0, priority(), NAME,
+                        "auto-RemoteStart (status=" + status + ")"));
+            } else {
+                // Backed off — wedged. Slow retry only; nothing else this tick.
+                if ((attempts - CHARGE_START_MAX_ATTEMPTS) % CHARGE_START_SLOW_RETRY_TICKS == 0) {
+                    out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.CHARGE_START, 1.0, priority(), NAME,
+                            "auto-RemoteStart trage retry (status=" + status + ", poging " + attempts + ")"));
+                }
+                return;
+            }
         }
+        // Any other status (Finishing/Faulted/Unavailable/…): don't emit, and
+        // leave the counter intact so a flickering wedged charger stays backed off.
 
         if (mode == CarSnapshot.Mode.SNEL) {
             int desired = Math.min(CapabilityCheck.MAX_CHARGING_CURRENT_A, headroom);
