@@ -93,6 +93,7 @@ public final class OpenMeteoForecast implements SolarForecastProvider {
             base = DEFAULT_BASE;
         }
         double pr = config.performanceRatio > 0 && config.performanceRatio <= 1.0 ? config.performanceRatio : 0.85;
+        double capW = config.inverterAcKw > 0 ? config.inverterAcKw * 1000.0 : 0.0;
         String url = String.format(java.util.Locale.ROOT,
                 "%s/v1/forecast?latitude=%.4f&longitude=%.4f&hourly=global_tilted_irradiance"
                         + "&tilt=%.0f&azimuth=%.0f&forecast_days=2&timezone=auto",
@@ -108,7 +109,7 @@ public final class OpenMeteoForecast implements SolarForecastProvider {
                     continue;
                 }
                 JsonElement root = JsonParser.parseString(resp.getContentAsString());
-                return parse(root.getAsJsonObject(), pr);
+                return parse(root.getAsJsonObject(), pr, capW);
             } catch (Throwable t) {
                 String m = t.getMessage();
                 lastErr = m == null ? t.getClass().getSimpleName() : m;
@@ -119,7 +120,7 @@ public final class OpenMeteoForecast implements SolarForecastProvider {
         return withError(lastErr);
     }
 
-    private ForecastSnapshot parse(JsonObject root, double pr) {
+    private ForecastSnapshot parse(JsonObject root, double pr, double capW) {
         JsonObject hourly = optObject(root, "hourly");
         if (hourly == null) {
             return withError("missing 'hourly' in Open-Meteo response");
@@ -144,8 +145,7 @@ public final class OpenMeteoForecast implements SolarForecastProvider {
             }
             try {
                 LocalDateTime ldt = LocalDateTime.parse(times.get(i).getAsString());
-                double w = Math.max(0.0, g.getAsDouble()) * config.kwp * pr;
-                watts.put(ldt, w);
+                watts.put(ldt, acWatts(g.getAsDouble(), config.kwp, pr, capW));
             } catch (Exception ignore) {
                 // skip malformed entry
             }
@@ -185,6 +185,16 @@ public final class OpenMeteoForecast implements SolarForecastProvider {
         LOGGER.debug("OpenMeteoForecast: returning empty snapshot — {}", msg);
         return new ForecastSnapshot(Instant.now(), Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN,
                 Double.NaN, null, null, msg, "");
+    }
+
+    /**
+     * GTI (W/m²) → AC power (W): {@code P = GTI × kWp × PR}, clipped at the
+     * inverter ceiling. {@code capW ≤ 0} means uncapped. Clipping models inverter
+     * saturation on bright days, where the DC array out-produces the AC inverter.
+     */
+    static double acWatts(double gti, double kwp, double pr, double capW) {
+        double w = Math.max(0.0, gti) * kwp * pr;
+        return capW > 0 && w > capW ? capW : w;
     }
 
     /** Sum a calendar day's hourly power (W) and convert to kWh (1 h buckets). */

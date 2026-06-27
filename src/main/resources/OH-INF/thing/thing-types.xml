@@ -780,6 +780,16 @@
 					wiring). Typical 0.80-0.88.</description>
 				<default>0.85</default>
 			</parameter>
+			<parameter name="inverterAcKw" type="decimal" min="0" step="0.1" required="false">
+				<label>Inverter AC cap (kW, open-meteo)</label>
+				<description>open-meteo only: inverter AC output ceiling. The forecast models the full DC array (kwp), but
+					the
+					inverter clips AC output at this cap on bright days, so an uncapped forecast over-predicts (e.g. a 25 kWp
+					array on a
+					10 kW inverter). Clipping the hourly curve fixes midday without distorting morning/evening/cloudy
+					hours. 0 = no cap.</description>
+				<default>0</default>
+			</parameter>
 			<parameter name="refreshIntervalMin" type="integer" min="5" max="240">
 				<label>Refresh interval (min)</label>
 				<description>How often to poll the provider. Default 30 min keeps comfortably under the free-tier 12/h rate limit.</description>

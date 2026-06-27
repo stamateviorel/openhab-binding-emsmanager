@@ -34,4 +34,10 @@ public class ForecastSolarConfig {
     public int refreshIntervalMin = 30;
     // Open-Meteo only: GTI->AC derate (inverter, temperature, soiling, wiring).
     public double performanceRatio = 0.85;
+    // Open-Meteo only: inverter AC output ceiling (kW). The forecast models the
+    // full DC array (kwp), but the inverter clips AC output at this cap on bright
+    // days, so an uncapped forecast over-predicts (e.g. a 25 kWp array on a ~10 kW
+    // inverter). Clipping the hourly curve here fixes midday without distorting the
+    // unclipped morning/evening/cloudy hours. 0 = no cap (default).
+    public double inverterAcKw = 0.0;
 }
