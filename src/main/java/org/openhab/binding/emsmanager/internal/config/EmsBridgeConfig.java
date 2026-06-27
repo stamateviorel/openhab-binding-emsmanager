@@ -183,4 +183,8 @@ public class EmsBridgeConfig {
     public boolean emsShadowEnabled = false;
     // Surplus a simple on/off load must clear before the shadow engine would switch it on.
     public double emsSimpleLoadThresholdW = 1000;
+    // Let the shadow engine ACTUATE — apply its plan to the items instead of only logging.
+    // Off by default. Only enable on a site where the engine OWNS those items; do NOT enable
+    // where the legacy controller pipeline already commands the same boiler/cars/battery.
+    public boolean emsApply = false;
 }

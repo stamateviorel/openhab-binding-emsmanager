@@ -75,12 +75,21 @@ priority-ordered conflict resolution, per-asset dedupe (the `autoupdate=false` A
 shadow mode, and safety ownership (breaker/peak-shaving outranking economics). The shadow EMS
 runs alongside that proven pipeline rather than replacing it.
 
-## Status / roadmap
+## Actuation (`EmsActuator`, opt-in)
 
-- **Done:** the participant model + `energy:` discovery + two strategies + live shadow runner,
-  all unit-tested, deployed, demonstrated on a live 25 kWp solar + battery + EV site.
-- **Next (optional, gated):** actuation — let the engine apply its actions (Simple → ON/OFF,
-  Controllable → set watts) when explicitly taken out of shadow.
+The engine can also **act**, not just advise. With `emsApply=true` (advanced, default off) it
+applies each action: a `Simple` load gets ON/OFF, a `Controllable` load gets its watt value
+(`EmsActuator.toCommand` → `OnOffType` / `DecimalType`). The log switches from `[EMS-SHADOW] …
+would set` to `[EMS-APPLY] … set`. **Caveat:** only enable on a site where this engine OWNS
+those items — never where a legacy controller pipeline already commands the same boiler / cars
+/ battery (two writers conflict).
+
+## Status
+
+- **Done:** the participant model + `energy:` discovery + two strategies (surplus + cheapest-
+  window) + live shadow runner + opt-in actuation, all unit-tested (8 EMS tests), deployed and
+  demonstrated on a live 25 kWp solar + battery + EV site (shadow; actuation left off there
+  because the legacy pipeline owns control).
 - **Upstream:** offered on #3478 as a working reference for Kai's design; the core interfaces
   would move to `openhab-core` only with a maintainer co-owner.
 ```

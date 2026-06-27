@@ -64,6 +64,7 @@ import org.openhab.binding.emsmanager.internal.core.PriorityScheduler;
 import org.openhab.binding.emsmanager.internal.core.RollingAverage;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 import org.openhab.binding.emsmanager.internal.devicemeter.DeviceMeterHandler;
+import org.openhab.binding.emsmanager.internal.ems.EmsActuator;
 import org.openhab.binding.emsmanager.internal.ems.ShadowEmsRunner;
 import org.openhab.binding.emsmanager.internal.report.WeeklyReportService;
 import org.openhab.binding.emsmanager.internal.sizing.BatterySizingService;
@@ -166,10 +167,11 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         shadowMode = config.shadowMode;
         publishLegacyMirrorItems = config.publishLegacyMirrorItems;
 
-        // Shadow energy-management engine (Kai Kreuzer's core design, openhab-core #3478).
-        // Discovers `energy`-tagged items and logs the plan it would apply; never writes.
+        // Energy-management engine (Kai Kreuzer's core design, openhab-core #3478). Discovers
+        // `energy`-tagged items and logs the plan; only writes when emsApply is also set.
+        EmsActuator actuator = config.emsApply ? new EmsActuator(eventPublisher, itemRegistry) : null;
         shadowEms = config.emsShadowEnabled
-                ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW)
+                ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW, actuator)
                 : null;
 
         tickCounter.set(0);

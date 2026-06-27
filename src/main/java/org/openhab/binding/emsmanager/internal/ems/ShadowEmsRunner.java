@@ -42,11 +42,14 @@ public class ShadowEmsRunner {
     private final MetadataParticipantScanner scanner;
     private final ItemRegistry itemRegistry;
     private final double simpleLoadThresholdW;
+    private final @Nullable EmsActuator actuator;
 
-    public ShadowEmsRunner(MetadataRegistry metadataRegistry, ItemRegistry itemRegistry, double simpleLoadThresholdW) {
+    public ShadowEmsRunner(MetadataRegistry metadataRegistry, ItemRegistry itemRegistry, double simpleLoadThresholdW,
+            @Nullable EmsActuator actuator) {
         this.scanner = new MetadataParticipantScanner(metadataRegistry);
         this.itemRegistry = itemRegistry;
         this.simpleLoadThresholdW = simpleLoadThresholdW > 0 ? simpleLoadThresholdW : 1000.0;
+        this.actuator = actuator;
     }
 
     /**
@@ -77,10 +80,12 @@ public class ShadowEmsRunner {
             }
         }
 
+        EmsActuator act = actuator;
+        String mode = act != null ? "EMS-APPLY" : "EMS-SHADOW";
         List<EmsAction> actions = EnergyManagementService.planSurplusDispatch(surplus, consumers, simpleLoadThresholdW);
-        logger.info(
-                "[EMS-SHADOW] Kai #3478 model: surplus {} W · {} provider(s) · {} consumer(s) → {} action(s) (no writes)",
-                Math.round(surplus), providers.size(), consumers.size(), actions.size());
+        logger.info("[{}] Kai #3478 model: surplus {} W · {} provider(s) · {} consumer(s) → {} action(s) ({})", mode,
+                Math.round(surplus), providers.size(), consumers.size(), actions.size(),
+                act != null ? "applying" : "no writes");
         for (EnergyProvider p : providers) {
             double w = readW(p.id());
             String price = "";
@@ -91,14 +96,20 @@ public class ShadowEmsRunner {
                     price = String.format(java.util.Locale.ROOT, ", price=%.3f", pr);
                 }
             }
-            logger.info("[EMS-SHADOW]   provider {} role={} power={} W{}{}", p.id(), p.role(),
+            logger.info("[{}]   provider {} role={} power={} W{}{}", mode, p.id(), p.role(),
                     Double.isNaN(w) ? "?" : Long.toString(Math.round(w)), p.controllable() ? " (controllable)" : "",
                     price);
         }
         for (EmsAction a : actions) {
             String v = a.kind() == EmsAction.Kind.SET_WATTS ? Math.round(a.value()) + " W"
                     : (a.value() > 0 ? "ON" : "OFF");
-            logger.info("[EMS-SHADOW]   would set {} -> {} — {}", a.itemName(), v, a.reason());
+            if (act != null) {
+                boolean ok = act.apply(a);
+                logger.info("[{}]   {} {} -> {} — {}", mode, ok ? "set" : "skipped (item missing)", a.itemName(), v,
+                        a.reason());
+            } else {
+                logger.info("[{}]   would set {} -> {} — {}", mode, a.itemName(), v, a.reason());
+            }
         }
 
         // Price + deadline strategy: a consumer with a demand is scheduled into the cheapest hours
@@ -110,7 +121,7 @@ public class ShadowEmsRunner {
             if (c.demandKwh() > 0 && c.deadlineHour() >= 0 && c.deadlineHour() <= 23) {
                 boolean runNow = EnergyManagementService.runNowForDeadline(hourNow, c.deadlineHour(), c.demandKwh(),
                         ratedKw(c), schedule);
-                logger.info("[EMS-SHADOW]   deadline plan {} -> {} (demand {} kWh by {}:00, {})", c.id(),
+                logger.info("[{}]   deadline plan {} -> {} (demand {} kWh by {}:00, {})", mode, c.id(),
                         runNow ? "RUN NOW" : "WAIT", c.demandKwh(), c.deadlineHour(),
                         schedule.length >= 24 ? "cheapest-hour ranking" : "no price schedule, latest-hours fallback");
             }

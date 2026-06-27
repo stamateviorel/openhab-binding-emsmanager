@@ -256,6 +256,16 @@
 				<default>1000</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="emsApply" type="boolean" required="false">
+				<label>Shadow engine: apply (write)</label>
+				<description>Let the energy-management engine ACTUATE — apply its plan to the items instead of only
+					logging. Off by
+					default. Only enable on a site where the engine OWNS those items; do NOT enable where the
+					legacy controller pipeline
+					already commands the same boiler/cars/battery.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
 			<parameter name="boilerStateItem" type="text" required="false">
 				<label>Boiler state item</label>
 				<description>Switch item reflecting the boiler's real on/off state (read).</description>
