@@ -175,4 +175,12 @@ public class EmsBridgeConfig {
     // Statistics rollup tier — daily 23:58 snapshot of finalized totals into
     // clean EMS_Stat_* items so month/year charts stay fast. Default on.
     public boolean statisticsRollupEnabled = true;
+
+    // Shadow energy-management engine (Kai Kreuzer's core design, openhab-core #3478).
+    // When enabled, discovers items tagged with the `energy` metadata namespace and LOGS the
+    // plan its surplus strategy would apply — it never writes. Off by default; purely
+    // advisory/experimental alongside the production controller pipeline.
+    public boolean emsShadowEnabled = false;
+    // Surplus a simple on/off load must clear before the shadow engine would switch it on.
+    public double emsSimpleLoadThresholdW = 1000;
 }

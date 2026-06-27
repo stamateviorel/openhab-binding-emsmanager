@@ -28,6 +28,7 @@ import org.openhab.binding.emsmanager.internal.tariff.TariffHandler;
 import org.openhab.core.events.EventPublisher;
 import org.openhab.core.io.net.http.HttpClientFactory;
 import org.openhab.core.items.ItemRegistry;
+import org.openhab.core.items.MetadataRegistry;
 import org.openhab.core.persistence.PersistenceServiceRegistry;
 import org.openhab.core.thing.Bridge;
 import org.openhab.core.thing.Thing;
@@ -54,16 +55,18 @@ public class EmsManagerHandlerFactory extends BaseThingHandlerFactory {
             THING_TYPE_CHARGER);
 
     private final ItemRegistry itemRegistry;
+    private final MetadataRegistry metadataRegistry;
     private final EventPublisher eventPublisher;
     private final HttpClient httpClient;
     private final ThingRegistry thingRegistry;
     private final PersistenceServiceRegistry persistenceRegistry;
 
     @Activate
-    public EmsManagerHandlerFactory(@Reference ItemRegistry itemRegistry, @Reference EventPublisher eventPublisher,
-            @Reference HttpClientFactory httpClientFactory, @Reference ThingRegistry thingRegistry,
-            @Reference PersistenceServiceRegistry persistenceRegistry) {
+    public EmsManagerHandlerFactory(@Reference ItemRegistry itemRegistry, @Reference MetadataRegistry metadataRegistry,
+            @Reference EventPublisher eventPublisher, @Reference HttpClientFactory httpClientFactory,
+            @Reference ThingRegistry thingRegistry, @Reference PersistenceServiceRegistry persistenceRegistry) {
         this.itemRegistry = itemRegistry;
+        this.metadataRegistry = metadataRegistry;
         this.eventPublisher = eventPublisher;
         this.httpClient = httpClientFactory.getCommonHttpClient();
         this.thingRegistry = thingRegistry;
@@ -80,8 +83,8 @@ public class EmsManagerHandlerFactory extends BaseThingHandlerFactory {
         ThingTypeUID thingTypeUID = thing.getThingTypeUID();
 
         if (THING_TYPE_BRIDGE.equals(thingTypeUID)) {
-            return new EmsManagerBridgeHandler((Bridge) thing, itemRegistry, eventPublisher, thingRegistry,
-                    persistenceRegistry, httpClient);
+            return new EmsManagerBridgeHandler((Bridge) thing, itemRegistry, metadataRegistry, eventPublisher,
+                    thingRegistry, persistenceRegistry, httpClient);
         }
         if (THING_TYPE_FORECAST_SOLAR.equals(thingTypeUID)) {
             return new ForecastSolarHandler(thing, httpClient);

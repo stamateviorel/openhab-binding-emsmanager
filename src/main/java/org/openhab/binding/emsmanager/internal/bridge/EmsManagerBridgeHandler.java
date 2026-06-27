@@ -64,6 +64,7 @@ import org.openhab.binding.emsmanager.internal.core.PriorityScheduler;
 import org.openhab.binding.emsmanager.internal.core.RollingAverage;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 import org.openhab.binding.emsmanager.internal.devicemeter.DeviceMeterHandler;
+import org.openhab.binding.emsmanager.internal.ems.ShadowEmsRunner;
 import org.openhab.binding.emsmanager.internal.report.WeeklyReportService;
 import org.openhab.binding.emsmanager.internal.sizing.BatterySizingService;
 import org.openhab.binding.emsmanager.internal.tariff.compare.TariffComparisonService;
@@ -71,6 +72,7 @@ import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.GenericItem;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
+import org.openhab.core.items.MetadataRegistry;
 import org.openhab.core.items.StateChangeListener;
 import org.openhab.core.items.events.ItemEventFactory;
 import org.openhab.core.library.types.DateTimeType;
@@ -105,6 +107,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private final Logger logger = LoggerFactory.getLogger(EmsManagerBridgeHandler.class);
 
     private final ItemRegistry itemRegistry;
+    private final MetadataRegistry metadataRegistry;
     private final EventPublisher eventPublisher;
     private final ThingRegistry thingRegistry;
     private final @Nullable PersistenceServiceRegistry persistenceRegistry;
@@ -133,6 +136,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private @Nullable EwmaFilter gridEwma;
     private @Nullable RollingAverage grid5minAvg;
     private @Nullable ContextBuilder contextBuilder;
+    private @Nullable ShadowEmsRunner shadowEms;
     private @Nullable SoftPeakShavingController softPeakShaving;
     private @Nullable HardPeakShavingController hardPeakShaving;
     private @Nullable SolarSurplusDispatcher solarSurplus;
@@ -143,11 +147,12 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
     private final @Nullable HttpClient httpClient;
 
-    public EmsManagerBridgeHandler(Bridge bridge, ItemRegistry itemRegistry, EventPublisher eventPublisher,
-            ThingRegistry thingRegistry, @Nullable PersistenceServiceRegistry persistenceRegistry,
-            @Nullable HttpClient httpClient) {
+    public EmsManagerBridgeHandler(Bridge bridge, ItemRegistry itemRegistry, MetadataRegistry metadataRegistry,
+            EventPublisher eventPublisher, ThingRegistry thingRegistry,
+            @Nullable PersistenceServiceRegistry persistenceRegistry, @Nullable HttpClient httpClient) {
         super(bridge);
         this.itemRegistry = itemRegistry;
+        this.metadataRegistry = metadataRegistry;
         this.eventPublisher = eventPublisher;
         this.thingRegistry = thingRegistry;
         this.persistenceRegistry = persistenceRegistry;
@@ -160,6 +165,12 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         EmsBridgeConfig config = getConfigAs(EmsBridgeConfig.class);
         shadowMode = config.shadowMode;
         publishLegacyMirrorItems = config.publishLegacyMirrorItems;
+
+        // Shadow energy-management engine (Kai Kreuzer's core design, openhab-core #3478).
+        // Discovers `energy`-tagged items and logs the plan it would apply; never writes.
+        shadowEms = config.emsShadowEnabled
+                ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW)
+                : null;
 
         tickCounter.set(0);
 
@@ -766,6 +777,11 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             publishPhase2Channels(ctx, decisions);
             publishCarReasons(ctx, decisions);
             publishMirrorItems(ctx);
+
+            ShadowEmsRunner ems = shadowEms;
+            if (ems != null && (n == 1 || n % 12 == 0)) {
+                ems.run(ctx.availableExcessW());
+            }
 
             if (n == 1 || n % 12 == 0) {
                 logger.info(

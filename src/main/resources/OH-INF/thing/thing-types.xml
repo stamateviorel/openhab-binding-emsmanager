@@ -241,6 +241,21 @@
 				<default>true</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="emsShadowEnabled" type="boolean" required="false">
+				<label>Shadow energy-management engine</label>
+				<description>Experimental. Runs Kai Kreuzer's core energy-management design (openhab-core #3478) in shadow:
+					discovers items tagged with the "energy" metadata namespace (provider/consumer) and LOGS the plan its
+					surplus
+					strategy would apply — it never writes any item. Off by default.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="emsSimpleLoadThresholdW" type="decimal" required="false">
+				<label>Shadow engine: simple-load threshold (W)</label>
+				<description>Surplus a simple on/off load must clear before the shadow engine would switch it on.</description>
+				<default>1000</default>
+				<advanced>true</advanced>
+			</parameter>
 			<parameter name="boilerStateItem" type="text" required="false">
 				<label>Boiler state item</label>
 				<description>Switch item reflecting the boiler's real on/off state (read).</description>
