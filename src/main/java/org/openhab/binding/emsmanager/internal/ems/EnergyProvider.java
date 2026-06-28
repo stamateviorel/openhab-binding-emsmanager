@@ -28,8 +28,8 @@ import org.eclipse.jdt.annotation.Nullable;
  */
 @NonNullByDefault
 public record EnergyProvider(String id, ProviderRole role, boolean controllable, @Nullable String controlItem,
-        double minW, double maxW, @Nullable String priceItem,
-        @Nullable String scheduleItem) implements EnergyParticipant {
+        double minW, double maxW, @Nullable String priceItem, @Nullable String scheduleItem,
+        @Nullable String socItem) implements EnergyParticipant {
     @Override
     public String id() {
         return id;

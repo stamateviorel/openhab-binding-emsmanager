@@ -54,13 +54,13 @@ class EnergyMetadataParserTest {
 
     @Test
     void parsesControllableBattery() {
-        EnergyProvider prov = assertInstanceOf(EnergyProvider.class, EnergyMetadataParser.parse("Battery_Power",
-                "provider",
-                Map.<String, Object> of("role", "battery", "control", "Battery_Setpoint", "min", -3000, "max", 3000))
-                .orElseThrow());
+        EnergyProvider prov = assertInstanceOf(EnergyProvider.class,
+                EnergyMetadataParser.parse("Battery_Power", "provider", Map.<String, Object> of("role", "battery",
+                        "control", "Battery_Setpoint", "min", -3000, "max", 3000, "soc", "Battery_SoC")).orElseThrow());
         assertEquals(ProviderRole.BATTERY, prov.role());
         assertTrue(prov.controllable());
         assertEquals("Battery_Setpoint", prov.controlItem());
+        assertEquals("Battery_SoC", prov.socItem());
         assertEquals(-3000.0, prov.minW(), 1e-9);
         assertEquals(3000.0, prov.maxW(), 1e-9);
     }

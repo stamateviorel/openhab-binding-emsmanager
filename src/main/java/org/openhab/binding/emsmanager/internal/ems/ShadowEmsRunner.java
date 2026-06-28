@@ -112,6 +112,24 @@ public class ShadowEmsRunner {
             }
         }
 
+        // Battery strategy: command a controllable battery provider to charge from the surplus.
+        for (EnergyProvider p : providers) {
+            if (p.role() == ProviderRole.BATTERY && p.controllable()) {
+                EmsAction ba = EnergyManagementService.planBatteryCharge(surplus, readW(p.socItem()), p);
+                if (ba != null) {
+                    String bv = Math.round(ba.value()) + " W";
+                    if (act != null) {
+                        boolean ok = act.apply(ba);
+                        logger.info("[{}]   {} {} -> {} — {}", mode, ok ? "set" : "skipped (item missing)",
+                                ba.itemName(), bv, ba.reason());
+                    } else {
+                        logger.info("[{}]   would set {} -> {} — {}", mode, ba.itemName(), bv, ba.reason());
+                    }
+                }
+                break;
+            }
+        }
+
         // Price + deadline strategy: a consumer with a demand is scheduled into the cheapest hours
         // before its daily deadline, using the grid provider's 24 h price schedule when available.
         double[] schedule = grid != null ? EnergyManagementService.parseSchedule(readString(grid.scheduleItem()))

@@ -121,6 +121,32 @@ public final class EnergyManagementService {
     }
 
     /**
+     * Battery strategy: charge a controllable battery {@link EnergyProvider} from the available
+     * surplus — Kai's "send a command to a controllable provider to request a new power" (#3478).
+     * The battery's {@code minW} is its (negative) max-charge setpoint, so charging consumes
+     * surplus as a negative watt command clamped to that limit. Returns an idle (0 W) action when
+     * the battery is full, there is no surplus, or the SoC is unknown-high; {@code null} when the
+     * provider is not a controllable battery.
+     *
+     * @param surplusW spare power, watts (NaN/≤0 → idle)
+     * @param socPct battery state of charge 0..100 (NaN treated as 0 = allow charge)
+     * @param battery the candidate provider
+     */
+    public static @Nullable EmsAction planBatteryCharge(double surplusW, double socPct, EnergyProvider battery) {
+        String control = battery.controlItem();
+        if (battery.role() != ProviderRole.BATTERY || !battery.controllable() || control == null) {
+            return null;
+        }
+        double soc = Double.isNaN(socPct) ? 0.0 : socPct;
+        if (soc >= 100.0 || Double.isNaN(surplusW) || surplusW <= 0.0) {
+            return new EmsAction(control, EmsAction.Kind.SET_WATTS, 0.0, "battery: idle (full or no surplus)");
+        }
+        double maxChargeW = Double.isNaN(battery.minW()) ? -surplusW : battery.minW();
+        double cmd = Math.max(maxChargeW, -surplusW); // negative = charge; clamp magnitude to the limit
+        return new EmsAction(control, EmsAction.Kind.SET_WATTS, cmd, "battery: charge from surplus");
+    }
+
+    /**
      * Baseline strategy: dispatch {@code surplusW} of spare power into the consumers.
      *
      * @param surplusW available surplus power in watts (NaN/negative treated as 0)

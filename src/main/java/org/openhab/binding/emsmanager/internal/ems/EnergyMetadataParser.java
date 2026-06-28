@@ -79,7 +79,8 @@ public final class EnergyMetadataParser {
         String control = str(cfg, "control");
         boolean controllable = control != null && !control.isBlank();
         return Optional.of(new EnergyProvider(itemName, role, controllable, controllable ? control : null,
-                dbl(cfg, "min", Double.NaN), dbl(cfg, "max", Double.NaN), str(cfg, "price"), str(cfg, "schedule")));
+                dbl(cfg, "min", Double.NaN), dbl(cfg, "max", Double.NaN), str(cfg, "price"), str(cfg, "schedule"),
+                str(cfg, "soc")));
     }
 
     static Optional<EnergyConsumer> parseConsumer(String itemName, Map<String, Object> cfg) {

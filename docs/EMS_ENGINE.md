@@ -26,7 +26,7 @@ Mark the participating items — no item-name configuration needed:
 // providers
 Number:Power Solar_Power  { energy="provider" [ role="pv" ] }
 Number:Power Grid_Power    { energy="provider" [ role="grid", price="Grid_Price", schedule="Grid_Schedule24h" ] }
-Number:Power Battery_Power { energy="provider" [ role="battery", control="Battery_Setpoint", min=-3000, max=3000 ] }
+Number:Power Battery_Power { energy="provider" [ role="battery", control="Battery_Setpoint", min=-3000, max=3000, soc="Battery_SoC" ] }
 
 // consumers
 Switch       Boiler_Switch { energy="consumer" [ profile="simple", demandKwh=4, deadlineHour=7 ] }
@@ -53,6 +53,9 @@ ship today, both pure/unit-tested:
    provider's 24-hour price schedule. The window wraps past midnight (e.g. 23:00 now, ready by
    07:00 → an overnight window), so an evening boiler correctly waits for the cheap small
    hours. With no price schedule it falls back to the latest hours before the deadline.
+3. **Battery charge** (`planBatteryCharge`) — Kai's controllable-provider case: a controllable
+   battery provider is commanded to charge from the surplus (a negative watt setpoint, clamped
+   to its charge limit), idling when full (`soc=` item) or when there is no surplus.
 
 ## Running it (shadow)
 

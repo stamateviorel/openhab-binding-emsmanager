@@ -127,6 +127,34 @@ class EnergyManagementServiceTest {
         assertEquals(0, EnergyManagementService.parseSchedule("0.3,bad").length);
     }
 
+    private EnergyProvider battery(double min, double max) {
+        return new EnergyProvider("Bat_Setpoint", ProviderRole.BATTERY, true, "Bat_Setpoint", min, max, null, null,
+                null);
+    }
+
+    @Test
+    void batteryChargesFromSurplusClampedToLimit() {
+        EmsAction a = EnergyManagementService.planBatteryCharge(5000, 50, battery(-3000, 3000));
+        assertNotNull(a);
+        assertEquals("Bat_Setpoint", a.itemName());
+        assertEquals(-3000.0, a.value(), 1e-9, "charge clamped to the -3000 W limit");
+        EmsAction b = EnergyManagementService.planBatteryCharge(2000, 50, battery(-3000, 3000));
+        assertEquals(-2000.0, b.value(), 1e-9, "charge at the surplus when below the limit");
+    }
+
+    @Test
+    void batteryIdleWhenFullOrNoSurplus() {
+        assertEquals(0.0, EnergyManagementService.planBatteryCharge(5000, 100, battery(-3000, 3000)).value(), 1e-9);
+        assertEquals(0.0, EnergyManagementService.planBatteryCharge(0, 50, battery(-3000, 3000)).value(), 1e-9);
+    }
+
+    @Test
+    void nonControllableBatteryYieldsNoAction() {
+        EnergyProvider pv = new EnergyProvider("Solar", ProviderRole.PV, false, null, Double.NaN, Double.NaN, null,
+                null, null);
+        assertNull(EnergyManagementService.planBatteryCharge(5000, 50, pv));
+    }
+
     @Test
     void surplusFromGridNet() {
         assertEquals(4200.0, EnergyManagementService.surplusFromGridNet(4200), 1e-9, "exporting → that much spare");
