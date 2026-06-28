@@ -74,6 +74,7 @@ public final class Co2TrackingController implements Controller {
     private double yearKgEmitted = 0.0;
     private double yearSavedKg = 0.0;
     private long lastTickMs = 0L;
+    private boolean restoreApplied = false;
 
     public Co2TrackingController(@Nullable EventPublisher eventPublisher, @Nullable ItemRegistry itemRegistry,
             double gridCo2GramsPerKWh, double injectionCo2OffsetGramsPerKWh, @Nullable EmissionsTracker emissions) {
@@ -82,12 +83,11 @@ public final class Co2TrackingController implements Controller {
         this.gridCo2GramsPerKWh = gridCo2GramsPerKWh;
         this.injectionCo2OffsetGramsPerKWh = injectionCo2OffsetGramsPerKWh;
         this.emissions = emissions;
-
-        // Restore today's value from persisted item state if available.
-        this.todayKgEmitted = readSafe("EMS_CO2_Today_kg");
-        this.todaySavedKg = readSafe("EMS_CO2_Saved_Today_kg");
-        this.yearKgEmitted = readSafe("EMS_CO2_Year_kg");
-        this.yearSavedKg = readSafe("EMS_CO2_Saved_Year_kg");
+        // NB: the restore is deferred to the first evaluate() tick (see restoreApplied), NOT done
+        // here. On a cold start the binding can initialise before mapdb has restored the item
+        // states; reading them in the constructor then yields NULL→0 and the first publish would
+        // overwrite the persisted yearly totals with 0. Restoring on the first tick (~5 s later,
+        // once items are back) avoids that startup race.
     }
 
     @Override
@@ -126,6 +126,16 @@ public final class Co2TrackingController implements Controller {
         double gridW = ctx.gridLoadRawW();
         if (Double.isNaN(gridW)) {
             return List.of();
+        }
+
+        // Deferred restore (first tick, after mapdb has restored item states) — avoids the cold-
+        // start race where a constructor-time read would see NULL→0 and zero out the year totals.
+        if (!restoreApplied) {
+            restoreApplied = true;
+            todayKgEmitted = readSafe("EMS_CO2_Today_kg");
+            todaySavedKg = readSafe("EMS_CO2_Saved_Today_kg");
+            yearKgEmitted = readSafe("EMS_CO2_Year_kg");
+            yearSavedKg = readSafe("EMS_CO2_Saved_Year_kg");
         }
 
         LocalDate today = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).toLocalDate();
