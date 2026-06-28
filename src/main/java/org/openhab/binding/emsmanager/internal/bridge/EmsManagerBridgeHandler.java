@@ -783,7 +783,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
             ShadowEmsRunner ems = shadowEms;
             if (ems != null && (n == 1 || n % 12 == 0)) {
-                ems.run(ctx);
+                ems.run(ctx, decisions);
             }
 
             if (n == 1 || n % 12 == 0) {

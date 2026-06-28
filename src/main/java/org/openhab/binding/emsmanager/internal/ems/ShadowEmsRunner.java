@@ -16,7 +16,9 @@ import java.util.List;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
+import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 import org.openhab.core.items.ItemNotFoundException;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
@@ -61,7 +63,7 @@ public class ShadowEmsRunner {
      *
      * @param fallbackSurplusW surplus to use when no grid provider is tagged to derive it from
      */
-    public void run(EnergyContext ctx) {
+    public void run(EnergyContext ctx, List<SetpointRequest> legacyDecisions) {
         double fallbackSurplusW = ctx.availableExcessW();
         List<EnergyProvider> providers = scanner.providers();
         List<EnergyConsumer> consumers = scanner.consumers();
@@ -152,9 +154,19 @@ public class ShadowEmsRunner {
         for (EnergyConsumer c : consumers) {
             if ("Boiler_technical_room_real".equals(c.id())) {
                 boolean engineOn = !actions.isEmpty() && actions.get(0).value() > 0;
-                boolean legacyOn = ctx.boilerOn();
-                logger.info("[{}]   parity boiler: engine={} legacy={}{}", mode, engineOn ? "ON" : "OFF",
-                        legacyOn ? "ON" : "OFF", engineOn != legacyOn ? " — DIVERGE" : " — match");
+                // Compare against the legacy pipeline's DECISION for the boiler asset this tick;
+                // when it issued none, it is holding the current relay state.
+                Boolean legacyWants = null;
+                for (SetpointRequest r : legacyDecisions) {
+                    if (EmsManagerBindingConstants.ASSET_BOILER.equals(r.assetId())
+                            && r.kind() == SetpointRequest.Kind.ONOFF) {
+                        legacyWants = r.value() > 0;
+                    }
+                }
+                boolean legacyOn = legacyWants != null ? legacyWants : ctx.boilerOn();
+                String src = legacyWants != null ? "decision" : "held-state";
+                logger.info("[{}]   parity boiler: engine={} legacy={} ({}){}", mode, engineOn ? "ON" : "OFF",
+                        legacyOn ? "ON" : "OFF", src, engineOn != legacyOn ? " — DIVERGE" : " — match");
             }
         }
     }
