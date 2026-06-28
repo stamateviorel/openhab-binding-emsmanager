@@ -197,6 +197,40 @@ public final class EnergyManagementService {
         return shed;
     }
 
+    /**
+     * Belgian capacity-tariff peak guard (legacy {@code CapacityTariffShavingController}): true when
+     * the projected end-of-quarter grid-import average would set a NEW month-to-date peak beyond a
+     * safety margin, and that peak clears the minimum billable floor. All values are signed
+     * ({@code − = import}); a new peak is MORE negative than the current one. Exporting/unknown →
+     * false (no import-peak concern).
+     */
+    public static boolean wouldExceedCapacityPeak(double projectedQuarterW, double monthlyPeakW, double minBillableW,
+            double marginW) {
+        if (Double.isNaN(projectedQuarterW) || projectedQuarterW >= 0) {
+            return false;
+        }
+        double mtdPeak = Double.isNaN(monthlyPeakW) ? 0.0 : monthlyPeakW;
+        double threshold = Math.min(mtdPeak, -minBillableW);
+        return projectedQuarterW < threshold - marginW;
+    }
+
+    /** Capacity-tariff shed gate: shed positive load while a new monthly peak is projected. */
+    public static List<EmsAction> applyCapacityGate(List<EmsAction> actions, boolean wouldExceed) {
+        if (!wouldExceed) {
+            return actions;
+        }
+        List<EmsAction> shed = new ArrayList<>();
+        for (EmsAction a : actions) {
+            if (a.value() > 0) {
+                shed.add(new EmsAction(a.itemName(), a.kind(), 0.0,
+                        "capacity-tariff: shedding to avoid a new monthly peak"));
+            } else {
+                shed.add(a);
+            }
+        }
+        return shed;
+    }
+
     /** Outcome of the solar-surplus hysteresis: turn the load on, off, or leave it as-is. */
     public enum SurplusDecision {
         ON,

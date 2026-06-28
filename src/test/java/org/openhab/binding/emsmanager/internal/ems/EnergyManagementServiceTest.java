@@ -187,6 +187,24 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void capacityTariffWouldExceedMonthlyPeak() {
+        // month peak -7000 W import, floor 2500, margin 300.
+        assertTrue(EnergyManagementService.wouldExceedCapacityPeak(-7500, -7000, 2500, 300), "projected new peak");
+        assertFalse(EnergyManagementService.wouldExceedCapacityPeak(-6800, -7000, 2500, 300), "within current peak");
+        assertFalse(EnergyManagementService.wouldExceedCapacityPeak(1500, -7000, 2500, 300), "exporting → no concern");
+        // below the billable floor with no month peak yet → only the floor matters
+        assertTrue(EnergyManagementService.wouldExceedCapacityPeak(-3000, Double.NaN, 2500, 300), "exceeds 2500 floor");
+        assertFalse(EnergyManagementService.wouldExceedCapacityPeak(-2000, Double.NaN, 2500, 300), "under floor");
+    }
+
+    @Test
+    void capacityGateShedsWhenExceeding() {
+        List<EmsAction> plan = List.of(new EmsAction("Boiler", EmsAction.Kind.ONOFF, 1.0, "on"));
+        assertEquals(0.0, EnergyManagementService.applyCapacityGate(plan, true).get(0).value(), 1e-9);
+        assertSame(plan, EnergyManagementService.applyCapacityGate(plan, false));
+    }
+
+    @Test
     void peakShaveEngagesAndRecoversWithHysteresis() {
         // engage only below -15kW; once active, stay active until grid climbs above -10kW
         assertFalse(EnergyManagementService.peakShaveActive(-12000, -15000, -10000, false), "-12kW < 15kW → not yet");

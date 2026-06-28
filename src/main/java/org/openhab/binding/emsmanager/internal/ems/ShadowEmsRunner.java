@@ -49,16 +49,18 @@ public class ShadowEmsRunner {
     private final ItemRegistry itemRegistry;
     private final double simpleLoadThresholdW;
     private final double breakerLimitAperPhase;
+    private final double capacityMinBillableW;
     private final @Nullable EmsActuator actuator;
     // Peak-shave hysteresis state, held across ticks (legacy HardPeakShavingController).
     private boolean peakShaveActive = false;
 
     public ShadowEmsRunner(MetadataRegistry metadataRegistry, ItemRegistry itemRegistry, double simpleLoadThresholdW,
-            double breakerLimitAperPhase, @Nullable EmsActuator actuator) {
+            double breakerLimitAperPhase, double capacityMinBillableW, @Nullable EmsActuator actuator) {
         this.scanner = new MetadataParticipantScanner(metadataRegistry);
         this.itemRegistry = itemRegistry;
         this.simpleLoadThresholdW = simpleLoadThresholdW > 0 ? simpleLoadThresholdW : 1000.0;
         this.breakerLimitAperPhase = breakerLimitAperPhase;
+        this.capacityMinBillableW = capacityMinBillableW;
         this.actuator = actuator;
     }
 
@@ -134,6 +136,10 @@ public class ShadowEmsRunner {
         peakShaveActive = EnergyManagementService.peakShaveActive(ctx.gridLoadRawW(), -15000.0, -10000.0,
                 peakShaveActive);
         actions = EnergyManagementService.applyPeakShaveGate(actions, peakShaveActive);
+        // ...and the capacity-tariff guard: shed if this quarter would set a new monthly import peak.
+        boolean capacityExceed = EnergyManagementService.wouldExceedCapacityPeak(ctx.currentQuarterAvgW(),
+                ctx.monthlyPeakW(), capacityMinBillableW, 300.0);
+        actions = EnergyManagementService.applyCapacityGate(actions, capacityExceed);
         logger.info("[{}] Kai #3478 model: surplus {} W · {} provider(s) · {} consumer(s) → {} action(s) ({})", mode,
                 Math.round(surplus), providers.size(), consumers.size(), actions.size(),
                 act != null ? "applying" : "no writes");
@@ -184,9 +190,10 @@ public class ShadowEmsRunner {
         // Parity foundation: report the safety headroom the legacy SafetyBreakerController guards
         // on (the plan was already gated on it above), and flag where the engine's boiler intent
         // diverges from the live pipeline — the validation signal that must reach zero before cutover.
-        logger.info("[{}]   safety: breaker headroom {} A{} · peak-shaving {}", mode,
+        logger.info("[{}]   safety: breaker headroom {} A{} · peak-shaving {} · capacity-tariff {}", mode,
                 Double.isInfinite(headroomA) ? "n/a" : Long.toString(Math.round(headroomA)),
-                headroomA < 6.0 ? " (LOW, gated)" : "", peakShaveActive ? "ACTIVE — all load shed" : "inactive");
+                headroomA < 6.0 ? " (LOW, gated)" : "", peakShaveActive ? "ACTIVE — load shed" : "inactive",
+                capacityExceed ? "ACTIVE — load shed" : "within budget");
         for (EnergyConsumer c : consumers) {
             if ("Boiler_technical_room_real".equals(c.id())) {
                 boolean engineOn = !actions.isEmpty() && actions.get(0).value() > 0;

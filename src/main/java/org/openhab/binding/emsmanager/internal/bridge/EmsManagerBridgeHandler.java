@@ -172,7 +172,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         EmsActuator actuator = config.emsApply ? new EmsActuator(eventPublisher, itemRegistry) : null;
         shadowEms = config.emsShadowEnabled
                 ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW,
-                        config.mainBreakerAmpsPerPhase, actuator)
+                        config.mainBreakerAmpsPerPhase, config.capacityMinBillableW, actuator)
                 : null;
 
         tickCounter.set(0);
