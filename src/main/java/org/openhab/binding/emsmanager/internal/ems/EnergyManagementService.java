@@ -163,6 +163,51 @@ public final class EnergyManagementService {
         return new EmsAction(control, EmsAction.Kind.SET_WATTS, cmd, "battery: charge from surplus");
     }
 
+    /** Outcome of the solar-surplus hysteresis: turn the load on, off, or leave it as-is. */
+    public enum SurplusDecision {
+        ON,
+        OFF,
+        HOLD
+    }
+
+    /**
+     * The cloudiness-adaptive solar on-threshold from the legacy {@code SolarSurplusDispatcher}:
+     * gloomy (&gt;70 %) → 500 W (grab what little excess there is); sunny (&lt;20 %) → 2500 W (wait
+     * for a clear excess to avoid flapping); else 2000 W. {@code +1500 W} when the battery is below
+     * its reserve (charging the battery comes first). NaN cloudiness → the 2000 W default.
+     */
+    public static double cloudinessAdaptiveThresholdW(double cloudinessPct, boolean batteryBelowReserve) {
+        double base = 2000.0;
+        if (!Double.isNaN(cloudinessPct) && cloudinessPct > 70.0) {
+            base = 500.0;
+        } else if (!Double.isNaN(cloudinessPct) && cloudinessPct < 20.0) {
+            base = 2500.0;
+        }
+        return base + (batteryBelowReserve ? 1500.0 : 0.0);
+    }
+
+    /**
+     * Solar-surplus boiler hysteresis from the legacy {@code SolarSurplusDispatcher}: drives off
+     * the 5-minute average grid power (export +, import −). Turns ON only when the average exceeds
+     * {@code onThresholdW} and the load is currently off; turns OFF only when the average drops
+     * below {@code offThresholdW} (e.g. −1000 W) and the load is on; otherwise HOLD. The
+     * transition-only behaviour avoids flapping and matches the legacy "issue a command only when
+     * the state must change" pattern.
+     */
+    public static SurplusDecision planSolarBoiler(double avg5minGridW, double onThresholdW, double offThresholdW,
+            boolean currentlyOn) {
+        if (Double.isNaN(avg5minGridW)) {
+            return SurplusDecision.HOLD;
+        }
+        if (avg5minGridW > onThresholdW && !currentlyOn) {
+            return SurplusDecision.ON;
+        }
+        if (avg5minGridW < offThresholdW && currentlyOn) {
+            return SurplusDecision.OFF;
+        }
+        return SurplusDecision.HOLD;
+    }
+
     /**
      * SAFETY gate (the legacy {@code SafetyBreakerController} invariant): when the worst-phase
      * breaker headroom is below {@code marginA} (typically 6 A), no plan may ADD load — every

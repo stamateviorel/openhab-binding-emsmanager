@@ -187,6 +187,35 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void cloudinessAdaptiveThreshold() {
+        assertEquals(500.0, EnergyManagementService.cloudinessAdaptiveThresholdW(80, false), 1e-9, "gloomy → grab");
+        assertEquals(2500.0, EnergyManagementService.cloudinessAdaptiveThresholdW(10, false), 1e-9, "sunny → wait");
+        assertEquals(2000.0, EnergyManagementService.cloudinessAdaptiveThresholdW(50, false), 1e-9, "default");
+        assertEquals(3500.0, EnergyManagementService.cloudinessAdaptiveThresholdW(50, true), 1e-9,
+                "+1500 below reserve");
+        assertEquals(2000.0, EnergyManagementService.cloudinessAdaptiveThresholdW(Double.NaN, false), 1e-9, "unknown");
+    }
+
+    @Test
+    void solarBoilerHysteresisTransitionsOnly() {
+        // on only when above on-threshold AND currently off
+        assertEquals(EnergyManagementService.SurplusDecision.ON,
+                EnergyManagementService.planSolarBoiler(2600, 2500, -1000, false));
+        assertEquals(EnergyManagementService.SurplusDecision.HOLD,
+                EnergyManagementService.planSolarBoiler(2600, 2500, -1000, true), "already on → hold");
+        // off only when below off-threshold AND currently on
+        assertEquals(EnergyManagementService.SurplusDecision.OFF,
+                EnergyManagementService.planSolarBoiler(-1200, 2500, -1000, true));
+        assertEquals(EnergyManagementService.SurplusDecision.HOLD,
+                EnergyManagementService.planSolarBoiler(-1200, 2500, -1000, false), "already off → hold");
+        // mid-band and unknown → hold
+        assertEquals(EnergyManagementService.SurplusDecision.HOLD,
+                EnergyManagementService.planSolarBoiler(500, 2500, -1000, false));
+        assertEquals(EnergyManagementService.SurplusDecision.HOLD,
+                EnergyManagementService.planSolarBoiler(Double.NaN, 2500, -1000, true));
+    }
+
+    @Test
     void breakerGateHoldsLoadWhenHeadroomLow() {
         List<EmsAction> plan = List.of(new EmsAction("Boiler", EmsAction.Kind.ONOFF, 1.0, "on"),
                 new EmsAction("Wallbox", EmsAction.Kind.SET_WATTS, 4000, "on"));

@@ -12,7 +12,9 @@
  */
 package org.openhab.binding.emsmanager.internal.ems;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -23,6 +25,7 @@ import org.openhab.core.items.ItemNotFoundException;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
 import org.openhab.core.library.types.DecimalType;
+import org.openhab.core.library.types.OnOffType;
 import org.openhab.core.library.types.QuantityType;
 import org.openhab.core.types.State;
 import org.slf4j.Logger;
@@ -94,6 +97,33 @@ public class ShadowEmsRunner {
         int hourNow = java.time.LocalTime.now().getHour();
         List<EmsAction> actions = EnergyManagementService.planConsumers(consumers, surplus, simpleLoadThresholdW,
                 hourNow, schedule);
+        // Legacy-faithful refinement (ported SolarSurplusDispatcher): simple on/off loads that aren't
+        // deadline-driven follow the 5-min-avg hysteresis with a cloudiness-adaptive on-threshold,
+        // instead of the instantaneous soak — this is what closes the boiler parity divergence.
+        double adaptiveOnW = !Double.isNaN(ctx.cloudinessTodayPct()) ? EnergyManagementService
+                .cloudinessAdaptiveThresholdW(ctx.cloudinessTodayPct(), ctx.batteryBelowReserve())
+                : simpleLoadThresholdW;
+        List<EmsAction> refined = new ArrayList<>();
+        for (int i = 0; i < actions.size(); i++) {
+            EmsAction a = actions.get(i);
+            EnergyConsumer c = consumers.get(i);
+            if (c.profile() instanceof PowerProfile.Simple && a.kind() == EmsAction.Kind.ONOFF
+                    && !a.reason().contains("deadline")) {
+                boolean currentlyOn = readSwitchOn(a.itemName());
+                EnergyManagementService.SurplusDecision d = EnergyManagementService
+                        .planSolarBoiler(ctx.gridLoad5minAvgW(), adaptiveOnW, -1000.0, currentlyOn);
+                double v = d == EnergyManagementService.SurplusDecision.ON ? 1.0
+                        : d == EnergyManagementService.SurplusDecision.OFF ? 0.0 : (currentlyOn ? 1.0 : 0.0);
+                String reason = d == EnergyManagementService.SurplusDecision.ON
+                        ? String.format(Locale.ROOT, "solar surplus on (5min avg > %.0f W)", adaptiveOnW)
+                        : d == EnergyManagementService.SurplusDecision.OFF ? "solar surplus off (5min avg < -1000 W)"
+                                : "solar surplus: hold";
+                refined.add(new EmsAction(a.itemName(), EmsAction.Kind.ONOFF, v, reason));
+            } else {
+                refined.add(a);
+            }
+        }
+        actions = refined;
         // ...then the SAFETY gate: no plan may add load when breaker headroom is low (fuse > economics).
         double headroomA = EnergyManagementService.minBreakerHeadroomA(ctx.totalAmpsL1(), ctx.totalAmpsL2(),
                 ctx.totalAmpsL3(), breakerLimitAperPhase);
@@ -168,6 +198,15 @@ public class ShadowEmsRunner {
                 logger.info("[{}]   parity boiler: engine={} legacy={} ({}){}", mode, engineOn ? "ON" : "OFF",
                         legacyOn ? "ON" : "OFF", src, engineOn != legacyOn ? " — DIVERGE" : " — match");
             }
+        }
+    }
+
+    /** True if the (switch) item is currently ON; false if off or missing. */
+    private boolean readSwitchOn(String itemName) {
+        try {
+            return itemRegistry.getItem(itemName).getState() == OnOffType.ON;
+        } catch (ItemNotFoundException e) {
+            return false;
         }
     }
 
