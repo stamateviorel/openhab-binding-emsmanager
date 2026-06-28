@@ -156,6 +156,15 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void breakerHeadroomIsLimitMinusWorstPhase() {
+        assertEquals(8.0, EnergyManagementService.minBreakerHeadroomA(20, 45, 30, 53), 1e-9, "53 − worst phase 45");
+        assertEquals(53.0, EnergyManagementService.minBreakerHeadroomA(Double.NaN, Double.NaN, Double.NaN, 53), 1e-9,
+                "unknown amps → full headroom");
+        assertEquals(Double.POSITIVE_INFINITY, EnergyManagementService.minBreakerHeadroomA(10, 10, 10, 0), 1e-9,
+                "limit 0 disables the guard");
+    }
+
+    @Test
     void surplusFromGridNet() {
         assertEquals(4200.0, EnergyManagementService.surplusFromGridNet(4200), 1e-9, "exporting → that much spare");
         assertEquals(0.0, EnergyManagementService.surplusFromGridNet(-1500), 1e-9, "importing → no surplus");

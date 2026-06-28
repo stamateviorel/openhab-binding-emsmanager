@@ -16,6 +16,7 @@ import java.util.List;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.core.items.ItemNotFoundException;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
@@ -42,13 +43,15 @@ public class ShadowEmsRunner {
     private final MetadataParticipantScanner scanner;
     private final ItemRegistry itemRegistry;
     private final double simpleLoadThresholdW;
+    private final double breakerLimitAperPhase;
     private final @Nullable EmsActuator actuator;
 
     public ShadowEmsRunner(MetadataRegistry metadataRegistry, ItemRegistry itemRegistry, double simpleLoadThresholdW,
-            @Nullable EmsActuator actuator) {
+            double breakerLimitAperPhase, @Nullable EmsActuator actuator) {
         this.scanner = new MetadataParticipantScanner(metadataRegistry);
         this.itemRegistry = itemRegistry;
         this.simpleLoadThresholdW = simpleLoadThresholdW > 0 ? simpleLoadThresholdW : 1000.0;
+        this.breakerLimitAperPhase = breakerLimitAperPhase;
         this.actuator = actuator;
     }
 
@@ -58,7 +61,8 @@ public class ShadowEmsRunner {
      *
      * @param fallbackSurplusW surplus to use when no grid provider is tagged to derive it from
      */
-    public void run(double fallbackSurplusW) {
+    public void run(EnergyContext ctx) {
+        double fallbackSurplusW = ctx.availableExcessW();
         List<EnergyProvider> providers = scanner.providers();
         List<EnergyConsumer> consumers = scanner.consumers();
         if (providers.isEmpty() && consumers.isEmpty()) {
@@ -142,6 +146,23 @@ public class ShadowEmsRunner {
                 logger.info("[{}]   deadline plan {} -> {} (demand {} kWh by {}:00, {})", mode, c.id(),
                         runNow ? "RUN NOW" : "WAIT", c.demandKwh(), c.deadlineHour(),
                         schedule.length >= 24 ? "cheapest-hour ranking" : "no price schedule, latest-hours fallback");
+            }
+        }
+
+        // P0/P1 parity foundation: report the safety headroom the legacy SafetyBreakerController
+        // guards on, and flag where the engine's boiler intent diverges from what the live pipeline
+        // actually did — this is the validation signal that must reach zero before any cutover.
+        double headroomA = EnergyManagementService.minBreakerHeadroomA(ctx.totalAmpsL1(), ctx.totalAmpsL2(),
+                ctx.totalAmpsL3(), breakerLimitAperPhase);
+        logger.info("[{}]   safety: worst-phase breaker headroom {} A{}", mode,
+                Double.isInfinite(headroomA) ? "n/a" : Long.toString(Math.round(headroomA)),
+                headroomA < 6.0 ? " — LOW, would gate new load (P1)" : "");
+        for (EnergyConsumer c : consumers) {
+            if ("Boiler_technical_room_real".equals(c.id())) {
+                boolean engineOn = !actions.isEmpty() && actions.get(0).value() > 0;
+                boolean legacyOn = ctx.boilerOn();
+                logger.info("[{}]   parity boiler: engine={} legacy={}{}", mode, engineOn ? "ON" : "OFF",
+                        legacyOn ? "ON" : "OFF", engineOn != legacyOn ? " — DIVERGE" : " — match");
             }
         }
     }

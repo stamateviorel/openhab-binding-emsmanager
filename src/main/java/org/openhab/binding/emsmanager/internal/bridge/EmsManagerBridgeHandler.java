@@ -171,7 +171,8 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // `energy`-tagged items and logs the plan; only writes when emsApply is also set.
         EmsActuator actuator = config.emsApply ? new EmsActuator(eventPublisher, itemRegistry) : null;
         shadowEms = config.emsShadowEnabled
-                ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW, actuator)
+                ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW,
+                        config.mainBreakerAmpsPerPhase, actuator)
                 : null;
 
         tickCounter.set(0);
@@ -782,7 +783,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
             ShadowEmsRunner ems = shadowEms;
             if (ems != null && (n == 1 || n % 12 == 0)) {
-                ems.run(ctx.availableExcessW());
+                ems.run(ctx);
             }
 
             if (n == 1 || n % 12 == 0) {

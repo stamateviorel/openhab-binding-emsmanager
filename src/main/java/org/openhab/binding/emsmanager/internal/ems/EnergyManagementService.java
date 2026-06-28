@@ -41,6 +41,23 @@ public final class EnergyManagementService {
     }
 
     /**
+     * Worst-phase breaker headroom in amps — the safety primitive the legacy
+     * {@code SafetyBreakerController} guards on. {@code limitAperPhase} minus the most-loaded
+     * phase; a dispatch that would add load must keep this above a margin (typically 6 A). NaN
+     * phase readings are treated as 0 (no known load), and a non-positive limit disables the
+     * guard (returns +∞).
+     */
+    public static double minBreakerHeadroomA(double l1, double l2, double l3, double limitAperPhase) {
+        if (limitAperPhase <= 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double a1 = Double.isNaN(l1) ? 0.0 : l1;
+        double a2 = Double.isNaN(l2) ? 0.0 : l2;
+        double a3 = Double.isNaN(l3) ? 0.0 : l3;
+        return limitAperPhase - Math.max(a1, Math.max(a2, a3));
+    }
+
+    /**
      * The surplus implied by a grid net-power reading, in canonical sign ({@code + = export}):
      * exported power is the spare energy available to dispatch. This lets the service derive
      * its own surplus straight from a tagged grid {@link EnergyProvider}, so it depends only on
