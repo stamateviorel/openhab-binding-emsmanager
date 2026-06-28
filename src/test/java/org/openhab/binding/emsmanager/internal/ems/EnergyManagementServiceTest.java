@@ -187,6 +187,20 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void evTargetAmpsPerMode() {
+        org.openhab.binding.emsmanager.internal.core.CarSnapshot.Mode OFF = org.openhab.binding.emsmanager.internal.core.CarSnapshot.Mode.OFF;
+        org.openhab.binding.emsmanager.internal.core.CarSnapshot.Mode SNEL = org.openhab.binding.emsmanager.internal.core.CarSnapshot.Mode.SNEL;
+        org.openhab.binding.emsmanager.internal.core.CarSnapshot.Mode ECO = org.openhab.binding.emsmanager.internal.core.CarSnapshot.Mode.ECO;
+        assertEquals(0, EnergyManagementService.evTargetAmps(OFF, 32, 16, 6, 32), "off → 0");
+        assertEquals(0, EnergyManagementService.evTargetAmps(ECO, 4, 16, 6, 32), "headroom < min → 0");
+        assertEquals(20, EnergyManagementService.evTargetAmps(SNEL, 20, 0, 6, 32), "snel → breaker-limited max");
+        assertEquals(32, EnergyManagementService.evTargetAmps(SNEL, 40, 0, 6, 32), "snel capped at 32");
+        assertEquals(10, EnergyManagementService.evTargetAmps(ECO, 16, 10, 6, 32), "eco → solar budget");
+        assertEquals(16, EnergyManagementService.evTargetAmps(ECO, 16, 40, 6, 32), "eco clamped to headroom");
+        assertEquals(0, EnergyManagementService.evTargetAmps(ECO, 16, 4, 6, 32), "eco budget below min → 0");
+    }
+
+    @Test
     void capacityTariffWouldExceedMonthlyPeak() {
         // month peak -7000 W import, floor 2500, margin 300.
         assertTrue(EnergyManagementService.wouldExceedCapacityPeak(-7500, -7000, 2500, 300), "projected new peak");

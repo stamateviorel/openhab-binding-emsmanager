@@ -18,6 +18,7 @@ import java.util.Locale;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 
 /**
  * The energy-management "brain" from Kai Kreuzer's core design (openhab-core #3478) — fed the
@@ -195,6 +196,27 @@ public final class EnergyManagementService {
             }
         }
         return shed;
+    }
+
+    /**
+     * Per-car EV target charging current (legacy {@code EvCoordinatorController} core decision,
+     * before ramp + hysteresis): OFF → 0; if the car's own breaker headroom is below the minimum it
+     * cannot safely charge → 0; SNEL → the breaker-limited maximum; ECO (and any non-SNEL/OFF mode)
+     * → the solar budget in amps, clamped to {@code [minA, headroom, maxA]}, or 0 when the budget
+     * cannot sustain the minimum.
+     */
+    public static int evTargetAmps(CarSnapshot.Mode mode, int carHeadroomA, double ecoBudgetA, int minA, int maxA) {
+        if (mode == CarSnapshot.Mode.OFF || carHeadroomA < minA) {
+            return 0;
+        }
+        if (mode == CarSnapshot.Mode.SNEL) {
+            return Math.min(maxA, carHeadroomA);
+        }
+        int eco = (int) Math.floor(ecoBudgetA);
+        if (eco < minA) {
+            return 0;
+        }
+        return Math.min(Math.min(eco, maxA), carHeadroomA);
     }
 
     /**
