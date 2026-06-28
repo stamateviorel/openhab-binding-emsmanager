@@ -86,7 +86,16 @@ public class ShadowEmsRunner {
 
         EmsActuator act = actuator;
         String mode = act != null ? "EMS-APPLY" : "EMS-SHADOW";
-        List<EmsAction> actions = EnergyManagementService.planSurplusDispatch(surplus, consumers, simpleLoadThresholdW);
+        // Unified plan: one coherent decision per consumer (surplus dispatch + cheapest-window)...
+        double[] schedule = grid != null ? EnergyManagementService.parseSchedule(readString(grid.scheduleItem()))
+                : new double[0];
+        int hourNow = java.time.LocalTime.now().getHour();
+        List<EmsAction> actions = EnergyManagementService.planConsumers(consumers, surplus, simpleLoadThresholdW,
+                hourNow, schedule);
+        // ...then the SAFETY gate: no plan may add load when breaker headroom is low (fuse > economics).
+        double headroomA = EnergyManagementService.minBreakerHeadroomA(ctx.totalAmpsL1(), ctx.totalAmpsL2(),
+                ctx.totalAmpsL3(), breakerLimitAperPhase);
+        actions = EnergyManagementService.applyBreakerGate(actions, headroomA, 6.0);
         logger.info("[{}] Kai #3478 model: surplus {} W · {} provider(s) · {} consumer(s) → {} action(s) ({})", mode,
                 Math.round(surplus), providers.size(), consumers.size(), actions.size(),
                 act != null ? "applying" : "no writes");
@@ -134,29 +143,12 @@ public class ShadowEmsRunner {
             }
         }
 
-        // Price + deadline strategy: a consumer with a demand is scheduled into the cheapest hours
-        // before its daily deadline, using the grid provider's 24 h price schedule when available.
-        double[] schedule = grid != null ? EnergyManagementService.parseSchedule(readString(grid.scheduleItem()))
-                : new double[0];
-        int hourNow = java.time.LocalTime.now().getHour();
-        for (EnergyConsumer c : consumers) {
-            if (c.demandKwh() > 0 && c.deadlineHour() >= 0 && c.deadlineHour() <= 23) {
-                boolean runNow = EnergyManagementService.runNowForDeadline(hourNow, c.deadlineHour(), c.demandKwh(),
-                        ratedKw(c), schedule);
-                logger.info("[{}]   deadline plan {} -> {} (demand {} kWh by {}:00, {})", mode, c.id(),
-                        runNow ? "RUN NOW" : "WAIT", c.demandKwh(), c.deadlineHour(),
-                        schedule.length >= 24 ? "cheapest-hour ranking" : "no price schedule, latest-hours fallback");
-            }
-        }
-
-        // P0/P1 parity foundation: report the safety headroom the legacy SafetyBreakerController
-        // guards on, and flag where the engine's boiler intent diverges from what the live pipeline
-        // actually did — this is the validation signal that must reach zero before any cutover.
-        double headroomA = EnergyManagementService.minBreakerHeadroomA(ctx.totalAmpsL1(), ctx.totalAmpsL2(),
-                ctx.totalAmpsL3(), breakerLimitAperPhase);
+        // Parity foundation: report the safety headroom the legacy SafetyBreakerController guards
+        // on (the plan was already gated on it above), and flag where the engine's boiler intent
+        // diverges from the live pipeline — the validation signal that must reach zero before cutover.
         logger.info("[{}]   safety: worst-phase breaker headroom {} A{}", mode,
                 Double.isInfinite(headroomA) ? "n/a" : Long.toString(Math.round(headroomA)),
-                headroomA < 6.0 ? " — LOW, would gate new load (P1)" : "");
+                headroomA < 6.0 ? " — LOW, load held (breaker gate active)" : "");
         for (EnergyConsumer c : consumers) {
             if ("Boiler_technical_room_real".equals(c.id())) {
                 boolean engineOn = !actions.isEmpty() && actions.get(0).value() > 0;
@@ -165,15 +157,6 @@ public class ShadowEmsRunner {
                         legacyOn ? "ON" : "OFF", engineOn != legacyOn ? " — DIVERGE" : " — match");
             }
         }
-    }
-
-    /** kW draw used to size cheapest-window planning: a controllable load's max, else the threshold. */
-    private double ratedKw(EnergyConsumer c) {
-        PowerProfile profile = c.profile();
-        if (profile instanceof PowerProfile.Controllable cp && !Double.isNaN(cp.maxW()) && cp.maxW() > 0) {
-            return cp.maxW() / 1000.0;
-        }
-        return simpleLoadThresholdW / 1000.0;
     }
 
     /** Read an item's state as a string, or null if missing. */

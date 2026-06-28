@@ -164,6 +164,84 @@ public final class EnergyManagementService {
     }
 
     /**
+     * SAFETY gate (the legacy {@code SafetyBreakerController} invariant): when the worst-phase
+     * breaker headroom is below {@code marginA} (typically 6 A), no plan may ADD load — every
+     * turn-on / set-to-positive action is overridden to off/0. Economics never outrank the fuse.
+     * Returns the list unchanged when headroom is sufficient (or unknown/infinite).
+     */
+    public static List<EmsAction> applyBreakerGate(List<EmsAction> actions, double headroomA, double marginA) {
+        if (Double.isInfinite(headroomA) || headroomA >= marginA) {
+            return actions;
+        }
+        List<EmsAction> gated = new ArrayList<>();
+        for (EmsAction a : actions) {
+            if (a.value() > 0) {
+                gated.add(new EmsAction(a.itemName(), a.kind(), 0.0, "breaker safety: headroom low, load held"));
+            } else {
+                gated.add(a);
+            }
+        }
+        return gated;
+    }
+
+    /**
+     * Unified per-consumer plan combining the two strategies into ONE coherent decision each —
+     * resolving the conflict where surplus-dispatch and cheapest-window could disagree. A consumer
+     * with a demand whose cheapest hour is now runs at full power (drawing from the grid in that
+     * cheap hour); otherwise it is dispatched from the remaining surplus (controllable → fitting
+     * watts, simple → on above the threshold). Deadline-driven loads do not consume the surplus
+     * budget (they are grid-scheduled), so surplus still flows to the other consumers.
+     */
+    public static List<EmsAction> planConsumers(List<EnergyConsumer> consumers, double surplusW,
+            double simpleLoadThresholdW, int hourNow, double[] priceSchedule24h) {
+        List<EmsAction> actions = new ArrayList<>();
+        double remaining = Double.isNaN(surplusW) ? 0.0 : Math.max(0.0, surplusW);
+        for (EnergyConsumer c : consumers) {
+            boolean demandDriven = c.demandKwh() > 0 && c.deadlineHour() >= 0 && c.deadlineHour() <= 23
+                    && runNowForDeadline(hourNow, c.deadlineHour(), c.demandKwh(), ratedKw(c, simpleLoadThresholdW),
+                            priceSchedule24h);
+            PowerProfile profile = c.profile();
+            if (profile instanceof PowerProfile.Simple sp) {
+                if (demandDriven) {
+                    actions.add(new EmsAction(sp.itemName(), EmsAction.Kind.ONOFF, 1.0, "deadline: cheapest hour, on"));
+                } else if (remaining >= simpleLoadThresholdW) {
+                    actions.add(new EmsAction(sp.itemName(), EmsAction.Kind.ONOFF, 1.0, "surplus dispatch: on"));
+                    remaining -= simpleLoadThresholdW;
+                } else {
+                    actions.add(new EmsAction(sp.itemName(), EmsAction.Kind.ONOFF, 0.0,
+                            "idle: no surplus, deadline not due"));
+                }
+            } else if (profile instanceof PowerProfile.Controllable cp) {
+                if (demandDriven) {
+                    double w = Double.isNaN(cp.maxW()) ? Math.max(remaining, 1.0) : cp.maxW();
+                    actions.add(new EmsAction(cp.itemName(), EmsAction.Kind.SET_WATTS, w,
+                            "deadline: cheapest hour, full power"));
+                } else {
+                    double max = Double.isNaN(cp.maxW()) ? remaining : cp.maxW();
+                    double min = Double.isNaN(cp.minW()) ? 0.0 : cp.minW();
+                    double want = Math.min(max, remaining);
+                    if (want > 0 && want >= min) {
+                        actions.add(new EmsAction(cp.itemName(), EmsAction.Kind.SET_WATTS, want, "surplus dispatch"));
+                        remaining -= want;
+                    } else {
+                        actions.add(new EmsAction(cp.itemName(), EmsAction.Kind.SET_WATTS, 0.0,
+                                "idle: no surplus, deadline not due"));
+                    }
+                }
+            }
+        }
+        return actions;
+    }
+
+    /** kW draw used to size a consumer's cheapest-window need: controllable max, else the threshold. */
+    private static double ratedKw(EnergyConsumer c, double simpleLoadThresholdW) {
+        if (c.profile() instanceof PowerProfile.Controllable cp && !Double.isNaN(cp.maxW()) && cp.maxW() > 0) {
+            return cp.maxW() / 1000.0;
+        }
+        return (simpleLoadThresholdW > 0 ? simpleLoadThresholdW : 1000.0) / 1000.0;
+    }
+
+    /**
      * Baseline strategy: dispatch {@code surplusW} of spare power into the consumers.
      *
      * @param surplusW available surplus power in watts (NaN/negative treated as 0)

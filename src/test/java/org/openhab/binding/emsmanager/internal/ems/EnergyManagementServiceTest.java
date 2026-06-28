@@ -87,6 +87,37 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void unifiedDeadlineDrivenLoadRunsWithoutSurplus() {
+        EnergyConsumer boiler = new EnergyConsumer("Boiler", new PowerProfile.Simple("Boiler"), 4.0, 10);
+        List<EmsAction> a = EnergyManagementService.planConsumers(List.of(boiler), 0.0, 1000, 10, new double[0]);
+        assertEquals(1.0, a.get(0).value(), 1e-9, "deadline hour now → on even with no surplus");
+        assertTrue(a.get(0).reason().contains("deadline"));
+    }
+
+    @Test
+    void unifiedSurplusDriveWhenNoDeadlineDue() {
+        EnergyConsumer boiler = new EnergyConsumer("Boiler", new PowerProfile.Simple("Boiler"), 0, -1);
+        assertEquals(1.0,
+                EnergyManagementService.planConsumers(List.of(boiler), 1500, 1000, 12, new double[0]).get(0).value(),
+                1e-9);
+        assertEquals(0.0,
+                EnergyManagementService.planConsumers(List.of(boiler), 500, 1000, 12, new double[0]).get(0).value(),
+                1e-9);
+    }
+
+    @Test
+    void unifiedDeadlineLoadDoesNotConsumeSurplusBudget() {
+        EnergyConsumer boiler = new EnergyConsumer("Boiler", new PowerProfile.Simple("Boiler"), 4.0, 10);
+        EnergyConsumer wallbox = new EnergyConsumer("Wallbox", new PowerProfile.Controllable("Wallbox", 0, 3000), 0,
+                -1);
+        List<EmsAction> a = EnergyManagementService.planConsumers(List.of(boiler, wallbox), 3000, 1000, 10,
+                new double[0]);
+        assertEquals(1.0, a.get(0).value(), 1e-9, "boiler on (deadline-driven)");
+        assertEquals(3000.0, a.get(1).value(), 1e-9,
+                "wallbox still gets the full surplus — deadline load didn't eat it");
+    }
+
+    @Test
     void runsInTheCheapestHoursBeforeDeadline() {
         // Deadline 7, a 2 kW load needing 2 kWh = 1 h; it should pick the single cheapest hour left.
         double[] sched = new double[24];
@@ -153,6 +184,23 @@ class EnergyManagementServiceTest {
         EnergyProvider pv = new EnergyProvider("Solar", ProviderRole.PV, false, null, Double.NaN, Double.NaN, null,
                 null, null);
         assertNull(EnergyManagementService.planBatteryCharge(5000, 50, pv));
+    }
+
+    @Test
+    void breakerGateHoldsLoadWhenHeadroomLow() {
+        List<EmsAction> plan = List.of(new EmsAction("Boiler", EmsAction.Kind.ONOFF, 1.0, "on"),
+                new EmsAction("Wallbox", EmsAction.Kind.SET_WATTS, 4000, "on"));
+        List<EmsAction> gated = EnergyManagementService.applyBreakerGate(plan, 3.0, 6.0);
+        assertEquals(0.0, gated.get(0).value(), 1e-9, "boiler forced off — fuse outranks economics");
+        assertEquals(0.0, gated.get(1).value(), 1e-9, "wallbox forced to 0 W");
+        assertTrue(gated.get(0).reason().contains("breaker safety"));
+    }
+
+    @Test
+    void breakerGatePassesWhenHeadroomOk() {
+        List<EmsAction> plan = List.of(new EmsAction("Boiler", EmsAction.Kind.ONOFF, 1.0, "on"));
+        assertSame(plan, EnergyManagementService.applyBreakerGate(plan, 20.0, 6.0), "ample headroom → untouched");
+        assertSame(plan, EnergyManagementService.applyBreakerGate(plan, Double.POSITIVE_INFINITY, 6.0));
     }
 
     @Test
