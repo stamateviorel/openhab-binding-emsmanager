@@ -163,6 +163,40 @@ public final class EnergyManagementService {
         return new EmsAction(control, EmsAction.Kind.SET_WATTS, cmd, "battery: charge from surplus");
     }
 
+    /**
+     * Hard peak-shave hysteresis (legacy {@code HardPeakShavingController}): becomes active when
+     * grid import exceeds the engage threshold ({@code gridW < engageW}, e.g. −15000 W = importing
+     * &gt; 15 kW) and stays active until the grid recovers past {@code recoverW} (e.g. −10000 W).
+     * The caller holds the active flag across ticks. (The legacy 180 s confirmation window is a
+     * de-noising optimisation; the engine engages sooner, which is the safer direction.)
+     */
+    public static boolean peakShaveActive(double gridW, double engageW, double recoverW, boolean currentlyActive) {
+        if (Double.isNaN(gridW)) {
+            return currentlyActive;
+        }
+        return currentlyActive ? gridW <= recoverW : gridW < engageW;
+    }
+
+    /**
+     * Peak-shave shed gate: while peak-shaving is active, no load may stay on — every positive
+     * action is shed to off/0. Like the breaker gate, this is a safety override that economics
+     * cannot beat. Returns the list unchanged when not shaving.
+     */
+    public static List<EmsAction> applyPeakShaveGate(List<EmsAction> actions, boolean active) {
+        if (!active) {
+            return actions;
+        }
+        List<EmsAction> shed = new ArrayList<>();
+        for (EmsAction a : actions) {
+            if (a.value() > 0) {
+                shed.add(new EmsAction(a.itemName(), a.kind(), 0.0, "peak-shaving: shedding load (grid import peak)"));
+            } else {
+                shed.add(a);
+            }
+        }
+        return shed;
+    }
+
     /** Outcome of the solar-surplus hysteresis: turn the load on, off, or leave it as-is. */
     public enum SurplusDecision {
         ON,

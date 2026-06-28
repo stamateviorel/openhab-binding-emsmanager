@@ -50,6 +50,8 @@ public class ShadowEmsRunner {
     private final double simpleLoadThresholdW;
     private final double breakerLimitAperPhase;
     private final @Nullable EmsActuator actuator;
+    // Peak-shave hysteresis state, held across ticks (legacy HardPeakShavingController).
+    private boolean peakShaveActive = false;
 
     public ShadowEmsRunner(MetadataRegistry metadataRegistry, ItemRegistry itemRegistry, double simpleLoadThresholdW,
             double breakerLimitAperPhase, @Nullable EmsActuator actuator) {
@@ -128,6 +130,10 @@ public class ShadowEmsRunner {
         double headroomA = EnergyManagementService.minBreakerHeadroomA(ctx.totalAmpsL1(), ctx.totalAmpsL2(),
                 ctx.totalAmpsL3(), breakerLimitAperPhase);
         actions = EnergyManagementService.applyBreakerGate(actions, headroomA, 6.0);
+        // ...and the hard peak-shave gate: shed all load while a sustained grid import peak is active.
+        peakShaveActive = EnergyManagementService.peakShaveActive(ctx.gridLoadRawW(), -15000.0, -10000.0,
+                peakShaveActive);
+        actions = EnergyManagementService.applyPeakShaveGate(actions, peakShaveActive);
         logger.info("[{}] Kai #3478 model: surplus {} W · {} provider(s) · {} consumer(s) → {} action(s) ({})", mode,
                 Math.round(surplus), providers.size(), consumers.size(), actions.size(),
                 act != null ? "applying" : "no writes");
@@ -178,9 +184,9 @@ public class ShadowEmsRunner {
         // Parity foundation: report the safety headroom the legacy SafetyBreakerController guards
         // on (the plan was already gated on it above), and flag where the engine's boiler intent
         // diverges from the live pipeline — the validation signal that must reach zero before cutover.
-        logger.info("[{}]   safety: worst-phase breaker headroom {} A{}", mode,
+        logger.info("[{}]   safety: breaker headroom {} A{} · peak-shaving {}", mode,
                 Double.isInfinite(headroomA) ? "n/a" : Long.toString(Math.round(headroomA)),
-                headroomA < 6.0 ? " — LOW, load held (breaker gate active)" : "");
+                headroomA < 6.0 ? " (LOW, gated)" : "", peakShaveActive ? "ACTIVE — all load shed" : "inactive");
         for (EnergyConsumer c : consumers) {
             if ("Boiler_technical_room_real".equals(c.id())) {
                 boolean engineOn = !actions.isEmpty() && actions.get(0).value() > 0;

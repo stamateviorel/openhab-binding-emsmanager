@@ -187,6 +187,26 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void peakShaveEngagesAndRecoversWithHysteresis() {
+        // engage only below -15kW; once active, stay active until grid climbs above -10kW
+        assertFalse(EnergyManagementService.peakShaveActive(-12000, -15000, -10000, false), "-12kW < 15kW → not yet");
+        assertTrue(EnergyManagementService.peakShaveActive(-16000, -15000, -10000, false), "-16kW import → engage");
+        assertTrue(EnergyManagementService.peakShaveActive(-12000, -15000, -10000, true), "active, -12kW → hold");
+        assertFalse(EnergyManagementService.peakShaveActive(-9000, -15000, -10000, true), "recovered above -10kW");
+    }
+
+    @Test
+    void peakShaveGateShedsAllLoadWhenActive() {
+        List<EmsAction> plan = List.of(new EmsAction("Boiler", EmsAction.Kind.ONOFF, 1.0, "on"),
+                new EmsAction("Wallbox", EmsAction.Kind.SET_WATTS, 4000, "on"));
+        List<EmsAction> shed = EnergyManagementService.applyPeakShaveGate(plan, true);
+        assertEquals(0.0, shed.get(0).value(), 1e-9);
+        assertEquals(0.0, shed.get(1).value(), 1e-9);
+        assertTrue(shed.get(0).reason().contains("peak-shaving"));
+        assertSame(plan, EnergyManagementService.applyPeakShaveGate(plan, false), "inactive → untouched");
+    }
+
+    @Test
     void cloudinessAdaptiveThreshold() {
         assertEquals(500.0, EnergyManagementService.cloudinessAdaptiveThresholdW(80, false), 1e-9, "gloomy → grab");
         assertEquals(2500.0, EnergyManagementService.cloudinessAdaptiveThresholdW(10, false), 1e-9, "sunny → wait");
