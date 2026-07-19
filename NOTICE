@@ -1,0 +1,23 @@
+EMS Manager Binding for openHAB
+
+This content is produced and maintained by Stamate Viorel.
+
+This program and the accompanying materials are made available under the
+terms of the Eclipse Public License 2.0 which is available at
+https://www.eclipse.org/legal/epl-2.0/.
+
+SPDX-License-Identifier: EPL-2.0
+
+This add-on follows the openHAB add-on bundle structure and builds against
+the openHAB project (https://github.com/openhab/openhab-addons),
+Copyright (c) Contributors to the openHAB project, also licensed under the
+Eclipse Public License 2.0.
+
+Optional third-party services, contacted at runtime only when the user
+configures them (each governed by its own terms of use):
+  - Forecast.Solar               https://forecast.solar
+  - ENTSO-E Transparency Platform https://transparency.entsoe.eu
+  - Tibber API                   https://developer.tibber.com
+  - aWATTar API                  https://www.awattar.com
+  - Electricity Maps             https://www.electricitymaps.com
+  - Open-Meteo                   https://open-meteo.com

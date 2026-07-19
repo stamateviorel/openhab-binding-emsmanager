@@ -1,0 +1,64 @@
+// =====================================================================
+// EMS Manager — example items.
+//
+// (A) SOURCE items you provide from your device bindings (inverter,
+//     meter, OCPP, KNX...). Names must match the bridge config in
+//     demo.things. Shown here as plain Number items for illustration.
+// (B) OUTPUT items linked to binding channels (read-only readback).
+// (C) ANALYTICS items the binding writes by name (cost, kWh, CO2, ...).
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// (A) SOURCE items — fed by YOUR device bindings
+// ---------------------------------------------------------------------
+Number:Power  Grid_Power      "Grid [%.0f W]"      // + = export, - = import
+Number:Power  Solar_Power        "Solar [%.0f W]"
+Number:Power  House_Power     "House load [%.0f W]"
+Number:Power  Battery_Power   "Battery [%.0f W]"   // + = charging
+Number        Battery_SoC     "Battery SoC [%.0f %%]"
+Number        Battery_Reserve_Target_Pct "Reserve target [%.0f %%]"
+Switch        Boiler_Switch   "Boiler"
+Switch        Aircon_Switch "Aircon"
+Number        Weather_Cloudiness  "Cloudiness [%.0f %%]"
+Number:Temperature Indoor_Temp     "Indoor temp [%.1f °C]"
+Number:Temperature Indoor_Setpoint "Indoor setpoint [%.1f °C]"
+Number:Power  Boiler_Power    "Boiler power [%.0f W]"
+Number:Power  HeatPump_Power  "Heat pump power [%.0f W]"
+
+// EV chargers (per car N). Mode takes ECO / SNEL / OFF.
+String  EVSE1_Mode  "EVSE1 mode"      Switch EVSE1_Cable "EVSE1 cable"
+String  EVSE1_Status "EVSE1 status"   Number EVSE1_CurrentLimit "EVSE1 limit [A]"
+Switch  EVSE1_Pause "EVSE1 pause"     Switch EVSE1_Charging "EVSE1 charging"
+Number:Power EVSE1_Power "EVSE1 power [%.0f W]"
+String  EVSE2_Mode  "EVSE2 mode"      Switch EVSE2_Cable "EVSE2 cable"
+String  EVSE2_Status "EVSE2 status"   Number EVSE2_CurrentLimit "EVSE2 limit [A]"
+Switch  EVSE2_Pause "EVSE2 pause"     Switch EVSE2_Charging "EVSE2 charging"
+Number:Power EVSE2_Power "EVSE2 power [%.0f W]"
+
+// ---------------------------------------------------------------------
+// (B) Channel-linked readback (optional, for dashboards)
+// ---------------------------------------------------------------------
+String        EMS_Mode            "Energy mode [%s]"            { channel="emsmanager:bridge:home:energyMode" }
+Number:Power  EMS_Available_Excess "Available excess [%.0f W]"  { channel="emsmanager:bridge:home:availableExcessW" }
+Number        EMS_HardPeak_Level  "Peak shaving tier [%d]"      { channel="emsmanager:bridge:home:hardPeakShavingLevel" }
+Number:Power  EMS_Cap_MonthlyPeak "Capacity monthly peak [%.0f W]" { channel="emsmanager:bridge:home:capMonthlyPeakW" }
+String        EMS_LastDecision    "Last decision [%s]"          { channel="emsmanager:bridge:home:lastDecisionLog" }
+
+// Tariff + forecast mirrors that the bridge ContextBuilder reads
+Number        EMS_Tariff_Now_EurPerKWh    { channel="emsmanager:tariff:home:tariff:nowPriceEurPerKWh" }
+String        EMS_Tariff_Schedule24h_CSV  { channel="emsmanager:tariff:home:tariff:schedule24hCsv" }
+Number:Energy EMS_Forecast_Today_kWh      { channel="emsmanager:forecast-solar:home:fc:todayKwh" }
+Number:Energy EMS_Forecast_Tomorrow_kWh   { channel="emsmanager:forecast-solar:home:fc:tomorrowKwh" }
+
+// ---------------------------------------------------------------------
+// (C) ANALYTICS items the binding writes by name (must exist to receive)
+// ---------------------------------------------------------------------
+Number:Energy EMS_SelfConsumption_kWh_Day   "Self-consumption today [%.2f kWh]"
+Number:Energy EMS_FeedIn_kWh_Day            "Feed-in today [%.2f kWh]"
+Number:Energy EMS_Supply_kWh_Day            "Grid supply today [%.2f kWh]"
+Number        EMS_Cost_EUR_Total            "Electricity cost total [%.2f]"
+Number        EMS_Savings_EUR_Total         "Self-consumption savings [%.2f]"
+Number        EMS_Earnings_EUR_Total        "Feed-in earnings [%.2f]"
+Number        EMS_CO2_Net_Today_kg          "CO2 net today [%.2f kg]"
+// + the binding also writes the _Yesterday/_Last7Days/_Last30Days/_Year
+//   rollups and the EMS_Stat_* daily-snapshot series (see ARCHITECTURE.md).

@@ -1,0 +1,100 @@
+// =====================================================================
+// EMS Manager — example Things for a generic residential setup:
+//   SolarEdge-class inverter + battery, two EV chargers, a heat pump.
+//
+// The bridge does not talk to hardware — it reads/writes the items you
+// map below. Replace the item names with your own. Start with
+// shadowMode=true, watch the logs, then flip it off.
+// =====================================================================
+
+Bridge emsmanager:bridge:home "Home EMS" [
+    // --- engine ---
+    tickIntervalSeconds=5,
+    shadowMode=true,                       // <-- start safe; flip to false when verified
+
+    // --- source items (point these at YOUR items) ---
+    gridLoadItem="Grid_Power",             // + = export, - = import (negate if your inverter is the opposite)
+    solarLoadItem="Solar_Power",
+    houseLoadSumItem="House_Power",
+    batteryLoadItem="Battery_Power",       // + = charging
+    batteryPercentageItem="Battery_SoC",
+    batteryReserveTargetItem="Battery_Reserve_Target_Pct",
+    boilerStateItem="Boiler_Switch",
+    aircoGroupItem="Aircon_Switch",
+    weatherCloudinessItem="Weather_Cloudiness",
+
+    // --- safety / electrical ---
+    breakerLimitA=40,                      // main breaker per phase
+    gridSafetyMarginW=500,
+    gridEwmaTauSec=30,
+
+    // --- EV (item-name patterns, %d = car number) ---
+    carCount=2,
+    carModeItemPattern="EVSE%d_Mode",      // ECO / SNEL / OFF
+    carCableItemPattern="EVSE%d_Cable",
+    carStatusItemPattern="EVSE%d_Status",
+    carCurrentLimitItemPattern="EVSE%d_CurrentLimit",
+    carPauseItemPattern="EVSE%d_Pause",
+    carChargingItemPattern="EVSE%d_Charging",
+    carPowerOcppItemPattern="EVSE%d_Power",
+    carAmpsL1ItemPattern="EVSE%d_Amps_L1",
+    carAmpsL2ItemPattern="EVSE%d_Amps_L2",
+    carAmpsL3ItemPattern="EVSE%d_Amps_L3",
+
+    // --- battery control (auto needs a writable setpoint item) ---
+    batteryControlMode="readonly",         // auto | fixed | readonly
+    batterySetpointItemName="",
+    batteryMinSetpointW=-5000,
+    batteryMaxSetpointW=5000,
+
+    // --- economics ---
+    injectionPriceEurPerKWh=0.05,
+
+    // --- capacity / demand tariff (set to your market; 2500 = Belgian floor) ---
+    capacityMinBillableW=2500,
+
+    // --- CO2 ---
+    gridCo2GramsPerKWh=140,
+    injectionCo2OffsetGramsPerKWh=350,
+    emissionsProvider="fixed",
+
+    // --- forecast location (heat-pump planner, OpenMeteo) ---
+    latitude=50.85,
+    longitude=4.35,
+
+    // --- flags ---
+    statisticsRollupEnabled=true,
+    publishLegacyMirrorItems=false
+] {
+
+    // Solar production forecast
+    Thing forecast-solar fc "Solar Forecast" [
+        lat=50.85, lon=4.35, declination=35, azimuth=0, kwp=8, refreshIntervalMin=70
+    ]
+
+    // Electricity tariff (switch kind any time)
+    Thing tariff tariff "Electricity Tariff" [
+        kind="day-night", dayPriceEurPerKWh=0.32, nightPriceEurPerKWh=0.18, dayStartHour=7, dayEndHour=22
+    ]
+
+    // Heat pump optimizer
+    Thing heatpump hp "Heat Pump" [
+        currentTempItem="Indoor_Temp", targetTempItem="Indoor_Setpoint", scopCop=3.8
+    ]
+
+    // Two EV chargers
+    Thing charger evse1 "EV charger 1" [
+        carKey="1", modeItem="EVSE1_Mode", cableItem="EVSE1_Cable", statusItem="EVSE1_Status",
+        currentLimitItem="EVSE1_CurrentLimit", pauseItem="EVSE1_Pause", chargingItem="EVSE1_Charging",
+        powerOcppItem="EVSE1_Power"
+    ]
+    Thing charger evse2 "EV charger 2" [
+        carKey="2", modeItem="EVSE2_Mode", cableItem="EVSE2_Cable", statusItem="EVSE2_Status",
+        currentLimitItem="EVSE2_CurrentLimit", pauseItem="EVSE2_Pause", chargingItem="EVSE2_Charging",
+        powerOcppItem="EVSE2_Power"
+    ]
+
+    // Sub-metered loads for the per-device breakdown (optional)
+    Thing device-meter boiler "Boiler" [ powerItem="Boiler_Power", powerInKw=false, category="water-heater" ]
+    Thing device-meter hp_meter "Heat pump" [ powerItem="HeatPump_Power", powerInKw=false, category="heating" ]
+}
