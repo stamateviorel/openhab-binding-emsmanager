@@ -1184,6 +1184,11 @@
 			<channel id="effectivePriceEurPerKWh" typeId="hpEffectivePrice"/>
 			<channel id="dailyKwhEstimate" typeId="hpDailyKwh"/>
 			<channel id="optimizerActive" typeId="hpOptimizerActive"/>
+			<channel id="modelR" typeId="hpModelR"/>
+			<channel id="modelC" typeId="hpModelC"/>
+			<channel id="modelRmse" typeId="hpModelRmse"/>
+			<channel id="planPreheatStartsAt" typeId="hpPlanPreheatAt"/>
+			<channel id="planCostNext24hEur" typeId="hpPlanCost24h"/>
 		</channels>
 		<config-description>
 			<parameter name="name" type="text" required="false">
@@ -1285,6 +1290,40 @@
 		<item-type>Number:Energy</item-type>
 		<label>Heat pump — daily kWh estimate</label>
 		<state readOnly="true" pattern="%.1f %unit%"/>
+	</channel-type>
+
+	<channel-type id="hpModelR">
+		<item-type>Number</item-type>
+		<label>Heat pump — thermal resistance R</label>
+		<description>Learned RC-model resistance in K/W. Requires an outdoor-temp item.</description>
+		<state readOnly="true" pattern="%.4f"/>
+	</channel-type>
+
+	<channel-type id="hpModelC">
+		<item-type>Number</item-type>
+		<label>Heat pump — thermal capacitance C</label>
+		<description>Learned RC-model capacitance in J/K. Requires an outdoor-temp item.</description>
+		<state readOnly="true" pattern="%.0f"/>
+	</channel-type>
+
+	<channel-type id="hpModelRmse">
+		<item-type>Number</item-type>
+		<label>Heat pump — model RMSE</label>
+		<description>Fit error of the learned model in °C. Lower is better.</description>
+		<state readOnly="true" pattern="%.3f"/>
+	</channel-type>
+
+	<channel-type id="hpPlanPreheatAt">
+		<item-type>DateTime</item-type>
+		<label>Heat pump — pre-conditioning start</label>
+		<description>When the planner would start pre-heating or pre-cooling.</description>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="hpPlanCost24h">
+		<item-type>Number</item-type>
+		<label>Heat pump — planned cost next 24 h</label>
+		<state readOnly="true" pattern="%.2f"/>
 	</channel-type>
 
 	<channel-type id="hpOptimizerActive">

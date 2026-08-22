@@ -37,6 +37,8 @@ import org.openhab.core.thing.Thing;
 import org.openhab.core.thing.ThingRegistry;
 import org.openhab.core.types.State;
 import org.openhab.core.types.UnDefType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * SCOP-aware heat-pump optimizer. Observer-only.
@@ -71,6 +73,8 @@ import org.openhab.core.types.UnDefType;
 public final class HeatPumpOptimizerController implements Controller {
 
     public static final String NAME = "heatpump-optimizer";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(HeatPumpOptimizerController.class);
 
     private final ThingRegistry thingRegistry;
     private final ItemRegistry itemRegistry;
@@ -137,7 +141,10 @@ public final class HeatPumpOptimizerController implements Controller {
             try {
                 evaluateOne(hp, ctx, tariffNow, dayAvg);
             } catch (Throwable th) {
-                // never let one pump break the controller
+                // one pump must never break the others, but swallowing silently hid a
+                // half-wired channel set for weeks - always leave a trace
+                LOGGER.warn("Heat-pump optimizer failed for {}: {}", t.getUID(), th.toString());
+                LOGGER.debug("Heat-pump optimizer stack trace", th);
             }
         }
         return List.of();
