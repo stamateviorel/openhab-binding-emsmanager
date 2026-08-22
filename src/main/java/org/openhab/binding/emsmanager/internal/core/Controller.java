@@ -30,7 +30,10 @@ public interface Controller {
     /** Stable identifier used for logging + lastAction. */
     String name();
 
-    /** Priority — lower runs first, higher wins on conflict. */
+    /**
+     * Priority — lower runs first AND wins on conflict, so the safety breaker at
+     * the bottom of the range outranks every controller that runs after it.
+     */
     int priority();
 
     /** Whether this controller is currently enabled. */

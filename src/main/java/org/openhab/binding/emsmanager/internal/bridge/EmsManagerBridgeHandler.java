@@ -65,6 +65,7 @@ import org.openhab.binding.emsmanager.internal.core.EwmaFilter;
 import org.openhab.binding.emsmanager.internal.core.PriorityScheduler;
 import org.openhab.binding.emsmanager.internal.core.RollingAverage;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
+import org.openhab.binding.emsmanager.internal.core.SetpointResolver;
 import org.openhab.binding.emsmanager.internal.devicemeter.DeviceMeterHandler;
 import org.openhab.binding.emsmanager.internal.ems.EmsActuator;
 import org.openhab.binding.emsmanager.internal.ems.EvElectrical;
@@ -853,7 +854,12 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             // dispatches normally.
             int dispatched = 0;
             int shadowSkipped = 0;
-            for (SetpointRequest req : dispatchSet) {
+            SetpointResolver.Result resolved = SetpointResolver.resolve(dispatchSet);
+            for (SetpointRequest lost : resolved.dropped()) {
+                logger.warn("Conflict on {}|{}: '{}' (prio {}) loses to a higher-ranked request", lost.assetId(),
+                        lost.kind(), lost.controllerName(), lost.priority());
+            }
+            for (SetpointRequest req : resolved.winners()) {
                 AssetHandler handler = assets.get(req.assetId());
                 if (handler == null) {
                     if (!"eco-cap-policy".equals(req.assetId())) {
