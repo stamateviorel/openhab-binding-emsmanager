@@ -17,6 +17,14 @@ Items {
         EMS_CO2_Net_Today_kg, EMS_Cost_EUR_Total, EMS_Savings_EUR_Total, EMS_Earnings_EUR_Total
         : strategy = everyChange, everyMinute
 
+    // Per-device meters. The "Today by circuit" chart is drawn from the CUMULATIVE
+    // kWh meters, not the live W ones — a rising line answers "which circuit spent
+    // the energy today" where instantaneous power is spiky and hard to read a day
+    // off. Without these persisted that chart is empty; the rest of the page still
+    // works. One line per device-meter Thing you configured.
+    EMS_DM_Boiler_kWh, EMS_DM_Airco_kWh, EMS_DM_General_kWh, EMS_DM_Security_kWh
+        : strategy = everyChange, everyMinute
+
     // Statistics tier — one clean point per day (written ~23:58).
     // everyChange ONLY: keeps the series sparse so month/year charts are fast.
     EMS_Stat_Solar_kWh, EMS_Stat_House_kWh, EMS_Stat_SelfConsumption_kWh,

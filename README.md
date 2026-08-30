@@ -134,12 +134,19 @@ One per EV. Config: `carKey`, and the per-charger item names (`modeItem`, `cable
 
 ### Built-in Energy section (served by the binding)
 
-Once installed, the binding registers its own MainUI page through the core `UIComponentProvider` whiteboard, so an **Energy** section (⚡ sidebar icon) appears automatically — nothing to paste into JSONDB, and it disappears again when the binding is uninstalled. Two tabs:
+Once installed, the binding registers its own MainUI page through the core `UIComponentProvider` whiteboard, so an **Energy** section (⚡ sidebar icon) appears automatically — nothing to paste into JSONDB, and it disappears again when the binding is uninstalled. Five tabs:
 
-- **Now** — a live status banner, energy-level and self-sufficiency gauges, today's KPIs, per-device tiles, and a money / CO₂ row.
-- **Charts** — the power series (producers + consumers) with the solar forecast drawn ahead of *now*.
+- **Now** — a live status banner, energy-level and self-sufficiency gauges, today's KPIs, what the sun is about to do, the battery's own 24-hour plan, the quarter-hour capacity peak, per-device tiles, and money / CO₂.
+- **Control** — charging mode per charger (as buttons, not a dropdown), pause, boiler override, peak protection with *shed now* / *release everything*, the on-demand analyses, and the shadow-mode kill switch.
+- **Where it goes** — every measured circuit, what it draws now and what it has used today, then measured against unmeasured so you can see how much of the building the breakdown actually covers.
+- **Power** — the power series (producers + consumers) with the solar forecast drawn ahead of *now*.
+- **Today by circuit** — today's energy per circuit as rising curves; the one that climbs fastest is the one spending it.
 
-The whole page is driven by `energy:` item metadata: tag an item as a producer or consumer and it appears; the page rebuilds live when tags are added, changed or removed.
+**Nothing is drawn for an Item that does not exist, and a block with no surviving cards does not appear.** Which Items exist depends on which services you run, so a partial installation gets a smaller page rather than a page full of dashes. The charger controls read the item-name patterns from the bridge's own configuration, so renaming your charger items keeps them working.
+
+The participant tiles are driven by `energy:` item metadata: tag an item as a producer or consumer and it appears; the page rebuilds live when tags are added, changed or removed.
+
+> The **Today by circuit** chart needs the per-device `EMS_DM_*_kWh` meters persisted — see [`examples/influxdb.persist`](examples/influxdb.persist). Without that it renders empty; everything else still works.
 
 ### Energy Flow widget — [`widgets/energy_flow/`](widgets/energy_flow/)
 

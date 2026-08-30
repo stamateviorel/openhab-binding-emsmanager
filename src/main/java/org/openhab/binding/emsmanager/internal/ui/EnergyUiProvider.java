@@ -111,6 +111,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
     private static final String P_CONTROL = "emsmanager_energy_control";
     private static final String P_DEVICES = "emsmanager_energy_devices";
+    private static final String P_CIRCUITS = "emsmanager_energy_circuits";
 
     /** Binding-published switches the control page offers. */
     private static final String I_BOILER_OVERRIDE = "EMS_Boiler_User_Override";
@@ -169,6 +170,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         out.add(buildControlPage(consumers));
         out.add(buildDevicesPage());
         out.add(buildChartsPage(providers, consumers));
+        out.add(buildCircuitsChartPage());
         return out;
     }
 
@@ -236,7 +238,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         tabs.add(tab("Now", "f7:gauge", P_NOW));
         tabs.add(tab("Control", "f7:slider_horizontal_3", P_CONTROL));
         tabs.add(tab("Where it goes", "f7:square_stack_3d_down_right", P_DEVICES));
-        tabs.add(tab("Charts", "f7:chart_bar_alt_fill", P_CHARTS));
+        tabs.add(tab("Power", "f7:chart_bar_alt_fill", P_CHARTS));
+        tabs.add(tab("Today by circuit", "f7:chart_pie_fill", P_CIRCUITS));
         return page;
     }
 
@@ -712,7 +715,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         // now). Standalone oh-chart-page (embedded charts render blank); no persistence service set
         // → the site default is used (portable). Drag the slider to pan across time.
         RootUIComponent page = new RootUIComponent(P_CHARTS, "oh-chart-page");
-        page.addConfig("label", "Charts");
+        page.addConfig("label", "Power");
         page.addConfig("sidebar", Boolean.FALSE);
         // chartType "day" anchors the window to midnight..midnight TODAY, so it holds both today's
         // actuals (past) AND today's solar forecast (future part of today). `future` alone shifts the
@@ -760,6 +763,63 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** A power time series (smooth line); area-filled for production/consumption, dashed for forecast. */
+
+    /**
+     * Today's energy, circuit by circuit, as rising curves.
+     * <p>
+     * Deliberately built on the cumulative {@code _kWh} meters rather than the live {@code _W} ones. Instantaneous
+     * power is what the other chart already shows, and it is spiky and hard to read a day off; a rising line answers
+     * the question this page is for - <em>which circuit actually used the energy today</em> - because the one that
+     * climbs fastest is the one spending it, and the height at the end is the day's total.
+     * <p>
+     * The {@code _kWh} meters are also the ones a site is told to persist, so this chart draws where the live power
+     * items would leave it empty.
+     */
+    private RootUIComponent buildCircuitsChartPage() {
+        RootUIComponent page = new RootUIComponent(P_CIRCUITS, "oh-chart-page");
+        page.addConfig("label", "Today by circuit");
+        page.addConfig("sidebar", Boolean.FALSE);
+        page.addConfig("chartType", "day");
+        page.addConfig("period", "D");
+        page.updateTimestamp();
+
+        UIComponent grid = new UIComponent("oh-chart-grid");
+        grid.addConfig("includeLabels", Boolean.TRUE);
+        grid.addConfig("top", "12%");
+        grid.addConfig("height", "70%");
+        grid.addConfig("left", "12%");
+        grid.addConfig("right", "5%");
+        page.addSlot("grid").add(grid);
+
+        UIComponent xAxis = new UIComponent("oh-time-axis");
+        xAxis.addConfig("gridIndex", Integer.valueOf(0));
+        page.addSlot("xAxis").add(xAxis);
+
+        UIComponent yAxis = new UIComponent("oh-value-axis");
+        yAxis.addConfig("gridIndex", Integer.valueOf(0));
+        yAxis.addConfig("name", "kWh");
+        page.addSlot("yAxis").add(yAxis);
+
+        List<UIComponent> series = page.addSlot("series");
+        List<String> circuits = trackedCircuits();
+        int index = 0;
+        for (String circuit : circuits) {
+            String kwh = "EMS_DM_" + circuit + "_kWh";
+            if (!has(kwh)) {
+                continue;
+            }
+            series.add(
+                    powerLine(prettyCircuit(circuit), kwh, CIRCUIT_COLORS[index % CIRCUIT_COLORS.length], false, true));
+            index++;
+        }
+        chartControls(page);
+        return page;
+    }
+
+    /** Enough distinct hues that no two circuits on a normal site share one. */
+    private static final String[] CIRCUIT_COLORS = { "#5b8def", "#43a047", "#ff9800", "#ef5350", "#7e57c2", "#26a69a",
+            "#ec407a", "#8d6e63", "#42a5f5", "#9ccc65", "#ffa726", "#ab47bc", "#78909c" };
+
     private UIComponent powerLine(String name, String item, String color, boolean dashed, boolean area) {
         UIComponent s = new UIComponent("oh-time-series");
         s.addConfig("name", name);

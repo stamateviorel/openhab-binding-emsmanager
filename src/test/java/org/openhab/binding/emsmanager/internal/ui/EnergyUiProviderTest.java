@@ -139,13 +139,30 @@ class EnergyUiProviderTest {
     }
 
     @Test
-    public void theEnergySectionIsThreePages() {
-        Collection<RootUIComponent> pages = providerWith(Set.of()).getAll();
+    public void theEnergySectionIsTheTabsPagePlusEveryTab() {
+        EnergyUiProvider provider = providerWith(Set.of());
+        Collection<RootUIComponent> pages = provider.getAll();
 
-        assertEquals(5, pages.size(), "tabs page plus Now, Control, Where it goes and Charts");
-        assertNotNull(page(providerWith(Set.of()), "emsmanager_energy"));
-        assertNotNull(page(providerWith(Set.of()), "emsmanager_energy_now"));
-        assertNotNull(page(providerWith(Set.of()), "emsmanager_energy_charts"));
+        assertEquals(6, pages.size(), "tabs page plus Now, Control, Where it goes, Power and Today by circuit");
+        for (String uid : List.of("emsmanager_energy", "emsmanager_energy_now", "emsmanager_energy_control",
+                "emsmanager_energy_devices", "emsmanager_energy_charts", "emsmanager_energy_circuits")) {
+            assertNotNull(page(provider, uid), "missing page: " + uid);
+        }
+    }
+
+    /**
+     * The circuit chart is drawn from the cumulative energy meters, not the live power ones: those are the meters a
+     * site is told to persist, and a chart over an unpersisted Item renders empty.
+     */
+    @Test
+    public void theCircuitChartUsesTheEnergyMetersNotThePowerOnes() {
+        RootUIComponent chart = page(providerWith(Set.of("EMS_DM_Airco_W", "EMS_DM_Airco_kWh", "EMS_DM_Boiler_W")),
+                "emsmanager_energy_circuits");
+
+        List<String> items = itemsOn(chart);
+        assertTrue(items.contains("EMS_DM_Airco_kWh"), "the circuit with an energy meter must be charted");
+        assertFalse(items.contains("EMS_DM_Airco_W"), "the live power item would chart empty");
+        assertFalse(items.contains("EMS_DM_Boiler_kWh"), "a circuit without an energy meter cannot be charted");
     }
 
     /**
