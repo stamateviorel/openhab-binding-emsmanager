@@ -310,61 +310,53 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         RootUIComponent page = layoutPage(P_AHEAD, "Ahead");
         List<UIComponent> root = page.addSlot("default");
 
-        addIfPresent(root,
-                tileBlock("Sun expected",
-                        tileIfPresent(I_FORECAST_TODAY, "Rest of today", "f7:sun_max_fill", "#ff9800"),
-                        tileIfPresent(I_FORECAST_TOMORROW, "Tomorrow", "f7:sun_max", "#ffa726"),
-                        tileIfPresent(I_FORECAST_6H, "Next 6 hours", "f7:sun_min", "#ffb74d"),
-                        tileIfPresent(I_FORECAST_PEAK_AT, "Sunniest hour", "f7:clock", "#ffcc80")));
+        UIComponent sun = figureCard("Sun expected",
+                figureIfPresent(I_FORECAST_TODAY, "rest of today", "sun_max_fill", "orange"),
+                figureIfPresent(I_FORECAST_TOMORROW, "tomorrow", "sun_max", "orange"),
+                figureIfPresent(I_FORECAST_6H, "next 6 hours", "sun_min", "orange"),
+                figureIfPresent(I_FORECAST_PEAK_AT, "sunniest hour", "clock", "orange"));
+        if (sun != null) {
+            root.add(cardRow(sun));
+        }
 
-        addIfPresent(root, tileBlock("Prices ahead", tileIfPresent(I_TARIFF_NOW, "Now", "f7:money_euro", "#5b8def"),
-                tileIfPresent(I_TARIFF_NEXT_1H, "Next hour", "f7:money_euro_circle", "#42a5f5"),
-                tileIfPresent(I_TARIFF_CHEAPEST_AT, "Cheapest hour today", "f7:arrow_down_circle_fill", "#43a047"),
-                tileIfPresent(I_TARIFF_DEAREST_AT, "Dearest hour today", "f7:arrow_up_circle_fill", "#ef5350")));
+        UIComponent prices = figureCard("Prices", figureIfPresent(I_TARIFF_NOW, "now", "money_euro", "blue"),
+                figureIfPresent(I_TARIFF_NEXT_1H, "next hour", "money_euro", "blue"),
+                figureIfPresent(I_TARIFF_CHEAPEST_AT, "cheapest hour", "arrow_down_circle_fill", "green"),
+                figureIfPresent(I_TARIFF_DEAREST_AT, "dearest hour", "arrow_up_circle_fill", "red"));
+        if (prices != null) {
+            root.add(cardRow(prices));
+        }
 
-        // What the system has already decided to do, so it is not a surprise when it happens.
-        List<UIComponent> plan = new ArrayList<>();
-        UIComponent charge = tileIfPresent(I_OPT_NEXT_CHARGE, "Battery charges at", "f7:arrow_down_circle", "#42a5f5");
-        if (charge != null) {
-            plan.add(colResponsive(charge));
+        UIComponent plan = figureCard("What it intends to do",
+                figureIfPresent(I_OPT_NEXT_CHARGE, "battery charges", "arrow_down_circle", "blue"),
+                figureIfPresent(I_OPT_NEXT_DISCHARGE, "battery discharges", "arrow_up_circle", "purple"),
+                figureIfPresent(I_BOILER_WINDOW, "water heated by", "drop_fill", "blue"),
+                figureIfPresent(I_CAP_PROJECTED, "peak heading for", "gauge", "purple"));
+        if (plan != null) {
+            root.add(cardRow(plan));
         }
-        UIComponent discharge = tileIfPresent(I_OPT_NEXT_DISCHARGE, "Battery discharges at", "f7:arrow_up_circle",
-                "#ab47bc");
-        if (discharge != null) {
-            plan.add(colResponsive(discharge));
-        }
-        UIComponent boiler = tileIfPresent(I_BOILER_WINDOW, "Water heated by", "f7:drop_fill", "#42a5f5");
-        if (boiler != null) {
-            plan.add(colResponsive(boiler));
-        }
-        UIComponent preheat = tileIfPresent(I_HP_PREHEAT_AT, "Pre-heating starts", "f7:thermometer", "#26a69a");
-        if (preheat != null) {
-            // the planner only answers once the pump is actually heating or cooling and its model has settled, so
-            // this Item exists long before it has anything to say - and a dash is worse than an absence
-            preheat.addConfig("visible", "=items." + I_HP_PREHEAT_AT + ".state!='NULL'");
-            plan.add(colResponsive(preheat));
-        }
-        if (!plan.isEmpty()) {
-            root.add(block("The plan", row(plan.toArray(new UIComponent[0]))));
-        }
+
         if (has(I_OPT_PLAN_24H)) {
-            root.add(block(null, row(col("100", planStrip()))));
-        }
-
-        List<UIComponent> notes = new ArrayList<>();
-        UIComponent boilerPlan = tileIfPresent(I_BOILER_PLAN, "Water heating", "f7:drop", "#42a5f5");
-        if (boilerPlan != null) {
-            boilerPlan.addConfig("fontSize", "15px");
-            notes.add(colHalf(boilerPlan));
-        }
-        UIComponent capacity = tileIfPresent(I_CAP_PROJECTED, "Peak heading for this month", "f7:gauge", "#9575cd");
-        if (capacity != null) {
-            notes.add(colHalf(capacity));
-        }
-        if (!notes.isEmpty()) {
-            root.add(block(null, row(notes.toArray(new UIComponent[0]))));
+            root.add(cardRow(planCard()));
         }
         return page;
+    }
+
+    /**
+     * The battery's own plan for the next 24 hours, one character per hour.
+     * <p>
+     * Monospaced, because the characters only line up with the hours if they are all the same width.
+     */
+    private UIComponent planCard() {
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", "Battery, next 24 hours");
+        UIComponent value = new UIComponent("oh-label-item");
+        value.addConfig("item", I_OPT_PLAN_24H);
+        value.addConfig("class", List.of("text-align-center", "padding-vertical-half"));
+        value.addConfig("style", java.util.Map.of("font-family", "monospace", "font-size", "15px", "letter-spacing",
+                "2px", "font-weight", "bold"));
+        card.addSlot("default").add(value);
+        return card;
     }
 
     /**
@@ -379,50 +371,33 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
         for (String[] period : PERIODS) {
             String suffix = period[0];
-            List<UIComponent> tiles = new ArrayList<>();
-            UIComponent cost = tileIfPresent("EMS_Cost_EUR" + suffix, "Bought", "f7:money_euro", "#ef5350");
-            if (cost != null) {
-                tiles.add(colResponsive(cost));
-            }
-            UIComponent saved = tileIfPresent("EMS_Savings_EUR" + suffix, "Saved", "f7:money_euro", "#43a047");
-            if (saved != null) {
-                tiles.add(colResponsive(saved));
-            }
-            UIComponent sun = tileIfPresent("EMS_SelfConsumption_kWh" + suffix, "Sun used", "f7:sun_max", "#ff9800");
-            if (sun != null) {
-                tiles.add(colResponsive(sun));
-            }
-            UIComponent sold = tileIfPresent("EMS_FeedIn_kWh" + suffix, "Sold", "f7:arrow_up_right_circle", "#66bb6a");
-            if (sold != null) {
-                tiles.add(colResponsive(sold));
-            }
-            if (!tiles.isEmpty()) {
-                root.add(block(period[1], row(tiles.toArray(new UIComponent[0]))));
+            UIComponent card = figureCard(period[1],
+                    figureIfPresent("EMS_Cost_EUR" + suffix, "bought", "money_euro", "red"),
+                    figureIfPresent("EMS_Savings_EUR" + suffix, "saved", "money_euro", "green"),
+                    figureIfPresent("EMS_SelfConsumption_kWh" + suffix, "sun used", "sun_max", "orange"),
+                    figureIfPresent("EMS_FeedIn_kWh" + suffix, "sold", "arrow_up_right_circle", "green"));
+            if (card != null) {
+                root.add(cardRow(card));
             }
         }
 
-        // Where today's energy went, circuit by circuit. Cumulative rather than live, for the same reason the
-        // circuit chart is: it is the day's story rather than this second's.
+        // Today's energy circuit by circuit, six to a card instead of one tile each.
         List<UIComponent> circuits = new ArrayList<>();
         for (String circuit : trackedCircuits()) {
             String kwh = "EMS_DM_" + circuit + "_kWh";
             if (has(kwh)) {
-                circuits.add(colResponsive(labelCard(kwh, prettyCircuit(circuit), "f7:sum", "#7e57c2")));
+                circuits.add(figure(kwh, prettyCircuit(circuit).toLowerCase(java.util.Locale.ROOT), "sum", "purple"));
             }
         }
         if (!circuits.isEmpty()) {
-            root.add(block("Used today, by circuit", row(circuits.toArray(new UIComponent[0]))));
+            root.add(cardRow(card("Used today, by circuit", circuits)));
         }
 
-        List<UIComponent> totals = new ArrayList<>();
-        if (has(I_DM_TRACKED)) {
-            totals.add(colHalf(labelCard(I_DM_TRACKED, "Measured", "f7:checkmark_seal", "#43a047")));
-        }
-        if (has(I_DM_UNTRACKED)) {
-            totals.add(colHalf(labelCard(I_DM_UNTRACKED, "Not measured", "f7:questionmark_circle", "#ff9800")));
-        }
-        if (!totals.isEmpty()) {
-            root.add(block("How much of the building this covers", row(totals.toArray(new UIComponent[0]))));
+        UIComponent coverage = figureCard("How much of the building this covers",
+                figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
+                figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
+        if (coverage != null) {
+            root.add(cardRow(coverage));
         }
         return page;
     }
@@ -966,6 +941,78 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 "='linear-gradient(135deg,'+(" + colorExpr + ")+'42,transparent 82%), var(--f7-card-bg-color)'");
         m.put("box-shadow", "='0 0 60px -16px '+(" + colorExpr + ")+'cc, 0 12px 34px rgba(0,0,0,0.18)'");
         return m;
+    }
+
+    // --- compact widget vocabulary ---------------------------------------------------------------
+    //
+    // Framework7 primitives rather than the stock oh-*-card tiles. A tile is one number in a large box, so a page of
+    // them is a page of boxes: tall, repetitive and impossible to scan. A card holding a row of small columns puts
+    // six related figures in the space one tile used, which is how the widgets already on this site are built.
+
+    /** A card with a heading and one row of columns inside it. */
+    private UIComponent card(@org.eclipse.jdt.annotation.Nullable String title, List<UIComponent> columns) {
+        UIComponent card = new UIComponent("f7-card");
+        if (title != null) {
+            card.addConfig("title", title);
+        }
+        UIComponent row = new UIComponent("f7-row");
+        row.addConfig("class", List.of("padding-vertical-half"));
+        row.addSlot("default").addAll(columns);
+        card.addSlot("default").add(row);
+        return card;
+    }
+
+    /** One figure in a column: an icon, the value, and a small caption under it. */
+    private UIComponent figure(String item, String caption, String icon, String colour) {
+        UIComponent column = new UIComponent("f7-col");
+        column.addConfig("class",
+                List.of("display-flex", "flex-direction-column", "align-items-center", "padding-vertical-half"));
+        column.addConfig("width", "50");
+        column.addConfig("medium", "25");
+        List<UIComponent> slot = column.addSlot("default");
+
+        UIComponent glyph = new UIComponent("f7-icon");
+        glyph.addConfig("f7", icon);
+        glyph.addConfig("color", colour);
+        glyph.addConfig("size", Integer.valueOf(22));
+        slot.add(glyph);
+
+        UIComponent value = new UIComponent("oh-label-item");
+        value.addConfig("item", item);
+        value.addConfig("class", List.of("text-align-center"));
+        value.addConfig("style", java.util.Map.of("font-weight", "bold", "font-size", "17px", "line-height", "1.25"));
+        slot.add(value);
+
+        UIComponent label = new UIComponent("oh-label-item");
+        label.addConfig("title", caption);
+        label.addConfig("class", List.of("text-align-center"));
+        label.addConfig("style", java.util.Map.of("font-size", "10px", "line-height", "1.15", "opacity", "0.65"));
+        slot.add(label);
+        return column;
+    }
+
+    /** A figure, or nothing where its Item is absent. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent figureIfPresent(String item, String caption, String icon,
+            String colour) {
+        return has(item) ? figure(item, caption, icon, colour) : null;
+    }
+
+    /** A card built from whichever figures this site actually has, or nothing if it has none of them. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent figureCard(
+            @org.eclipse.jdt.annotation.Nullable String title,
+            @org.eclipse.jdt.annotation.Nullable UIComponent... figures) {
+        List<UIComponent> present = new ArrayList<>();
+        for (UIComponent figure : figures) {
+            if (figure != null) {
+                present.add(figure);
+            }
+        }
+        return present.isEmpty() ? null : card(title, present);
+    }
+
+    /** A whole card as one page row. */
+    private UIComponent cardRow(UIComponent card) {
+        return block(null, row(col("100", card)));
     }
 
     // --- rendering only what exists -------------------------------------------------------------

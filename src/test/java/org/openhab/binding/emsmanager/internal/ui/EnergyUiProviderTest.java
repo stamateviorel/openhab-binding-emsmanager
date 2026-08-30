@@ -103,7 +103,9 @@ class EnergyUiProviderTest {
             return;
         }
         Object title = component.getConfig() == null ? null : component.getConfig().get("title");
-        if ("oh-block".equals(component.getType()) && title instanceof String text) {
+        // the heading sits on the card now, not on the block that holds it
+        if (("oh-block".equals(component.getType()) || "f7-card".equals(component.getType()))
+                && title instanceof String text) {
             found.add(text);
         }
         if (component.getSlots() != null) {
@@ -175,14 +177,14 @@ class EnergyUiProviderTest {
 
         List<String> blocks = blockTitles(now);
         assertFalse(blocks.contains("Sun expected"));
-        assertFalse(blocks.contains("Prices ahead"));
+        assertFalse(blocks.contains("Prices"));
     }
 
     @Test
     public void aBlockAppearsAsSoonAsOneOfItsItemsExists() {
         RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh")), "emsmanager_energy_ahead");
 
-        assertTrue(blockTitles(now).contains("Prices ahead"), "one present Item earns the block");
+        assertTrue(blockTitles(now).contains("Prices"), "one present Item earns the block");
         assertTrue(itemsOn(now).contains("EMS_Tariff_Now_EurPerKWh"));
     }
 
@@ -222,7 +224,7 @@ class EnergyUiProviderTest {
                 "EMS_Cost_EUR_Month", "EMS_Cost_EUR_Total", "EMS_Anomaly_Count_Today")), "emsmanager_energy_ahead");
 
         List<String> blocks = blockTitles(now);
-        assertTrue(blocks.contains("Prices ahead"));
+        assertTrue(blocks.contains("Prices"));
         assertTrue(blocks.size() <= 4, "Ahead stays short on purpose");
     }
 
@@ -328,7 +330,8 @@ class EnergyUiProviderTest {
     public void everyComponentTypeIsOneMainUiShips() {
         Set<String> known = Set.of("oh-tabs-page", "oh-tab", "oh-layout-page", "oh-block", "oh-grid-row", "oh-grid-col",
                 "oh-label-card", "oh-toggle-card", "oh-gauge-card", "oh-chart-page", "oh-chart-grid", "oh-time-axis",
-                "oh-value-axis", "oh-time-series", "oh-chart-legend", "oh-chart-tooltip", "oh-chart-datazoom");
+                "oh-value-axis", "oh-time-series", "oh-chart-legend", "oh-chart-tooltip", "oh-chart-datazoom",
+                "f7-card", "f7-row", "f7-col", "f7-icon", "f7-segmented", "oh-label-item", "oh-button");
 
         EnergyUiProvider provider = providerWith(
                 Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h", "EMS_Capacity_Current_Quarter",
