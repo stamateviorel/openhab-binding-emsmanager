@@ -77,6 +77,36 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_TARIFF_NOW = "EMS_Tariff_Now_EurPerKWh";
     private static final String I_CAP_PEAK = "EMS_Capacity_Monthly_Peak";
 
+    // Sun ahead.
+    private static final String I_FORECAST_NOW = "EMS_Forecast_Now";
+    private static final String I_FORECAST_1H = "EMS_Forecast_Next_1h";
+    private static final String I_FORECAST_3H = "EMS_Forecast_Next_3h";
+    private static final String I_FORECAST_PEAK_AT = "EMS_Forecast_Peak_Today_At";
+
+    // Battery and the optimizer's own plan for the next 24 hours.
+    private static final String I_BATTERY_SETPOINT = "EMS_Battery_Setpoint_W";
+    private static final String I_OPT_NEXT_CHARGE = "EMS_Optimizer_Next_Charge";
+    private static final String I_OPT_NEXT_DISCHARGE = "EMS_Optimizer_Next_Discharge";
+    private static final String I_OPT_PLAN_24H = "EMS_Optimizer_Plan_24h";
+
+    // The capacity tariff - the quarter-hour peak this country bills on.
+    private static final String I_CAP_QUARTER = "EMS_Capacity_Current_Quarter";
+    private static final String I_CAP_PROJECTED = "EMS_Capacity_Projected";
+    private static final String I_CAP_STATUS = "EMS_Capacity_Status";
+    private static final String I_CAP_WOULD_EXCEED = "EMS_Capacity_Would_Exceed";
+
+    // Money and carbon over the periods the services actually keep.
+    private static final String I_COST_MONTH = "EMS_Cost_EUR_Month";
+    private static final String I_SAVINGS_MONTH = "EMS_Savings_EUR_Month";
+    private static final String I_EARNINGS_MONTH = "EMS_Earnings_EUR_Month";
+    private static final String I_CO2_SAVED_TODAY = "EMS_CO2_Saved_Today_kg";
+
+    // Things worth surfacing only when they have something to say.
+    private static final String I_ANOMALY_COUNT = "EMS_Anomaly_Count_Today";
+    private static final String I_BOILER_PLAN = "EMS_BoilerPlan_Status";
+    private static final String I_HP_REASON = "EMS_HP_Showroom_Reason";
+    private static final String I_TARIFF_CHEAPEST_AT = "EMS_Tariff_Cheapest_Hour_Start";
+
     private final Logger logger = LoggerFactory.getLogger(EnergyUiProvider.class);
     private final MetadataRegistry metadataRegistry;
     private final ItemRegistry itemRegistry;
@@ -241,11 +271,70 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         root.add(block(null, row(colHalf(energyLevelGauge()), colHalf(selfSufficiencyGauge()))));
 
         // At-a-glance KPI strip under the hero — the numbers people actually want.
-        root.add(block("Today",
-                row(colResponsive(labelCard(I_TARIFF_NOW, "Tariff now", "f7:money_euro")),
-                        colResponsive(labelCard(I_FORECAST_TODAY, "Solar forecast", "f7:sun_max", "#ff9800")),
-                        colResponsive(labelCard(I_SELFCONS_DAY, "Self-used", "f7:house", "#43a047")),
-                        colResponsive(labelCard(I_CAP_PEAK, "Peak this month", "f7:gauge", "#9575cd")))));
+        addIfPresent(root,
+                tileBlock("Today", tileIfPresent(I_TARIFF_NOW, "Tariff now", "f7:money_euro", "#5b8def"),
+                        tileIfPresent(I_FORECAST_TODAY, "Solar forecast", "f7:sun_max", "#ff9800"),
+                        tileIfPresent(I_SELFCONS_DAY, "Self-used", "f7:house", "#43a047"),
+                        tileIfPresent(I_SUPPLY_DAY, "Taken from grid", "oh:energy", "#ef5350")));
+
+        // What the sun is about to do. A forecast is only useful ahead of the moment it describes, so these are the
+        // lookahead figures rather than another way of saying what the roof is making right now.
+        addIfPresent(root,
+                tileBlock("Sun ahead", tileIfPresent(I_FORECAST_NOW, "Right now", "f7:sun_max", "#ff9800"),
+                        tileIfPresent(I_FORECAST_1H, "Next hour", "f7:sun_max", "#ffa726"),
+                        tileIfPresent(I_FORECAST_3H, "Next 3 hours", "f7:sun_max", "#ffb74d"),
+                        tileIfPresent(I_FORECAST_PEAK_AT, "Best hour today", "f7:clock", "#ffcc80")));
+
+        // The battery and what it intends to do, including the optimizer's own 24-hour plan.
+        List<UIComponent> batteryTiles = new ArrayList<>();
+        UIComponent setpoint = tileIfPresent(I_BATTERY_SETPOINT, "Battery setpoint", "f7:battery_25", "#26a69a");
+        if (setpoint != null) {
+            batteryTiles.add(colResponsive(setpoint));
+        }
+        UIComponent nextCharge = tileIfPresent(I_OPT_NEXT_CHARGE, "Next charge hour", "f7:arrow_down_circle",
+                "#42a5f5");
+        if (nextCharge != null) {
+            batteryTiles.add(colResponsive(nextCharge));
+        }
+        UIComponent nextDischarge = tileIfPresent(I_OPT_NEXT_DISCHARGE, "Next discharge hour", "f7:arrow_up_circle",
+                "#ab47bc");
+        if (nextDischarge != null) {
+            batteryTiles.add(colResponsive(nextDischarge));
+        }
+        if (!batteryTiles.isEmpty()) {
+            root.add(block("Battery", row(batteryTiles.toArray(new UIComponent[0]))));
+        }
+        if (has(I_OPT_PLAN_24H)) {
+            root.add(block(null, row(col("100", planStrip()))));
+        }
+
+        // The capacity tariff. This is the quarter-hour peak the bill is actually built on, and it is the one number
+        // on this page where being told late costs money, so it turns red as it approaches rather than after.
+        List<UIComponent> capacityTiles = new ArrayList<>();
+        UIComponent quarter = tileIfPresent(I_CAP_QUARTER, "This quarter-hour", "f7:gauge", "#9575cd");
+        if (quarter != null && has(I_CAP_WOULD_EXCEED)) {
+            quarter.addConfig("background", "=items." + I_CAP_WOULD_EXCEED
+                    + ".state=='ON'?'linear-gradient(135deg,#ef535055,transparent 72%)':'linear-gradient(135deg,#9575cd22,transparent 72%)'");
+        }
+        if (quarter != null) {
+            capacityTiles.add(colResponsive(quarter));
+        }
+        UIComponent projected = tileIfPresent(I_CAP_PROJECTED, "Projected", "f7:chart_bar", "#9575cd");
+        if (projected != null) {
+            capacityTiles.add(colResponsive(projected));
+        }
+        UIComponent monthPeak = tileIfPresent(I_CAP_PEAK, "Peak this month", "f7:gauge", "#7e57c2");
+        if (monthPeak != null) {
+            capacityTiles.add(colResponsive(monthPeak));
+        }
+        UIComponent capStatus = tileIfPresent(I_CAP_STATUS, "Status", "f7:info_circle", "#7e57c2");
+        if (capStatus != null) {
+            capStatus.addConfig("fontSize", "15px");
+            capacityTiles.add(colResponsive(capStatus));
+        }
+        if (!capacityTiles.isEmpty()) {
+            root.add(block("Grid capacity", row(capacityTiles.toArray(new UIComponent[0]))));
+        }
 
         List<UIComponent> devices = new ArrayList<>();
         for (EnergyProvider p : providers) {
@@ -271,12 +360,48 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(block("Devices", row(cols.toArray(new UIComponent[0]))));
         }
 
-        // Money + CO2 overview row (HA-style headline numbers), fills the page and adds the cost view.
-        root.add(block("Money & CO\u2082",
-                row(colResponsive(labelCard("EMS_Cost_EUR_Total", "Cost total", "f7:money_euro", "#ef5350")),
-                        colResponsive(labelCard("EMS_Savings_EUR_Total", "Saved", "f7:money_euro", "#43a047")),
-                        colResponsive(labelCard("EMS_CO2_Net_Today_kg", "CO\u2082 today", "f7:smoke", "#26a69a")),
-                        colResponsive(labelCard("EMS_Earnings_EUR_Total", "Earned", "f7:money_euro", "#66bb6a")))));
+        // Money this month rather than since the beginning of time: a running total nobody can date is a number you
+        // cannot act on, and the services keep the monthly figures anyway.
+        addIfPresent(root,
+                tileBlock("This month", tileIfPresent(I_COST_MONTH, "Cost", "f7:money_euro", "#ef5350"),
+                        tileIfPresent(I_SAVINGS_MONTH, "Saved", "f7:money_euro", "#43a047"),
+                        tileIfPresent(I_EARNINGS_MONTH, "Earned by exporting", "f7:money_euro", "#66bb6a"),
+                        tileIfPresent(I_CO2_SAVED_TODAY, "CO\u2082 avoided today", "f7:smoke", "#26a69a")));
+
+        // The lifetime figures, kept but demoted - they are a fine thing to have and a poor thing to lead with.
+        addIfPresent(root,
+                tileBlock("Since the beginning",
+                        tileIfPresent("EMS_Cost_EUR_Total", "Cost total", "f7:money_euro", "#ef5350"),
+                        tileIfPresent("EMS_Savings_EUR_Total", "Saved total", "f7:money_euro", "#43a047"),
+                        tileIfPresent("EMS_Earnings_EUR_Total", "Earned total", "f7:money_euro", "#66bb6a"),
+                        tileIfPresent("EMS_CO2_Saved_Year_kg", "CO\u2082 avoided this year", "f7:smoke", "#26a69a")));
+
+        // Things worth reading only when they have something to say. Each hides itself otherwise, because a row of
+        // "nothing to report" tiles trains people to stop reading the page.
+        List<UIComponent> attention = new ArrayList<>();
+        UIComponent anomalies = tileIfPresent(I_ANOMALY_COUNT, "Devices behaving oddly", "f7:exclamationmark_triangle",
+                "#ef5350");
+        if (anomalies != null) {
+            anomalies.addConfig("visible", "=items." + I_ANOMALY_COUNT + ".numericState>0");
+            attention.add(colResponsive(anomalies));
+        }
+        UIComponent boilerPlan = tileIfPresent(I_BOILER_PLAN, "Boiler plan", "f7:drop", "#42a5f5");
+        if (boilerPlan != null) {
+            boilerPlan.addConfig("fontSize", "15px");
+            attention.add(colResponsive(boilerPlan));
+        }
+        UIComponent heatPump = tileIfPresent(I_HP_REASON, "Heat pump advice", "f7:thermometer", "#26a69a");
+        if (heatPump != null) {
+            heatPump.addConfig("fontSize", "15px");
+            attention.add(colResponsive(heatPump));
+        }
+        UIComponent cheapest = tileIfPresent(I_TARIFF_CHEAPEST_AT, "Cheapest hour today", "f7:clock", "#5b8def");
+        if (cheapest != null) {
+            attention.add(colResponsive(cheapest));
+        }
+        if (!attention.isEmpty()) {
+            root.add(block("Worth knowing", row(attention.toArray(new UIComponent[0]))));
+        }
         return page;
     }
 
@@ -485,6 +610,74 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 "='linear-gradient(135deg,'+(" + colorExpr + ")+'42,transparent 82%), var(--f7-card-bg-color)'");
         m.put("box-shadow", "='0 0 60px -16px '+(" + colorExpr + ")+'cc, 0 12px 34px rgba(0,0,0,0.18)'");
         return m;
+    }
+
+    // --- rendering only what exists -------------------------------------------------------------
+
+    /**
+     * Whether an Item is actually present.
+     * <p>
+     * The pages name items this binding's own services publish, but which of those exist depends on which services a
+     * site runs - a site with no tariff has no tariff items. A card whose item is absent renders as a dash on a page
+     * somebody is trying to read a number off, so an absent item means no card rather than an empty one.
+     */
+    private boolean has(String item) {
+        return itemRegistry.get(item) != null;
+    }
+
+    /** A tile, or nothing where the Item behind it does not exist on this site. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent tileIfPresent(String item, String title, String icon,
+            String accent) {
+        return has(item) ? labelCard(item, title, icon, accent) : null;
+    }
+
+    /**
+     * A block of tiles, dropping the ones whose Items are absent and the whole block when none survive.
+     *
+     * @param title the block's heading
+     * @param tiles the candidate tiles, nulls allowed
+     * @return the block, or {@code null} where this site has nothing to put in it
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent tileBlock(String title,
+            @org.eclipse.jdt.annotation.Nullable UIComponent... tiles) {
+        List<UIComponent> cols = new ArrayList<>();
+        for (UIComponent tile : tiles) {
+            if (tile != null) {
+                cols.add(colResponsive(tile));
+            }
+        }
+        return cols.isEmpty() ? null : block(title, row(cols.toArray(new UIComponent[0])));
+    }
+
+    /** Adds a block when there is one to add. */
+    private void addIfPresent(List<UIComponent> root, @org.eclipse.jdt.annotation.Nullable UIComponent block) {
+        if (block != null) {
+            root.add(block);
+        }
+    }
+
+    /**
+     * The optimizer's own 24-hour plan, drawn as the string it publishes.
+     * <p>
+     * One character per hour - charge, discharge or idle - so a glance says what the battery intends to do today. It
+     * is monospaced deliberately: the characters line up with the hours only if they are the same width.
+     */
+    private UIComponent planStrip() {
+        UIComponent c = new UIComponent("oh-label-card");
+        c.addConfig("item", I_OPT_PLAN_24H);
+        c.addConfig("title", "Battery plan, next 24 hours");
+        c.addConfig("icon", "f7:square_grid_2x2");
+        c.addConfig("iconColor", "#7e57c2");
+        c.addConfig("iconSize", Integer.valueOf(30));
+        c.addConfig("fontSize", "17px");
+        c.addConfig("fontWeight", "600");
+        c.addConfig("background", "linear-gradient(135deg, #7e57c222, transparent 72%)");
+        java.util.Map<String, Object> style = tileStyle();
+        // the characters line up with the hours only if they are all the same width
+        style.put("font-family", "monospace");
+        style.put("letter-spacing", "2px");
+        c.addConfig("style", style);
+        return c;
     }
 
     private UIComponent labelCard(String item, String title, String icon) {
