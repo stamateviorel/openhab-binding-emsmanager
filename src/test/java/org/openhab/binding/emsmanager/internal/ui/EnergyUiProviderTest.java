@@ -300,4 +300,24 @@ class EnergyUiProviderTest {
 
         assertTrue(blockTitles(devices).contains("Nothing measured yet"));
     }
+
+    /**
+     * Heat-pump Items are named after the Thing a site created, so the page discovers them. A hardcoded name would be
+     * a dead card on every site but the one it was written on.
+     */
+    @Test
+    public void heatPumpAdviceIsDiscoveredWhateverThePumpIsCalled() {
+        RootUIComponent now = page(providerWith(Set.of("EMS_HP_Warehouse_Reason")), "emsmanager_energy_now");
+
+        assertTrue(itemsOn(now).contains("EMS_HP_Warehouse_Reason"));
+    }
+
+    @Test
+    public void twoHeatPumpsGetTwoCardsAndNoneGetsNone() {
+        assertEquals(2, itemsOn(
+                page(providerWith(Set.of("EMS_HP_Hall_Reason", "EMS_HP_Office_Reason")), "emsmanager_energy_now"))
+                .stream().filter(i -> i.startsWith("EMS_HP_")).count());
+        assertEquals(0, itemsOn(page(providerWith(Set.of()), "emsmanager_energy_now")).stream()
+                .filter(i -> i.startsWith("EMS_HP_")).count());
+    }
 }

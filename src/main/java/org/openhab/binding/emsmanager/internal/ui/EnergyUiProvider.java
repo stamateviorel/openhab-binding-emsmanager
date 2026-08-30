@@ -106,7 +106,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     // Things worth surfacing only when they have something to say.
     private static final String I_ANOMALY_COUNT = "EMS_Anomaly_Count_Today";
     private static final String I_BOILER_PLAN = "EMS_BoilerPlan_Status";
-    private static final String I_HP_REASON = "EMS_HP_Showroom_Reason";
     private static final String I_TARIFF_CHEAPEST_AT = "EMS_Tariff_Cheapest_Hour_Start";
 
     private static final String P_CONTROL = "emsmanager_energy_control";
@@ -413,8 +412,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             boilerPlan.addConfig("fontSize", "15px");
             attention.add(colResponsive(boilerPlan));
         }
-        UIComponent heatPump = tileIfPresent(I_HP_REASON, "Heat pump advice", "f7:thermometer", "#26a69a");
-        if (heatPump != null) {
+        for (String reason : heatPumpAdviceItems()) {
+            UIComponent heatPump = labelCard(reason, heatPumpTitle(reason), "f7:thermometer", "#26a69a");
             heatPump.addConfig("fontSize", "15px");
             attention.add(colResponsive(heatPump));
         }
@@ -609,6 +608,30 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         c.addConfig("actionCommand", "ON");
         c.addConfig("style", tileStyle());
         return c;
+    }
+
+    /**
+     * The heat-pump advice Items, discovered rather than named.
+     * <p>
+     * A pump's Items are named after the Thing the site created, so there is no fixed name to look for. A site with
+     * two pumps gets two cards and a site with none gets no card, which is what discovery buys over a constant.
+     */
+    private List<String> heatPumpAdviceItems() {
+        List<String> out = new ArrayList<>();
+        for (org.openhab.core.items.Item item : itemRegistry.getItems()) {
+            String name = item.getName();
+            if (name.startsWith("EMS_HP_") && name.endsWith("_Reason")) {
+                out.add(name);
+            }
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /** {@code EMS_HP_Workshop_Reason} reads as "Workshop heat pump". */
+    private String heatPumpTitle(String reasonItem) {
+        String id = reasonItem.substring("EMS_HP_".length(), reasonItem.length() - "_Reason".length());
+        return id.isEmpty() ? "Heat pump advice" : prettyCircuit(id) + " heat pump";
     }
 
     // --- where the energy goes -----------------------------------------------------------------
