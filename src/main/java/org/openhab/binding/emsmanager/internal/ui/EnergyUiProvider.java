@@ -129,7 +129,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_SIZING_KWH = "EMS_BatterySizing_OptimalKwh";
     private static final String I_SIZING_PAYBACK = "EMS_BatterySizing_PaybackYears";
     private static final String I_COMPARE_RUN = "EMS_TariffComparison_Run";
-    private static final String I_COMPARE_RANKING = "EMS_TariffComparison_RankingCsv";
+    private static final String I_COMPARE_CHEAPEST = "EMS_TariffComparison_Cheapest";
+    private static final String I_COMPARE_SUMMARY = "EMS_TariffComparison_Summary";
     private static final String I_PEAK_ENABLED = "PeakShaving_Enabled";
     private static final String I_PEAK_ENGAGE = "PeakShaving_Manual_Engage";
     private static final String I_PEAK_RESET = "PeakShaving_Manual_Reset";
@@ -405,215 +406,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     // --- control -------------------------------------------------------------------------------
 
     /**
-     * The site's own item-name patterns, read from the bridge Thing.
-     * <p>
-     * The chargers are not this binding's items - they belong to whatever drives the wallboxes - so the page asks the
-     * bridge what the site called them rather than assuming a layout. A site that renamed them keeps a working page.
-     *
-     * @param key the configuration key holding the pattern
-     * @return the pattern, or {@code null} where the bridge or the key is absent
-     */
-    private @org.eclipse.jdt.annotation.Nullable String pattern(String key) {
-        for (Thing thing : thingRegistry.getAll()) {
-            if (!"emsmanager".equals(thing.getUID().getBindingId())
-                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
-                continue;
-            }
-            Object value = thing.getConfiguration().get(key);
-            if (value instanceof String text && !text.isBlank()) {
-                return text;
-            }
-        }
-        return null;
-    }
-
-    private int carCount() {
-        for (Thing thing : thingRegistry.getAll()) {
-            if (!"emsmanager".equals(thing.getUID().getBindingId())
-                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
-                continue;
-            }
-            Object value = thing.getConfiguration().get("carCount");
-            if (value instanceof Number number) {
-                return number.intValue();
-            }
-        }
-        return 0;
-    }
-
-    private @org.eclipse.jdt.annotation.Nullable String carItem(String patternKey, int car) {
-        String pattern = pattern(patternKey);
-        if (pattern == null) {
-            return null;
-        }
-        String name = String.format(pattern, car);
-        return has(name) ? name : null;
-    }
-
-    private RootUIComponent buildControlPage(List<EnergyConsumer> consumers) {
-        RootUIComponent page = layoutPage(P_CONTROL, "Control");
-        List<UIComponent> root = page.addSlot("default");
-
-        // All the chargers under one heading, two cards each. Four headings of three cards was most of the scrolling
-        // on this page, and the status line said "SuspendedEVSE" - true, and no use to anybody standing in a hangar.
-        List<UIComponent> chargers = new ArrayList<>();
-        for (int car = 1; car <= carCount(); car++) {
-            String mode = carItem("carModeItemPattern", car);
-            if (mode == null) {
-                continue;
-            }
-            chargers.add(colResponsive(modeSelector(mode, "Car " + car)));
-            String pause = carItem("carPauseItemPattern", car);
-            if (pause != null) {
-                chargers.add(colResponsive(switchCard(pause, "Car " + car + " paused", "f7:pause_circle", "#ef5350")));
-            }
-        }
-        if (!chargers.isEmpty()) {
-            root.add(block("Cars", row(chargers.toArray(new UIComponent[0]))));
-        }
-
-        // What the battery intends to do next. It is not a control, but it is the answer to "why is it doing that",
-        // and the controls are where somebody asks.
-        List<UIComponent> battery = new ArrayList<>();
-        UIComponent setpoint = tileIfPresent(I_BATTERY_SETPOINT, "Battery is set to", "f7:battery_25", "#26a69a");
-        if (setpoint != null) {
-            battery.add(colResponsive(setpoint));
-        }
-        UIComponent nextCharge = tileIfPresent(I_OPT_NEXT_CHARGE, "Next hour it charges", "f7:arrow_down_circle",
-                "#42a5f5");
-        if (nextCharge != null) {
-            battery.add(colResponsive(nextCharge));
-        }
-        UIComponent nextDischarge = tileIfPresent(I_OPT_NEXT_DISCHARGE, "Next hour it discharges", "f7:arrow_up_circle",
-                "#ab47bc");
-        if (nextDischarge != null) {
-            battery.add(colResponsive(nextDischarge));
-        }
-        if (!battery.isEmpty()) {
-            root.add(block("Battery", row(battery.toArray(new UIComponent[0]))));
-        }
-        if (has(I_OPT_PLAN_24H)) {
-            root.add(block(null, row(col("100", planStrip()))));
-        }
-
-        for (String reason : heatPumpAdviceItems()) {
-            UIComponent advice = labelCard(reason, heatPumpTitle(reason), "f7:thermometer", "#26a69a");
-            advice.addConfig("fontSize", "15px");
-            root.add(block(null, row(col("100", advice))));
-        }
-
-        // Loads the tagged model says are switchable - portable, because the profile names its own Item.
-        List<UIComponent> loads = new ArrayList<>();
-        if (has(I_BOILER_OVERRIDE)) {
-            loads.add(colResponsive(switchCard(I_BOILER_OVERRIDE, "Heat the water now", "f7:drop_fill", "#42a5f5")));
-        }
-        for (EnergyConsumer consumer : consumers) {
-            String item = consumer.profile().itemName();
-            if (has(item)) {
-                loads.add(colResponsive(switchCard(item, consumerTitle(consumer), "oh:poweroutlet", "#26a69a")));
-            }
-        }
-        if (!loads.isEmpty()) {
-            root.add(block("Other things you can switch", row(loads.toArray(new UIComponent[0]))));
-        }
-
-        List<UIComponent> peak = new ArrayList<>();
-        if (has(I_PEAK_ENABLED)) {
-            peak.add(colResponsive(
-                    switchCard(I_PEAK_ENABLED, "Protect against peaks", "f7:shield_lefthalf_fill", "#43a047")));
-        }
-        if (has(I_PEAK_ENGAGE)) {
-            peak.add(colResponsive(
-                    actionCard(I_PEAK_ENGAGE, "Turn things down now", "f7:arrow_down_circle_fill", "#ff9800")));
-        }
-        if (has(I_PEAK_RESET)) {
-            peak.add(colResponsive(
-                    actionCard(I_PEAK_RESET, "Turn everything back on", "f7:arrow_up_circle_fill", "#43a047")));
-        }
-        if (!peak.isEmpty()) {
-            root.add(block("Peaks", row(peak.toArray(new UIComponent[0]))));
-        }
-
-        List<UIComponent> analysis = new ArrayList<>();
-        if (has(I_SIZING_RUN)) {
-            analysis.add(colResponsive(
-                    actionCard(I_SIZING_RUN, "What size battery suits me?", "f7:battery_100", "#7e57c2")));
-        }
-        if (has(I_SIZING_KWH)) {
-            analysis.add(colResponsive(labelCard(I_SIZING_KWH, "Battery size that fits", "f7:battery_100", "#7e57c2")));
-        }
-        if (has(I_SIZING_PAYBACK)) {
-            analysis.add(
-                    colResponsive(labelCard(I_SIZING_PAYBACK, "Pays for itself in, years", "f7:calendar", "#9575cd")));
-        }
-        if (has(I_COMPARE_RUN)) {
-            analysis.add(colResponsive(
-                    actionCard(I_COMPARE_RUN, "Am I on the right tariff?", "f7:money_euro_circle", "#5b8def")));
-        }
-        if (!analysis.isEmpty()) {
-            root.add(block("Run a check", row(analysis.toArray(new UIComponent[0]))));
-        }
-        if (has(I_COMPARE_RANKING)) {
-            UIComponent ranking = labelCard(I_COMPARE_RANKING, "Tariffs ranked for this building", "f7:list_number",
-                    "#5b8def");
-            ranking.addConfig("fontSize", "15px");
-            root.add(block(null, row(col("100", ranking))));
-        }
-
-        // The stop button, last and unmistakable: it is the thing you want to find in a hurry.
-        if (has(I_SHADOW_MODE)) {
-            UIComponent stop = switchCard(I_SHADOW_MODE, "Stop the system controlling anything", "f7:hand_raised_fill",
-                    "#ef5350");
-            root.add(block("Stop button", row(col("100", stop))));
-        }
-        return page;
-    }
-
-    /** ECO / SNEL / OFF as three buttons, because a dropdown hides the thing you want to press. */
-    private UIComponent modeSelector(String item, String title) {
-        UIComponent card = new UIComponent("oh-label-card");
-        card.addConfig("item", item);
-        card.addConfig("title", title);
-        card.addConfig("icon", "f7:car_fill");
-        card.addConfig("iconColor", "#43a047");
-        card.addConfig("iconSize", Integer.valueOf(30));
-        card.addConfig("fontSize", "20px");
-        card.addConfig("fontWeight", "700");
-        card.addConfig("background", "linear-gradient(135deg, #43a04722, transparent 72%)");
-        card.addConfig("style", tileStyle());
-        card.addConfig("action", "options");
-        card.addConfig("actionItem", item);
-        return card;
-    }
-
-    private UIComponent switchCard(String item, String title, String icon, String accent) {
-        UIComponent c = new UIComponent("oh-toggle-card");
-        c.addConfig("item", item);
-        c.addConfig("title", title);
-        c.addConfig("icon", icon);
-        c.addConfig("iconColor", accent);
-        c.addConfig("iconSize", Integer.valueOf(28));
-        c.addConfig("style", tileStyle());
-        return c;
-    }
-
-    /**
-     * A momentary action: press it and the rule behind it fires.
-     * <p>
-     * Built on {@code oh-label-card} with a command action rather than a card type of its own, because MainUI has no
-     * button card - the standard set is label, toggle, slider, gauge and the rest, and inventing a name renders
-     * nothing at all.
-     */
-    private UIComponent actionCard(String item, String title, String icon, String accent) {
-        UIComponent c = labelCard(item, title, icon, accent);
-        c.addConfig("action", "command");
-        c.addConfig("actionItem", item);
-        c.addConfig("actionCommand", "ON");
-        c.addConfig("actionFeedback", title + " sent");
-        return c;
-    }
-
-    /**
      * The heat-pump advice Items, discovered rather than named.
      * <p>
      * A pump's Items are named after the Thing the site created, so there is no fixed name to look for. A site with
@@ -714,7 +506,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<UIComponent> series = page.addSlot("series");
         // Solar forecast: orange dashed line (no fill) so it reads distinctly against the yellow
         // solar actual beneath it.
-        series.add(powerLine("Solar forecast", ITEM_FORECAST_SERIES, "#ff9800", true, false));
+        if (has(ITEM_FORECAST_SERIES)) {
+            series.add(powerLine("Solar forecast", ITEM_FORECAST_SERIES, "#ff9800", true, false));
+        }
+        // what the building drew, so the chart carries both halves of the story rather than only supply
+        if (has(I_DM_TRACKED)) {
+            series.add(powerLine("Building", I_DM_TRACKED, "#7e57c2", false, true));
+        }
         for (EnergyProvider p : providers) {
             series.add(
                     powerLine(providerTitle(p), p.id(), providerColor(p.role()), false, p.role() != ProviderRole.GRID));
@@ -778,8 +576,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             if (!has(kwh)) {
                 continue;
             }
-            series.add(
-                    powerLine(prettyCircuit(circuit), kwh, CIRCUIT_COLORS[index % CIRCUIT_COLORS.length], false, true));
+            series.add(stackedBand(prettyCircuit(circuit), kwh, CIRCUIT_COLORS[index % CIRCUIT_COLORS.length]));
             index++;
         }
         chartControls(page);
@@ -789,6 +586,26 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     /** Enough distinct hues that no two circuits on a normal site share one. */
     private static final String[] CIRCUIT_COLORS = { "#5b8def", "#43a047", "#ff9800", "#ef5350", "#7e57c2", "#26a69a",
             "#ec407a", "#8d6e63", "#42a5f5", "#9ccc65", "#ffa726", "#ab47bc", "#78909c" };
+
+    /**
+     * One band of a stacked area chart.
+     * <p>
+     * Twelve cumulative lines drawn over each other is unreadable - they all rise, they all cross, and the eye cannot
+     * tell which is which. Stacked, the same twelve become bands: the height of the whole is the day's total and the
+     * thickness of each band is what that circuit spent, which is the question the page is for.
+     */
+    private UIComponent stackedBand(String name, String item, String colour) {
+        UIComponent series = new UIComponent("oh-time-series");
+        series.addConfig("name", name);
+        series.addConfig("item", item);
+        series.addConfig("type", "line");
+        series.addConfig("color", colour);
+        series.addConfig("stack", "total");
+        series.addConfig("showSymbol", Boolean.FALSE);
+        series.addConfig("lineStyle", java.util.Map.of("width", Integer.valueOf(1), "opacity", Double.valueOf(0.6)));
+        series.addConfig("areaStyle", java.util.Map.of("opacity", Double.valueOf(0.75)));
+        return series;
+    }
 
     private UIComponent powerLine(String name, String item, String color, boolean dashed, boolean area) {
         UIComponent s = new UIComponent("oh-time-series");
@@ -943,6 +760,130 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return m;
     }
 
+    /**
+     * The site's own item-name patterns, read from the bridge Thing, so the page never assumes what the chargers are
+     * called.
+     */
+    private @org.eclipse.jdt.annotation.Nullable String pattern(String key) {
+        for (Thing thing : thingRegistry.getAll()) {
+            if (!"emsmanager".equals(thing.getUID().getBindingId())
+                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
+                continue;
+            }
+            Object value = thing.getConfiguration().get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    private int carCount() {
+        for (Thing thing : thingRegistry.getAll()) {
+            if (!"emsmanager".equals(thing.getUID().getBindingId())
+                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
+                continue;
+            }
+            Object value = thing.getConfiguration().get("carCount");
+            if (value instanceof Number number) {
+                return number.intValue();
+            }
+        }
+        return 0;
+    }
+
+    private @org.eclipse.jdt.annotation.Nullable String carItem(String patternKey, int car) {
+        String pattern = pattern(patternKey);
+        if (pattern == null) {
+            return null;
+        }
+        String name = String.format(pattern, car);
+        return has(name) ? name : null;
+    }
+
+    /**
+     * The things you can actually change, and the answers to the things you can ask it.
+     */
+    private RootUIComponent buildControlPage(List<EnergyConsumer> consumers) {
+        RootUIComponent page = layoutPage(P_CONTROL, "Control");
+        List<UIComponent> root = page.addSlot("default");
+
+        // Every charger in one card, side by side, the way the charging widget on this site does it.
+        List<UIComponent> chargers = new ArrayList<>();
+        for (int car = 1; car <= carCount(); car++) {
+            String mode = carItem("carModeItemPattern", car);
+            if (mode != null) {
+                chargers.add(chargerColumn(mode, "Car " + car, carItem("carStatusItemPattern", car),
+                        carItem("carCableItemPattern", car)));
+            }
+        }
+        if (!chargers.isEmpty()) {
+            root.add(cardRow(card("Cars", chargers)));
+        }
+
+        List<UIComponent> switches = new ArrayList<>();
+        if (has(I_BOILER_OVERRIDE)) {
+            switches.add(switchRow(I_BOILER_OVERRIDE, "Heat the water now"));
+        }
+        if (has(I_PEAK_ENABLED)) {
+            switches.add(switchRow(I_PEAK_ENABLED, "Protect against peaks"));
+        }
+        for (EnergyConsumer consumer : consumers) {
+            String item = consumer.profile().itemName();
+            if (has(item)) {
+                switches.add(switchRow(item, consumerTitle(consumer)));
+            }
+        }
+        if (!switches.isEmpty()) {
+            root.add(cardRow(listCard("Switches", switches)));
+        }
+
+        List<UIComponent> actions = new ArrayList<>();
+        if (has(I_PEAK_ENGAGE)) {
+            actions.add(actionButton(I_PEAK_ENGAGE, "Turn things down now", "orange"));
+        }
+        if (has(I_PEAK_RESET)) {
+            actions.add(actionButton(I_PEAK_RESET, "Turn everything back on", "green"));
+        }
+        if (has(I_SIZING_RUN)) {
+            actions.add(actionButton(I_SIZING_RUN, "What size battery suits me?", "purple"));
+        }
+        if (has(I_COMPARE_RUN)) {
+            actions.add(actionButton(I_COMPARE_RUN, "Am I on the right tariff?", "blue"));
+        }
+        if (!actions.isEmpty()) {
+            root.add(cardRow(listCard("Ask it to do something", actions)));
+        }
+
+        UIComponent answers = figureCard("Answers",
+                figureIfPresent(I_SIZING_KWH, "battery size that fits", "battery_100", "purple"),
+                figureIfPresent(I_SIZING_PAYBACK, "pays back in, years", "calendar", "purple"),
+                figureIfPresent(I_COMPARE_CHEAPEST, "best tariff", "money_euro_circle", "blue"),
+                figureIfPresent(I_BATTERY_SETPOINT, "battery set to", "battery_25", "green"));
+        if (answers != null) {
+            root.add(cardRow(answers));
+        }
+        if (has(I_COMPARE_SUMMARY)) {
+            UIComponent summary = new UIComponent("oh-label-item");
+            summary.addConfig("item", I_COMPARE_SUMMARY);
+            summary.addConfig("style", java.util.Map.of("font-size", "12px", "line-height", "1.3"));
+            root.add(cardRow(listCard("Tariffs compared", List.of(summary))));
+        }
+
+        for (String reason : heatPumpAdviceItems()) {
+            UIComponent advice = new UIComponent("oh-label-item");
+            advice.addConfig("item", reason);
+            advice.addConfig("style", java.util.Map.of("font-size", "12px", "line-height", "1.3"));
+            root.add(cardRow(listCard(heatPumpTitle(reason), List.of(advice))));
+        }
+
+        if (has(I_SHADOW_MODE)) {
+            root.add(cardRow(listCard("Stop button",
+                    List.of(switchRow(I_SHADOW_MODE, "Stop the system controlling anything")))));
+        }
+        return page;
+    }
+
     // --- compact widget vocabulary ---------------------------------------------------------------
     //
     // Framework7 primitives rather than the stock oh-*-card tiles. A tile is one number in a large box, so a page of
@@ -1013,6 +954,128 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     /** A whole card as one page row. */
     private UIComponent cardRow(UIComponent card) {
         return block(null, row(col("100", card)));
+    }
+
+    /**
+     * A charger column: an icon that changes with its state, the mode underneath, and a button per mode.
+     * <p>
+     * The buttons are built from the Item's own command options, so a site whose modes are not ECO/SNEL/OFF gets its
+     * own words on its own buttons. A dropdown hides the choice behind a tap; three buttons show it.
+     */
+    private UIComponent chargerColumn(String modeItem, String label,
+            @org.eclipse.jdt.annotation.Nullable String statusItem,
+            @org.eclipse.jdt.annotation.Nullable String cableItem) {
+        UIComponent column = new UIComponent("f7-col");
+        column.addConfig("class",
+                List.of("display-flex", "flex-direction-column", "align-items-center", "padding-vertical-half"));
+        column.addConfig("width", "50");
+        column.addConfig("medium", "25");
+        List<UIComponent> slot = column.addSlot("default");
+
+        UIComponent name = new UIComponent("oh-label-item");
+        name.addConfig("title", label);
+        name.addConfig("class", List.of("text-align-center"));
+        name.addConfig("style", java.util.Map.of("font-weight", "bold", "font-size", "13px"));
+        slot.add(name);
+
+        UIComponent glyph = new UIComponent("f7-icon");
+        if (cableItem != null) {
+            glyph.addConfig("f7", "=items." + cableItem + ".state === 'ON' ? 'bolt_car_fill' : 'bolt_car'");
+        } else {
+            glyph.addConfig("f7", "bolt_car");
+        }
+        if (statusItem != null) {
+            glyph.addConfig("color", "=items." + statusItem + ".state === 'Charging' ? 'green' : "
+                    + (cableItem != null ? "items." + cableItem + ".state === 'ON' ? 'blue' : 'gray'" : "'gray'"));
+        } else {
+            glyph.addConfig("color", "gray");
+        }
+        glyph.addConfig("size", Integer.valueOf(34));
+        slot.add(glyph);
+
+        if (statusItem != null) {
+            UIComponent status = new UIComponent("oh-label-item");
+            status.addConfig("item", statusItem);
+            status.addConfig("class", List.of("text-align-center"));
+            status.addConfig("style", java.util.Map.of("font-size", "10px", "line-height", "1.2", "opacity", "0.7"));
+            slot.add(status);
+        }
+
+        // the mode itself, always shown - a charger whose Item offers no command options still has a mode, and a
+        // column with no buttons and no mode says nothing at all
+        UIComponent current = new UIComponent("oh-label-item");
+        current.addConfig("item", modeItem);
+        current.addConfig("class", List.of("text-align-center"));
+        current.addConfig("style", java.util.Map.of("font-size", "12px", "font-weight", "bold"));
+        slot.add(current);
+
+        List<UIComponent> buttons = new ArrayList<>();
+        for (String option : commandOptions(modeItem)) {
+            UIComponent button = new UIComponent("oh-button");
+            button.addConfig("text", option);
+            button.addConfig("small", Boolean.TRUE);
+            button.addConfig("fill", "=items." + modeItem + ".state === '" + option + "'");
+            button.addConfig("action", "command");
+            button.addConfig("actionItem", modeItem);
+            button.addConfig("actionCommand", option);
+            buttons.add(button);
+        }
+        if (!buttons.isEmpty()) {
+            UIComponent segmented = new UIComponent("f7-segmented");
+            segmented.addConfig("raised", Boolean.TRUE);
+            segmented.addConfig("tag", "p");
+            segmented.addConfig("style", java.util.Map.of("margin-top", "4px"));
+            segmented.addSlot("default").addAll(buttons);
+            slot.add(segmented);
+        }
+        return column;
+    }
+
+    /** The commands an Item offers, so the page never invents a mode this site does not have. */
+    private List<String> commandOptions(String item) {
+        org.openhab.core.items.Item found = itemRegistry.get(item);
+        if (found == null) {
+            return List.of();
+        }
+        org.openhab.core.types.CommandDescription description = found.getCommandDescription();
+        if (description == null) {
+            return List.of();
+        }
+        List<String> options = new ArrayList<>();
+        for (org.openhab.core.types.CommandOption option : description.getCommandOptions()) {
+            options.add(option.getCommand());
+        }
+        return options;
+    }
+
+    /** A switch as a compact row rather than a card of its own. */
+    private UIComponent switchRow(String item, String label) {
+        UIComponent toggle = new UIComponent("oh-toggle-item");
+        toggle.addConfig("item", item);
+        toggle.addConfig("title", label);
+        return toggle;
+    }
+
+    /** A momentary action as a full-width button. */
+    private UIComponent actionButton(String item, String label, String colour) {
+        UIComponent button = new UIComponent("oh-button");
+        button.addConfig("text", label);
+        button.addConfig("large", Boolean.TRUE);
+        button.addConfig("fill", Boolean.TRUE);
+        button.addConfig("color", colour);
+        button.addConfig("action", "command");
+        button.addConfig("actionItem", item);
+        button.addConfig("actionCommand", "ON");
+        button.addConfig("style", java.util.Map.of("margin", "4px 0"));
+        return button;
+    }
+
+    /** A card holding a list of rows (switches, buttons) rather than a row of figures. */
+    private UIComponent listCard(String title, List<UIComponent> rows) {
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", title);
+        card.addSlot("default").addAll(rows);
+        return card;
     }
 
     // --- rendering only what exists -------------------------------------------------------------

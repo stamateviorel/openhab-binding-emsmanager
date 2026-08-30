@@ -127,9 +127,12 @@ class EnergyUiProviderTest {
         if (component == null) {
             return;
         }
-        Object item = component.getConfig() == null ? null : component.getConfig().get("item");
-        if (item instanceof String name) {
-            found.add(name);
+        // an Item can be referenced as the card's own item or as the target of a button's action
+        for (String key : List.of("item", "actionItem")) {
+            Object item = component.getConfig() == null ? null : component.getConfig().get(key);
+            if (item instanceof String name) {
+                found.add(name);
+            }
         }
         if (component.getSlots() != null) {
             for (List<UIComponent> slot : component.getSlots().values()) {
@@ -204,8 +207,8 @@ class EnergyUiProviderTest {
     @Test
     public void theBatteryPlanStripIsDrawnOnlyWhenThePlanExists() {
         assertFalse(
-                itemsOn(page(providerWith(Set.of()), "emsmanager_energy_control")).contains("EMS_Optimizer_Plan_24h"));
-        assertTrue(itemsOn(page(providerWith(Set.of("EMS_Optimizer_Plan_24h")), "emsmanager_energy_control"))
+                itemsOn(page(providerWith(Set.of()), "emsmanager_energy_ahead")).contains("EMS_Optimizer_Plan_24h"));
+        assertTrue(itemsOn(page(providerWith(Set.of("EMS_Optimizer_Plan_24h")), "emsmanager_energy_ahead"))
                 .contains("EMS_Optimizer_Plan_24h"));
     }
 
@@ -246,12 +249,12 @@ class EnergyUiProviderTest {
      */
     @Test
     public void chargerControlsFollowTheSitesOwnItemNames() {
-        EnergyUiProvider provider = providerWith(Set.of("Car1_Mode_OCPP", "Car1_Pause_OCPP"), List.of(emsBridge(4)));
+        EnergyUiProvider provider = providerWith(Set.of("Car1_Mode_OCPP", "Car1_Status_OCPP"), List.of(emsBridge(4)));
 
         RootUIComponent control = page(provider, "emsmanager_energy_control");
         assertTrue(blockTitles(control).contains("Cars"));
         assertTrue(itemsOn(control).contains("Car1_Mode_OCPP"));
-        assertTrue(itemsOn(control).contains("Car1_Pause_OCPP"));
+        assertTrue(itemsOn(control).contains("Car1_Status_OCPP"));
     }
 
     @Test
@@ -331,7 +334,8 @@ class EnergyUiProviderTest {
         Set<String> known = Set.of("oh-tabs-page", "oh-tab", "oh-layout-page", "oh-block", "oh-grid-row", "oh-grid-col",
                 "oh-label-card", "oh-toggle-card", "oh-gauge-card", "oh-chart-page", "oh-chart-grid", "oh-time-axis",
                 "oh-value-axis", "oh-time-series", "oh-chart-legend", "oh-chart-tooltip", "oh-chart-datazoom",
-                "f7-card", "f7-row", "f7-col", "f7-icon", "f7-segmented", "oh-label-item", "oh-button");
+                "f7-card", "f7-row", "f7-col", "f7-icon", "f7-segmented", "oh-label-item", "oh-button",
+                "oh-toggle-item");
 
         EnergyUiProvider provider = providerWith(
                 Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h", "EMS_Capacity_Current_Quarter",
