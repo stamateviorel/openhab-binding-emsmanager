@@ -281,148 +281,73 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return c;
     }
 
+    /**
+     * What is happening, in as few things as possible.
+     * <p>
+     * The earlier version of this page was thirty-four tiles under eight headings, which is a readout rather than an
+     * answer: you had to know what "self-used" or "capacity projected" meant, and scroll past most of it to find the
+     * number you came for. This one leads with a sentence, then the four figures that describe the building right
+     * now, then the two or three things worth acting on. Everything else moved to the tab it belongs to.
+     */
     private RootUIComponent buildNowPage(List<EnergyProvider> providers, List<EnergyConsumer> consumers) {
         RootUIComponent page = layoutPage(P_NOW, "Now");
         List<UIComponent> root = page.addSlot("default");
 
-        // Intelligent, self-updating status line — the EMS talking.
+        // One sentence, in words: how much of today ran on sun, whether you are buying or selling, and the level.
         root.add(block(null, row(col("100", statusBanner(providers)))));
 
-        // Hero: two glanceable gauges side by side — the site energy level (Kai's Energieniveau,
-        // recolored red->green) and the self-sufficiency % (solar-covered share of consumption).
-        root.add(block(null, row(colHalf(energyLevelGauge()), colHalf(selfSufficiencyGauge()))));
-
-        // At-a-glance KPI strip under the hero — the numbers people actually want.
-        addIfPresent(root,
-                tileBlock("Today", tileIfPresent(I_TARIFF_NOW, "Tariff now", "f7:money_euro", "#5b8def"),
-                        tileIfPresent(I_FORECAST_TODAY, "Solar forecast", "f7:sun_max", "#ff9800"),
-                        tileIfPresent(I_SELFCONS_DAY, "Self-used", "f7:house", "#43a047"),
-                        tileIfPresent(I_SUPPLY_DAY, "Taken from grid", "oh:energy", "#ef5350")));
-
-        // What the sun is about to do. A forecast is only useful ahead of the moment it describes, so these are the
-        // lookahead figures rather than another way of saying what the roof is making right now.
-        addIfPresent(root,
-                tileBlock("Sun ahead", tileIfPresent(I_FORECAST_NOW, "Right now", "f7:sun_max", "#ff9800"),
-                        tileIfPresent(I_FORECAST_1H, "Next hour", "f7:sun_max", "#ffa726"),
-                        tileIfPresent(I_FORECAST_3H, "Next 3 hours", "f7:sun_max", "#ffb74d"),
-                        tileIfPresent(I_FORECAST_PEAK_AT, "Best hour today", "f7:clock", "#ffcc80")));
-
-        // The battery and what it intends to do, including the optimizer's own 24-hour plan.
-        List<UIComponent> batteryTiles = new ArrayList<>();
-        UIComponent setpoint = tileIfPresent(I_BATTERY_SETPOINT, "Battery setpoint", "f7:battery_25", "#26a69a");
-        if (setpoint != null) {
-            batteryTiles.add(colResponsive(setpoint));
-        }
-        UIComponent nextCharge = tileIfPresent(I_OPT_NEXT_CHARGE, "Next charge hour", "f7:arrow_down_circle",
-                "#42a5f5");
-        if (nextCharge != null) {
-            batteryTiles.add(colResponsive(nextCharge));
-        }
-        UIComponent nextDischarge = tileIfPresent(I_OPT_NEXT_DISCHARGE, "Next discharge hour", "f7:arrow_up_circle",
-                "#ab47bc");
-        if (nextDischarge != null) {
-            batteryTiles.add(colResponsive(nextDischarge));
-        }
-        if (!batteryTiles.isEmpty()) {
-            root.add(block("Battery", row(batteryTiles.toArray(new UIComponent[0]))));
-        }
-        if (has(I_OPT_PLAN_24H)) {
-            root.add(block(null, row(col("100", planStrip()))));
-        }
-
-        // The capacity tariff. This is the quarter-hour peak the bill is actually built on, and it is the one number
-        // on this page where being told late costs money, so it turns red as it approaches rather than after.
-        List<UIComponent> capacityTiles = new ArrayList<>();
-        UIComponent quarter = tileIfPresent(I_CAP_QUARTER, "This quarter-hour", "f7:gauge", "#9575cd");
-        if (quarter != null && has(I_CAP_WOULD_EXCEED)) {
-            quarter.addConfig("background", "=items." + I_CAP_WOULD_EXCEED
-                    + ".state=='ON'?'linear-gradient(135deg,#ef535055,transparent 72%)':'linear-gradient(135deg,#9575cd22,transparent 72%)'");
-        }
-        if (quarter != null) {
-            capacityTiles.add(colResponsive(quarter));
-        }
-        UIComponent projected = tileIfPresent(I_CAP_PROJECTED, "Projected", "f7:chart_bar", "#9575cd");
-        if (projected != null) {
-            capacityTiles.add(colResponsive(projected));
-        }
-        UIComponent monthPeak = tileIfPresent(I_CAP_PEAK, "Peak this month", "f7:gauge", "#7e57c2");
-        if (monthPeak != null) {
-            capacityTiles.add(colResponsive(monthPeak));
-        }
-        UIComponent capStatus = tileIfPresent(I_CAP_STATUS, "Status", "f7:info_circle", "#7e57c2");
-        if (capStatus != null) {
-            capStatus.addConfig("fontSize", "15px");
-            capacityTiles.add(colResponsive(capStatus));
-        }
-        if (!capacityTiles.isEmpty()) {
-            root.add(block("Grid capacity", row(capacityTiles.toArray(new UIComponent[0]))));
-        }
-
-        List<UIComponent> devices = new ArrayList<>();
-        for (EnergyProvider p : providers) {
-            UIComponent card = trendCard(p.id(), providerTitle(p), providerIcon(p.role()), p.id());
-            if (p.role() == ProviderRole.GRID) {
-                // Reactive: green when exporting to the grid, red when importing from it.
-                String g = "items." + p.id() + ".numericState";
+        // The four numbers that say what the building is doing. Nothing else belongs at the top of this page.
+        List<UIComponent> live = new ArrayList<>();
+        for (EnergyProvider provider : providers) {
+            String title = switch (provider.role()) {
+                case PV -> "Roof is making";
+                case GRID -> "Grid";
+                case BATTERY -> "Battery";
+            };
+            UIComponent card = trendCard(provider.id(), title, providerIcon(provider.role()), provider.id());
+            if (provider.role() == ProviderRole.GRID) {
+                // green when you are selling, red when you are buying - the only two states that matter here
+                String g = "items." + provider.id() + ".numericState";
                 card.addConfig("background", "=" + g
                         + ">=0?'linear-gradient(135deg,#43a04730,transparent 72%)':'linear-gradient(135deg,#ef535030,transparent 72%)'");
+                card.addConfig("title", "=" + g + ">=0?'Selling to grid':'Buying from grid'");
             }
-            devices.add(card);
+            live.add(colResponsive(card));
         }
-        for (EnergyConsumer c : consumers) {
-            String measure = c.measureItem();
-            devices.add(trendCard(c.id(), consumerTitle(c), "oh:poweroutlet", measure != null ? measure : c.id()));
+        UIComponent house = tileIfPresent(I_DM_TRACKED, "Building is using", "f7:house_fill", "#7e57c2");
+        if (house != null) {
+            house.addConfig("trendItem", I_DM_TRACKED);
+            live.add(colResponsive(house));
         }
-        if (!devices.isEmpty()) {
-            int mw = devices.size() <= 4 ? Math.max(25, 100 / devices.size()) : 25;
-            List<UIComponent> cols = new ArrayList<>();
-            for (UIComponent d : devices) {
-                cols.add(colFill(d, mw));
-            }
-            root.add(block("Devices", row(cols.toArray(new UIComponent[0]))));
+        if (!live.isEmpty()) {
+            root.add(block(null, row(live.toArray(new UIComponent[0]))));
         }
 
-        // Money this month rather than since the beginning of time: a running total nobody can date is a number you
-        // cannot act on, and the services keep the monthly figures anyway.
+        // Is now a good moment to run something, and how much sun is left to use.
         addIfPresent(root,
-                tileBlock("This month", tileIfPresent(I_COST_MONTH, "Cost", "f7:money_euro", "#ef5350"),
-                        tileIfPresent(I_SAVINGS_MONTH, "Saved", "f7:money_euro", "#43a047"),
-                        tileIfPresent(I_EARNINGS_MONTH, "Earned by exporting", "f7:money_euro", "#66bb6a"),
-                        tileIfPresent(I_CO2_SAVED_TODAY, "CO\u2082 avoided today", "f7:smoke", "#26a69a")));
+                tileBlock("Worth knowing right now",
+                        tileIfPresent(I_TARIFF_NOW, "Price now", "f7:money_euro", "#5b8def"),
+                        tileIfPresent(I_FORECAST_1H, "Sun in the next hour", "f7:sun_max", "#ffa726"),
+                        tileIfPresent(I_SELFCONS_DAY, "Sun used today", "f7:checkmark_seal_fill", "#43a047"),
+                        tileIfPresent(I_CAP_QUARTER, "Peak you are billed on", "f7:gauge", "#9575cd")));
 
-        // The lifetime figures, kept but demoted - they are a fine thing to have and a poor thing to lead with.
-        addIfPresent(root,
-                tileBlock("Since the beginning",
-                        tileIfPresent("EMS_Cost_EUR_Total", "Cost total", "f7:money_euro", "#ef5350"),
-                        tileIfPresent("EMS_Savings_EUR_Total", "Saved total", "f7:money_euro", "#43a047"),
-                        tileIfPresent("EMS_Earnings_EUR_Total", "Earned total", "f7:money_euro", "#66bb6a"),
-                        tileIfPresent("EMS_CO2_Saved_Year_kg", "CO\u2082 avoided this year", "f7:smoke", "#26a69a")));
-
-        // Things worth reading only when they have something to say. Each hides itself otherwise, because a row of
-        // "nothing to report" tiles trains people to stop reading the page.
+        // Only shows up when it has something to say, so an ordinary day is a short page.
         List<UIComponent> attention = new ArrayList<>();
-        UIComponent anomalies = tileIfPresent(I_ANOMALY_COUNT, "Devices behaving oddly", "f7:exclamationmark_triangle",
-                "#ef5350");
+        UIComponent anomalies = tileIfPresent(I_ANOMALY_COUNT, "Something is using more than usual",
+                "f7:exclamationmark_triangle_fill", "#ef5350");
         if (anomalies != null) {
             anomalies.addConfig("visible", "=items." + I_ANOMALY_COUNT + ".numericState>0");
-            attention.add(colResponsive(anomalies));
+            attention.add(colHalf(anomalies));
         }
-        UIComponent boilerPlan = tileIfPresent(I_BOILER_PLAN, "Boiler plan", "f7:drop", "#42a5f5");
-        if (boilerPlan != null) {
-            boilerPlan.addConfig("fontSize", "15px");
-            attention.add(colResponsive(boilerPlan));
-        }
-        for (String reason : heatPumpAdviceItems()) {
-            UIComponent heatPump = labelCard(reason, heatPumpTitle(reason), "f7:thermometer", "#26a69a");
-            heatPump.addConfig("fontSize", "15px");
-            attention.add(colResponsive(heatPump));
-        }
-        UIComponent cheapest = tileIfPresent(I_TARIFF_CHEAPEST_AT, "Cheapest hour today", "f7:clock", "#5b8def");
-        if (cheapest != null) {
-            attention.add(colResponsive(cheapest));
+        UIComponent exceeding = tileIfPresent(I_CAP_STATUS, "Peak warning", "f7:exclamationmark_circle_fill",
+                "#ef5350");
+        if (exceeding != null && has(I_CAP_WOULD_EXCEED)) {
+            exceeding.addConfig("visible", "=items." + I_CAP_WOULD_EXCEED + ".state=='ON'");
+            exceeding.addConfig("fontSize", "15px");
+            attention.add(colHalf(exceeding));
         }
         if (!attention.isEmpty()) {
-            root.add(block("Worth knowing", row(attention.toArray(new UIComponent[0]))));
+            root.add(block(null, row(attention.toArray(new UIComponent[0]))));
         }
         return page;
     }
@@ -475,38 +400,62 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return has(name) ? name : null;
     }
 
-    /**
-     * The controls, which is what turns a dashboard into something worth opening.
-     * <p>
-     * Everything here is offered only where the Item behind it exists, so a site without chargers gets no charger
-     * block rather than a row of dead buttons.
-     */
     private RootUIComponent buildControlPage(List<EnergyConsumer> consumers) {
         RootUIComponent page = layoutPage(P_CONTROL, "Control");
         List<UIComponent> root = page.addSlot("default");
 
+        // All the chargers under one heading, two cards each. Four headings of three cards was most of the scrolling
+        // on this page, and the status line said "SuspendedEVSE" - true, and no use to anybody standing in a hangar.
+        List<UIComponent> chargers = new ArrayList<>();
         for (int car = 1; car <= carCount(); car++) {
             String mode = carItem("carModeItemPattern", car);
             if (mode == null) {
                 continue;
             }
-            List<UIComponent> cols = new ArrayList<>();
-            cols.add(col("100", modeSelector(mode)));
+            chargers.add(colResponsive(modeSelector(mode, "Car " + car)));
             String pause = carItem("carPauseItemPattern", car);
             if (pause != null) {
-                cols.add(colHalf(switchCard(pause, "Paused", "f7:pause_circle", "#ef5350")));
+                chargers.add(colResponsive(switchCard(pause, "Car " + car + " paused", "f7:pause_circle", "#ef5350")));
             }
-            String status = carItem("carStatusItemPattern", car);
-            if (status != null) {
-                cols.add(colHalf(labelCard(status, "Status", "f7:bolt_horizontal", "#5b8def")));
-            }
-            root.add(block("Charger " + car, row(cols.toArray(new UIComponent[0]))));
+        }
+        if (!chargers.isEmpty()) {
+            root.add(block("Cars", row(chargers.toArray(new UIComponent[0]))));
+        }
+
+        // What the battery intends to do next. It is not a control, but it is the answer to "why is it doing that",
+        // and the controls are where somebody asks.
+        List<UIComponent> battery = new ArrayList<>();
+        UIComponent setpoint = tileIfPresent(I_BATTERY_SETPOINT, "Battery is set to", "f7:battery_25", "#26a69a");
+        if (setpoint != null) {
+            battery.add(colResponsive(setpoint));
+        }
+        UIComponent nextCharge = tileIfPresent(I_OPT_NEXT_CHARGE, "Next hour it charges", "f7:arrow_down_circle",
+                "#42a5f5");
+        if (nextCharge != null) {
+            battery.add(colResponsive(nextCharge));
+        }
+        UIComponent nextDischarge = tileIfPresent(I_OPT_NEXT_DISCHARGE, "Next hour it discharges", "f7:arrow_up_circle",
+                "#ab47bc");
+        if (nextDischarge != null) {
+            battery.add(colResponsive(nextDischarge));
+        }
+        if (!battery.isEmpty()) {
+            root.add(block("Battery", row(battery.toArray(new UIComponent[0]))));
+        }
+        if (has(I_OPT_PLAN_24H)) {
+            root.add(block(null, row(col("100", planStrip()))));
+        }
+
+        for (String reason : heatPumpAdviceItems()) {
+            UIComponent advice = labelCard(reason, heatPumpTitle(reason), "f7:thermometer", "#26a69a");
+            advice.addConfig("fontSize", "15px");
+            root.add(block(null, row(col("100", advice))));
         }
 
         // Loads the tagged model says are switchable - portable, because the profile names its own Item.
         List<UIComponent> loads = new ArrayList<>();
         if (has(I_BOILER_OVERRIDE)) {
-            loads.add(colResponsive(switchCard(I_BOILER_OVERRIDE, "Boiler — force on", "f7:drop_fill", "#42a5f5")));
+            loads.add(colResponsive(switchCard(I_BOILER_OVERRIDE, "Heat the water now", "f7:drop_fill", "#42a5f5")));
         }
         for (EnergyConsumer consumer : consumers) {
             String item = consumer.profile().itemName();
@@ -515,44 +464,47 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             }
         }
         if (!loads.isEmpty()) {
-            root.add(block("Loads", row(loads.toArray(new UIComponent[0]))));
+            root.add(block("Other things you can switch", row(loads.toArray(new UIComponent[0]))));
         }
 
         List<UIComponent> peak = new ArrayList<>();
         if (has(I_PEAK_ENABLED)) {
-            peak.add(
-                    colResponsive(switchCard(I_PEAK_ENABLED, "Peak protection", "f7:shield_lefthalf_fill", "#43a047")));
+            peak.add(colResponsive(
+                    switchCard(I_PEAK_ENABLED, "Protect against peaks", "f7:shield_lefthalf_fill", "#43a047")));
         }
         if (has(I_PEAK_ENGAGE)) {
-            peak.add(colResponsive(actionCard(I_PEAK_ENGAGE, "Shed load now", "f7:arrow_down_circle_fill", "#ff9800")));
+            peak.add(colResponsive(
+                    actionCard(I_PEAK_ENGAGE, "Turn things down now", "f7:arrow_down_circle_fill", "#ff9800")));
         }
         if (has(I_PEAK_RESET)) {
             peak.add(colResponsive(
-                    actionCard(I_PEAK_RESET, "Release everything", "f7:arrow_up_circle_fill", "#43a047")));
+                    actionCard(I_PEAK_RESET, "Turn everything back on", "f7:arrow_up_circle_fill", "#43a047")));
         }
         if (!peak.isEmpty()) {
-            root.add(block("Peak protection", row(peak.toArray(new UIComponent[0]))));
+            root.add(block("Peaks", row(peak.toArray(new UIComponent[0]))));
         }
 
         List<UIComponent> analysis = new ArrayList<>();
         if (has(I_SIZING_RUN)) {
-            analysis.add(colResponsive(actionCard(I_SIZING_RUN, "Size the battery", "f7:battery_100", "#7e57c2")));
+            analysis.add(colResponsive(
+                    actionCard(I_SIZING_RUN, "What size battery suits me?", "f7:battery_100", "#7e57c2")));
         }
         if (has(I_SIZING_KWH)) {
-            analysis.add(colResponsive(labelCard(I_SIZING_KWH, "Best size", "f7:battery_100", "#7e57c2")));
+            analysis.add(colResponsive(labelCard(I_SIZING_KWH, "Battery size that fits", "f7:battery_100", "#7e57c2")));
         }
         if (has(I_SIZING_PAYBACK)) {
-            analysis.add(colResponsive(labelCard(I_SIZING_PAYBACK, "Payback, years", "f7:calendar", "#9575cd")));
+            analysis.add(
+                    colResponsive(labelCard(I_SIZING_PAYBACK, "Pays for itself in, years", "f7:calendar", "#9575cd")));
         }
         if (has(I_COMPARE_RUN)) {
-            analysis.add(
-                    colResponsive(actionCard(I_COMPARE_RUN, "Compare tariffs", "f7:money_euro_circle", "#5b8def")));
+            analysis.add(colResponsive(
+                    actionCard(I_COMPARE_RUN, "Am I on the right tariff?", "f7:money_euro_circle", "#5b8def")));
         }
         if (!analysis.isEmpty()) {
-            root.add(block("Ask it a question", row(analysis.toArray(new UIComponent[0]))));
+            root.add(block("Run a check", row(analysis.toArray(new UIComponent[0]))));
         }
         if (has(I_COMPARE_RANKING)) {
-            UIComponent ranking = labelCard(I_COMPARE_RANKING, "Cheapest tariff for this house", "f7:list_number",
+            UIComponent ranking = labelCard(I_COMPARE_RANKING, "Tariffs ranked for this building", "f7:list_number",
                     "#5b8def");
             ranking.addConfig("fontSize", "15px");
             root.add(block(null, row(col("100", ranking))));
@@ -560,22 +512,22 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
         // The stop button, last and unmistakable: it is the thing you want to find in a hurry.
         if (has(I_SHADOW_MODE)) {
-            UIComponent stop = switchCard(I_SHADOW_MODE, "Stop controlling (shadow mode)", "f7:hand_raised_fill",
+            UIComponent stop = switchCard(I_SHADOW_MODE, "Stop the system controlling anything", "f7:hand_raised_fill",
                     "#ef5350");
-            root.add(block("Kill switch", row(col("100", stop))));
+            root.add(block("Stop button", row(col("100", stop))));
         }
         return page;
     }
 
     /** ECO / SNEL / OFF as three buttons, because a dropdown hides the thing you want to press. */
-    private UIComponent modeSelector(String item) {
+    private UIComponent modeSelector(String item, String title) {
         UIComponent card = new UIComponent("oh-label-card");
         card.addConfig("item", item);
-        card.addConfig("title", "Charging mode");
+        card.addConfig("title", title);
         card.addConfig("icon", "f7:car_fill");
         card.addConfig("iconColor", "#43a047");
         card.addConfig("iconSize", Integer.valueOf(30));
-        card.addConfig("fontSize", "22px");
+        card.addConfig("fontSize", "20px");
         card.addConfig("fontWeight", "700");
         card.addConfig("background", "linear-gradient(135deg, #43a04722, transparent 72%)");
         card.addConfig("style", tileStyle());
@@ -595,18 +547,19 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return c;
     }
 
-    /** A momentary action: press it and the rule behind it fires. */
+    /**
+     * A momentary action: press it and the rule behind it fires.
+     * <p>
+     * Built on {@code oh-label-card} with a command action rather than a card type of its own, because MainUI has no
+     * button card - the standard set is label, toggle, slider, gauge and the rest, and inventing a name renders
+     * nothing at all.
+     */
     private UIComponent actionCard(String item, String title, String icon, String accent) {
-        UIComponent c = new UIComponent("oh-button-card");
-        c.addConfig("item", item);
-        c.addConfig("title", title);
-        c.addConfig("icon", icon);
-        c.addConfig("iconColor", accent);
-        c.addConfig("iconSize", Integer.valueOf(28));
+        UIComponent c = labelCard(item, title, icon, accent);
         c.addConfig("action", "command");
         c.addConfig("actionItem", item);
         c.addConfig("actionCommand", "ON");
-        c.addConfig("style", tileStyle());
+        c.addConfig("actionFeedback", title + " sent");
         return c;
     }
 
@@ -665,7 +618,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                     + ".numericState>0?'linear-gradient(135deg,#5b8def33,transparent 72%)':'transparent'");
             live.add(colResponsive(card));
         }
-        root.add(block("Drawing now", row(live.toArray(new UIComponent[0]))));
+        root.add(block("Using power now", row(live.toArray(new UIComponent[0]))));
 
         List<UIComponent> today = new ArrayList<>();
         for (String circuit : circuits) {
@@ -675,19 +628,25 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             }
         }
         if (!today.isEmpty()) {
-            root.add(block("Used today", row(today.toArray(new UIComponent[0]))));
+            root.add(block("Used so far today", row(today.toArray(new UIComponent[0]))));
         }
+
+        addIfPresent(root,
+                tileBlock("What it cost", tileIfPresent(I_COST_MONTH, "Bought this month", "f7:money_euro", "#ef5350"),
+                        tileIfPresent(I_SAVINGS_MONTH, "Saved this month", "f7:money_euro", "#43a047"),
+                        tileIfPresent(I_EARNINGS_MONTH, "Earned selling", "f7:money_euro", "#66bb6a"),
+                        tileIfPresent(I_CO2_SAVED_TODAY, "CO\u2082 avoided today", "f7:smoke", "#26a69a")));
 
         List<UIComponent> totals = new ArrayList<>();
         if (has(I_DM_TRACKED)) {
-            totals.add(colHalf(labelCard(I_DM_TRACKED, "Measured circuits", "f7:checkmark_seal", "#43a047")));
+            totals.add(colHalf(labelCard(I_DM_TRACKED, "Measured", "f7:checkmark_seal", "#43a047")));
         }
         if (has(I_DM_UNTRACKED)) {
-            UIComponent untracked = labelCard(I_DM_UNTRACKED, "Everything else", "f7:questionmark_circle", "#ff9800");
+            UIComponent untracked = labelCard(I_DM_UNTRACKED, "Not measured", "f7:questionmark_circle", "#ff9800");
             totals.add(colHalf(untracked));
         }
         if (!totals.isEmpty()) {
-            root.add(block("How much of the building is measured", row(totals.toArray(new UIComponent[0]))));
+            root.add(block("How much of the building this covers", row(totals.toArray(new UIComponent[0]))));
         }
         return page;
     }

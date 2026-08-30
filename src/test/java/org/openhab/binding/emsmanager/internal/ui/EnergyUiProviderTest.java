@@ -174,47 +174,44 @@ class EnergyUiProviderTest {
         RootUIComponent now = page(providerWith(Set.of()), "emsmanager_energy_now");
 
         List<String> blocks = blockTitles(now);
-        assertFalse(blocks.contains("Sun ahead"));
-        assertFalse(blocks.contains("Battery"));
-        assertFalse(blocks.contains("Grid capacity"));
-        assertFalse(blocks.contains("This month"));
+        assertFalse(blocks.contains("Worth knowing right now"));
     }
 
     @Test
     public void aBlockAppearsAsSoonAsOneOfItsItemsExists() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_Forecast_Now")), "emsmanager_energy_now");
+        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh")), "emsmanager_energy_now");
 
-        assertTrue(blockTitles(now).contains("Sun ahead"), "one present Item is enough to earn the block");
-        assertTrue(itemsOn(now).contains("EMS_Forecast_Now"));
+        assertTrue(blockTitles(now).contains("Worth knowing right now"), "one present Item earns the block");
+        assertTrue(itemsOn(now).contains("EMS_Tariff_Now_EurPerKWh"));
     }
 
     /** The half-populated case: the block appears, but only for the Items that are actually there. */
     @Test
     public void onlyThePresentItemsOfABlockAreDrawn() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_Forecast_Now", "EMS_Forecast_Next_3h")),
+        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh", "EMS_Forecast_Next_1h")),
                 "emsmanager_energy_now");
 
         List<String> items = itemsOn(now);
-        assertTrue(items.contains("EMS_Forecast_Now"));
-        assertTrue(items.contains("EMS_Forecast_Next_3h"));
-        assertFalse(items.contains("EMS_Forecast_Next_1h"), "an absent Item must not become a card");
-        assertFalse(items.contains("EMS_Forecast_Peak_Today_At"));
+        assertTrue(items.contains("EMS_Tariff_Now_EurPerKWh"));
+        assertTrue(items.contains("EMS_Forecast_Next_1h"));
+        assertFalse(items.contains("EMS_SelfConsumption_kWh_Day"), "an absent Item must not become a card");
+        assertFalse(items.contains("EMS_Capacity_Current_Quarter"));
     }
 
     @Test
     public void theBatteryPlanStripIsDrawnOnlyWhenThePlanExists() {
-        assertFalse(itemsOn(page(providerWith(Set.of()), "emsmanager_energy_now")).contains("EMS_Optimizer_Plan_24h"));
-        assertTrue(itemsOn(page(providerWith(Set.of("EMS_Optimizer_Plan_24h")), "emsmanager_energy_now"))
+        assertFalse(
+                itemsOn(page(providerWith(Set.of()), "emsmanager_energy_control")).contains("EMS_Optimizer_Plan_24h"));
+        assertTrue(itemsOn(page(providerWith(Set.of("EMS_Optimizer_Plan_24h")), "emsmanager_energy_control"))
                 .contains("EMS_Optimizer_Plan_24h"));
     }
 
     @Test
     public void theCapacityBlockAppearsWithItsOwnItems() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_Capacity_Current_Quarter", "EMS_Capacity_Status")),
-                "emsmanager_energy_now");
+        RootUIComponent now = page(providerWith(Set.of("EMS_Capacity_Current_Quarter")), "emsmanager_energy_now");
 
-        assertTrue(blockTitles(now).contains("Grid capacity"));
-        assertTrue(itemsOn(now).contains("EMS_Capacity_Status"));
+        assertTrue(blockTitles(now).contains("Worth knowing right now"));
+        assertTrue(itemsOn(now).contains("EMS_Capacity_Current_Quarter"));
     }
 
     /** A fully-equipped site gets the whole page, which is the shape this site actually runs. */
@@ -225,10 +222,8 @@ class EnergyUiProviderTest {
                 "EMS_Cost_EUR_Month", "EMS_Cost_EUR_Total", "EMS_Anomaly_Count_Today")), "emsmanager_energy_now");
 
         List<String> blocks = blockTitles(now);
-        for (String expected : List.of("Today", "Sun ahead", "Battery", "Grid capacity", "This month",
-                "Since the beginning", "Worth knowing")) {
-            assertTrue(blocks.contains(expected), "missing block: " + expected);
-        }
+        assertTrue(blocks.contains("Worth knowing right now"));
+        assertTrue(blocks.size() <= 2, "Now stays short on purpose; it had eight headings and was unreadable");
     }
 
     @Test
@@ -252,7 +247,7 @@ class EnergyUiProviderTest {
         EnergyUiProvider provider = providerWith(Set.of("Car1_Mode_OCPP", "Car1_Pause_OCPP"), List.of(emsBridge(4)));
 
         RootUIComponent control = page(provider, "emsmanager_energy_control");
-        assertTrue(blockTitles(control).contains("Charger 1"));
+        assertTrue(blockTitles(control).contains("Cars"));
         assertTrue(itemsOn(control).contains("Car1_Mode_OCPP"));
         assertTrue(itemsOn(control).contains("Car1_Pause_OCPP"));
     }
@@ -261,14 +256,14 @@ class EnergyUiProviderTest {
     public void aChargerWithoutItsItemsGetsNoBlock() {
         RootUIComponent control = page(providerWith(Set.of(), List.of(emsBridge(4))), "emsmanager_energy_control");
 
-        assertFalse(blockTitles(control).contains("Charger 1"), "no Item, no charger block");
+        assertFalse(blockTitles(control).contains("Cars"), "no Item, no charger block");
     }
 
     @Test
     public void withNoBridgeThereAreNoChargerBlocksAtAll() {
         RootUIComponent control = page(providerWith(Set.of("Car1_Mode_OCPP")), "emsmanager_energy_control");
 
-        assertFalse(blockTitles(control).contains("Charger 1"),
+        assertFalse(blockTitles(control).contains("Cars"),
                 "without a bridge the page cannot know what the chargers are called");
     }
 
@@ -276,7 +271,7 @@ class EnergyUiProviderTest {
     public void theKillSwitchIsOfferedWhenItExists() {
         RootUIComponent control = page(providerWith(Set.of("EMS_Bridge_Shadow_Mode")), "emsmanager_energy_control");
 
-        assertTrue(blockTitles(control).contains("Kill switch"));
+        assertTrue(blockTitles(control).contains("Stop button"));
         assertTrue(itemsOn(control).contains("EMS_Bridge_Shadow_Mode"));
     }
 
@@ -307,17 +302,62 @@ class EnergyUiProviderTest {
      */
     @Test
     public void heatPumpAdviceIsDiscoveredWhateverThePumpIsCalled() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_HP_Warehouse_Reason")), "emsmanager_energy_now");
+        RootUIComponent control = page(providerWith(Set.of("EMS_HP_Warehouse_Reason")), "emsmanager_energy_control");
 
-        assertTrue(itemsOn(now).contains("EMS_HP_Warehouse_Reason"));
+        assertTrue(itemsOn(control).contains("EMS_HP_Warehouse_Reason"));
     }
 
     @Test
     public void twoHeatPumpsGetTwoCardsAndNoneGetsNone() {
         assertEquals(2, itemsOn(
-                page(providerWith(Set.of("EMS_HP_Hall_Reason", "EMS_HP_Office_Reason")), "emsmanager_energy_now"))
+                page(providerWith(Set.of("EMS_HP_Hall_Reason", "EMS_HP_Office_Reason")), "emsmanager_energy_control"))
                 .stream().filter(i -> i.startsWith("EMS_HP_")).count());
-        assertEquals(0, itemsOn(page(providerWith(Set.of()), "emsmanager_energy_now")).stream()
+        assertEquals(0, itemsOn(page(providerWith(Set.of()), "emsmanager_energy_control")).stream()
                 .filter(i -> i.startsWith("EMS_HP_")).count());
+    }
+
+    /**
+     * Every component the pages emit must be one MainUI actually ships.
+     * <p>
+     * An invented type does not error - it renders nothing, so the card is simply missing and nobody finds out until
+     * they look at the page. {@code oh-button-card} was exactly that mistake: MainUI has no button card, and four
+     * action tiles were silently blank.
+     */
+    @Test
+    public void everyComponentTypeIsOneMainUiShips() {
+        Set<String> known = Set.of("oh-tabs-page", "oh-tab", "oh-layout-page", "oh-block", "oh-grid-row", "oh-grid-col",
+                "oh-label-card", "oh-toggle-card", "oh-gauge-card", "oh-chart-page", "oh-chart-grid", "oh-time-axis",
+                "oh-value-axis", "oh-time-series", "oh-chart-legend", "oh-chart-tooltip", "oh-chart-datazoom");
+
+        EnergyUiProvider provider = providerWith(
+                Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h", "EMS_Capacity_Current_Quarter",
+                        "EMS_Cost_EUR_Month", "EMS_Bridge_Shadow_Mode", "PeakShaving_Enabled",
+                        "PeakShaving_Manual_Engage", "EMS_BatterySizing_Run", "EMS_DM_Airco_W", "EMS_DM_Airco_kWh"),
+                List.of(emsBridge(1)));
+
+        List<String> types = new ArrayList<>();
+        for (RootUIComponent page : provider.getAll()) {
+            collectTypes(page, types);
+        }
+        for (String type : types) {
+            assertTrue(known.contains(type), "not a MainUI component: " + type);
+        }
+    }
+
+    private void collectTypes(@Nullable UIComponent component, List<String> found) {
+        if (component == null) {
+            return;
+        }
+        String type = component.getType();
+        if (type != null) {
+            found.add(type);
+        }
+        if (component.getSlots() != null) {
+            for (List<UIComponent> slot : component.getSlots().values()) {
+                for (UIComponent child : slot) {
+                    collectTypes(child, found);
+                }
+            }
+        }
     }
 }
