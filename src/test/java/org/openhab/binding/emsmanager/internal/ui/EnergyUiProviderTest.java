@@ -24,9 +24,15 @@ import java.util.Set;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.junit.jupiter.api.Test;
+import org.openhab.core.config.core.Configuration;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
 import org.openhab.core.library.items.NumberItem;
+import org.openhab.core.thing.Thing;
+import org.openhab.core.thing.ThingRegistry;
+import org.openhab.core.thing.ThingTypeUID;
+import org.openhab.core.thing.ThingUID;
+import org.openhab.core.thing.binding.builder.ThingBuilder;
 import org.openhab.core.ui.components.RootUIComponent;
 import org.openhab.core.ui.components.UIComponent;
 
@@ -42,14 +48,38 @@ import org.openhab.core.ui.components.UIComponent;
 @NonNullByDefault
 class EnergyUiProviderTest {
 
-    /** A provider whose site has exactly the named Items and nothing else. */
+    /** A provider whose site has exactly the named Items and no EMS bridge. */
     private EnergyUiProvider providerWith(Set<String> presentItems) {
+        return providerWith(presentItems, List.of());
+    }
+
+    /** A provider whose site has exactly the named Items, and the given Things. */
+    private EnergyUiProvider providerWith(Set<String> presentItems, List<Thing> things) {
         MetadataRegistry metadata = mock(MetadataRegistry.class);
         when(metadata.getAll()).thenReturn(List.of());
         ItemRegistry items = mock(ItemRegistry.class);
         when(items.get(anyString()))
                 .thenAnswer(call -> presentItems.contains(call.getArgument(0)) ? new NumberItem("x") : null);
-        return new EnergyUiProvider(metadata, items);
+        List<org.openhab.core.items.Item> all = new ArrayList<>();
+        for (String name : presentItems) {
+            all.add(new NumberItem(name));
+        }
+        when(items.getItems()).thenReturn(all);
+        ThingRegistry thingRegistry = mock(ThingRegistry.class);
+        when(thingRegistry.getAll()).thenReturn(things);
+        return new EnergyUiProvider(metadata, items, thingRegistry);
+    }
+
+    /** An EMS bridge that names its charger Items the way this site does. */
+    private Thing emsBridge(int carCount) {
+        Configuration configuration = new Configuration();
+        configuration.put("carCount", carCount);
+        configuration.put("carModeItemPattern", "Car%d_Mode_OCPP");
+        configuration.put("carPauseItemPattern", "Car%d_Pause_OCPP");
+        configuration.put("carStatusItemPattern", "Car%d_Status_OCPP");
+        return ThingBuilder
+                .create(new ThingTypeUID("emsmanager", "bridge"), new ThingUID("emsmanager", "bridge", "main"))
+                .withConfiguration(configuration).build();
     }
 
     private @Nullable RootUIComponent page(EnergyUiProvider provider, String uid) {
@@ -112,7 +142,7 @@ class EnergyUiProviderTest {
     public void theEnergySectionIsThreePages() {
         Collection<RootUIComponent> pages = providerWith(Set.of()).getAll();
 
-        assertEquals(3, pages.size(), "the section is the tabs page plus Now and Charts");
+        assertEquals(5, pages.size(), "tabs page plus Now, Control, Where it goes and Charts");
         assertNotNull(page(providerWith(Set.of()), "emsmanager_energy"));
         assertNotNull(page(providerWith(Set.of()), "emsmanager_energy_now"));
         assertNotNull(page(providerWith(Set.of()), "emsmanager_energy_charts"));
@@ -194,5 +224,63 @@ class EnergyUiProviderTest {
         provider.getAll().forEach(p -> second.add(p.getUID()));
 
         assertEquals(first, second, "a page's UID is what MainUI keys on; it must not move");
+    }
+
+    /**
+     * The control page is driven by the site's own configured Item names, so a site that renamed its chargers keeps a
+     * working page rather than a row of dead buttons.
+     */
+    @Test
+    public void chargerControlsFollowTheSitesOwnItemNames() {
+        EnergyUiProvider provider = providerWith(Set.of("Car1_Mode_OCPP", "Car1_Pause_OCPP"), List.of(emsBridge(4)));
+
+        RootUIComponent control = page(provider, "emsmanager_energy_control");
+        assertTrue(blockTitles(control).contains("Charger 1"));
+        assertTrue(itemsOn(control).contains("Car1_Mode_OCPP"));
+        assertTrue(itemsOn(control).contains("Car1_Pause_OCPP"));
+    }
+
+    @Test
+    public void aChargerWithoutItsItemsGetsNoBlock() {
+        RootUIComponent control = page(providerWith(Set.of(), List.of(emsBridge(4))), "emsmanager_energy_control");
+
+        assertFalse(blockTitles(control).contains("Charger 1"), "no Item, no charger block");
+    }
+
+    @Test
+    public void withNoBridgeThereAreNoChargerBlocksAtAll() {
+        RootUIComponent control = page(providerWith(Set.of("Car1_Mode_OCPP")), "emsmanager_energy_control");
+
+        assertFalse(blockTitles(control).contains("Charger 1"),
+                "without a bridge the page cannot know what the chargers are called");
+    }
+
+    @Test
+    public void theKillSwitchIsOfferedWhenItExists() {
+        RootUIComponent control = page(providerWith(Set.of("EMS_Bridge_Shadow_Mode")), "emsmanager_energy_control");
+
+        assertTrue(blockTitles(control).contains("Kill switch"));
+        assertTrue(itemsOn(control).contains("EMS_Bridge_Shadow_Mode"));
+    }
+
+    /** The breakdown is discovered from the meters that exist, and the roll-ups are left out of it. */
+    @Test
+    public void theBreakdownListsEachMeasuredCircuitButNotTheRollUps() {
+        RootUIComponent devices = page(
+                providerWith(Set.of("EMS_DM_Airco_W", "EMS_DM_Boiler_W", "EMS_DM_Cars_W", "EMS_DM_Lights_W")),
+                "emsmanager_energy_devices");
+
+        List<String> items = itemsOn(devices);
+        assertTrue(items.contains("EMS_DM_Airco_W"));
+        assertTrue(items.contains("EMS_DM_Boiler_W"));
+        assertFalse(items.contains("EMS_DM_Cars_W"), "a total next to its own parts reads as double counting");
+        assertFalse(items.contains("EMS_DM_Lights_W"));
+    }
+
+    @Test
+    public void aSiteWithNoMetersIsToldSoRatherThanShownAnEmptyPage() {
+        RootUIComponent devices = page(providerWith(Set.of()), "emsmanager_energy_devices");
+
+        assertTrue(blockTitles(devices).contains("Nothing measured yet"));
     }
 }

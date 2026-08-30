@@ -25,6 +25,8 @@ import org.openhab.core.common.registry.AbstractProvider;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
+import org.openhab.core.thing.Thing;
+import org.openhab.core.thing.ThingRegistry;
 import org.openhab.core.ui.components.RootUIComponent;
 import org.openhab.core.ui.components.UIComponent;
 import org.openhab.core.ui.components.UIComponentProvider;
@@ -107,15 +109,35 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_HP_REASON = "EMS_HP_Showroom_Reason";
     private static final String I_TARIFF_CHEAPEST_AT = "EMS_Tariff_Cheapest_Hour_Start";
 
+    private static final String P_CONTROL = "emsmanager_energy_control";
+    private static final String P_DEVICES = "emsmanager_energy_devices";
+
+    /** Binding-published switches the control page offers. */
+    private static final String I_BOILER_OVERRIDE = "EMS_Boiler_User_Override";
+    private static final String I_SHADOW_MODE = "EMS_Bridge_Shadow_Mode";
+    private static final String I_SIZING_RUN = "EMS_BatterySizing_Run";
+    private static final String I_SIZING_KWH = "EMS_BatterySizing_OptimalKwh";
+    private static final String I_SIZING_PAYBACK = "EMS_BatterySizing_PaybackYears";
+    private static final String I_COMPARE_RUN = "EMS_TariffComparison_Run";
+    private static final String I_COMPARE_RANKING = "EMS_TariffComparison_RankingCsv";
+    private static final String I_PEAK_ENABLED = "PeakShaving_Enabled";
+    private static final String I_PEAK_ENGAGE = "PeakShaving_Manual_Engage";
+    private static final String I_PEAK_RESET = "PeakShaving_Manual_Reset";
+    private static final String I_DM_TRACKED = "EMS_DeviceMeter_Tracked_W";
+    private static final String I_DM_UNTRACKED = "EMS_DeviceMeter_Untracked_W";
+
     private final Logger logger = LoggerFactory.getLogger(EnergyUiProvider.class);
     private final MetadataRegistry metadataRegistry;
     private final ItemRegistry itemRegistry;
+    private final ThingRegistry thingRegistry;
     private volatile List<RootUIComponent> pages = new ArrayList<>();
 
     @Activate
-    public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry) {
+    public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry,
+            @Reference ThingRegistry thingRegistry) {
         this.metadataRegistry = metadataRegistry;
         this.itemRegistry = itemRegistry;
+        this.thingRegistry = thingRegistry;
         this.pages = computePages();
         metadataRegistry.addRegistryChangeListener(metadataListener);
         logger.info("EnergyUiProvider activated — Energy section served from the binding (namespace {})", NAMESPACE);
@@ -144,6 +166,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<RootUIComponent> out = new ArrayList<>();
         out.add(buildTabsPage());
         out.add(buildNowPage(providers, consumers));
+        out.add(buildControlPage(consumers));
+        out.add(buildDevicesPage());
         out.add(buildChartsPage(providers, consumers));
         return out;
     }
@@ -210,6 +234,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         page.updateTimestamp();
         List<UIComponent> tabs = page.addSlot("default");
         tabs.add(tab("Now", "f7:gauge", P_NOW));
+        tabs.add(tab("Control", "f7:slider_horizontal_3", P_CONTROL));
+        tabs.add(tab("Where it goes", "f7:square_stack_3d_down_right", P_DEVICES));
         tabs.add(tab("Charts", "f7:chart_bar_alt_fill", P_CHARTS));
         return page;
     }
@@ -397,6 +423,287 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(block("Worth knowing", row(attention.toArray(new UIComponent[0]))));
         }
         return page;
+    }
+
+    // --- control -------------------------------------------------------------------------------
+
+    /**
+     * The site's own item-name patterns, read from the bridge Thing.
+     * <p>
+     * The chargers are not this binding's items - they belong to whatever drives the wallboxes - so the page asks the
+     * bridge what the site called them rather than assuming a layout. A site that renamed them keeps a working page.
+     *
+     * @param key the configuration key holding the pattern
+     * @return the pattern, or {@code null} where the bridge or the key is absent
+     */
+    private @org.eclipse.jdt.annotation.Nullable String pattern(String key) {
+        for (Thing thing : thingRegistry.getAll()) {
+            if (!"emsmanager".equals(thing.getUID().getBindingId())
+                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
+                continue;
+            }
+            Object value = thing.getConfiguration().get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    private int carCount() {
+        for (Thing thing : thingRegistry.getAll()) {
+            if (!"emsmanager".equals(thing.getUID().getBindingId())
+                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
+                continue;
+            }
+            Object value = thing.getConfiguration().get("carCount");
+            if (value instanceof Number number) {
+                return number.intValue();
+            }
+        }
+        return 0;
+    }
+
+    private @org.eclipse.jdt.annotation.Nullable String carItem(String patternKey, int car) {
+        String pattern = pattern(patternKey);
+        if (pattern == null) {
+            return null;
+        }
+        String name = String.format(pattern, car);
+        return has(name) ? name : null;
+    }
+
+    /**
+     * The controls, which is what turns a dashboard into something worth opening.
+     * <p>
+     * Everything here is offered only where the Item behind it exists, so a site without chargers gets no charger
+     * block rather than a row of dead buttons.
+     */
+    private RootUIComponent buildControlPage(List<EnergyConsumer> consumers) {
+        RootUIComponent page = layoutPage(P_CONTROL, "Control");
+        List<UIComponent> root = page.addSlot("default");
+
+        for (int car = 1; car <= carCount(); car++) {
+            String mode = carItem("carModeItemPattern", car);
+            if (mode == null) {
+                continue;
+            }
+            List<UIComponent> cols = new ArrayList<>();
+            cols.add(col("100", modeSelector(mode)));
+            String pause = carItem("carPauseItemPattern", car);
+            if (pause != null) {
+                cols.add(colHalf(switchCard(pause, "Paused", "f7:pause_circle", "#ef5350")));
+            }
+            String status = carItem("carStatusItemPattern", car);
+            if (status != null) {
+                cols.add(colHalf(labelCard(status, "Status", "f7:bolt_horizontal", "#5b8def")));
+            }
+            root.add(block("Charger " + car, row(cols.toArray(new UIComponent[0]))));
+        }
+
+        // Loads the tagged model says are switchable - portable, because the profile names its own Item.
+        List<UIComponent> loads = new ArrayList<>();
+        if (has(I_BOILER_OVERRIDE)) {
+            loads.add(colResponsive(switchCard(I_BOILER_OVERRIDE, "Boiler — force on", "f7:drop_fill", "#42a5f5")));
+        }
+        for (EnergyConsumer consumer : consumers) {
+            String item = consumer.profile().itemName();
+            if (has(item)) {
+                loads.add(colResponsive(switchCard(item, consumerTitle(consumer), "oh:poweroutlet", "#26a69a")));
+            }
+        }
+        if (!loads.isEmpty()) {
+            root.add(block("Loads", row(loads.toArray(new UIComponent[0]))));
+        }
+
+        List<UIComponent> peak = new ArrayList<>();
+        if (has(I_PEAK_ENABLED)) {
+            peak.add(
+                    colResponsive(switchCard(I_PEAK_ENABLED, "Peak protection", "f7:shield_lefthalf_fill", "#43a047")));
+        }
+        if (has(I_PEAK_ENGAGE)) {
+            peak.add(colResponsive(actionCard(I_PEAK_ENGAGE, "Shed load now", "f7:arrow_down_circle_fill", "#ff9800")));
+        }
+        if (has(I_PEAK_RESET)) {
+            peak.add(colResponsive(
+                    actionCard(I_PEAK_RESET, "Release everything", "f7:arrow_up_circle_fill", "#43a047")));
+        }
+        if (!peak.isEmpty()) {
+            root.add(block("Peak protection", row(peak.toArray(new UIComponent[0]))));
+        }
+
+        List<UIComponent> analysis = new ArrayList<>();
+        if (has(I_SIZING_RUN)) {
+            analysis.add(colResponsive(actionCard(I_SIZING_RUN, "Size the battery", "f7:battery_100", "#7e57c2")));
+        }
+        if (has(I_SIZING_KWH)) {
+            analysis.add(colResponsive(labelCard(I_SIZING_KWH, "Best size", "f7:battery_100", "#7e57c2")));
+        }
+        if (has(I_SIZING_PAYBACK)) {
+            analysis.add(colResponsive(labelCard(I_SIZING_PAYBACK, "Payback, years", "f7:calendar", "#9575cd")));
+        }
+        if (has(I_COMPARE_RUN)) {
+            analysis.add(
+                    colResponsive(actionCard(I_COMPARE_RUN, "Compare tariffs", "f7:money_euro_circle", "#5b8def")));
+        }
+        if (!analysis.isEmpty()) {
+            root.add(block("Ask it a question", row(analysis.toArray(new UIComponent[0]))));
+        }
+        if (has(I_COMPARE_RANKING)) {
+            UIComponent ranking = labelCard(I_COMPARE_RANKING, "Cheapest tariff for this house", "f7:list_number",
+                    "#5b8def");
+            ranking.addConfig("fontSize", "15px");
+            root.add(block(null, row(col("100", ranking))));
+        }
+
+        // The stop button, last and unmistakable: it is the thing you want to find in a hurry.
+        if (has(I_SHADOW_MODE)) {
+            UIComponent stop = switchCard(I_SHADOW_MODE, "Stop controlling (shadow mode)", "f7:hand_raised_fill",
+                    "#ef5350");
+            root.add(block("Kill switch", row(col("100", stop))));
+        }
+        return page;
+    }
+
+    /** ECO / SNEL / OFF as three buttons, because a dropdown hides the thing you want to press. */
+    private UIComponent modeSelector(String item) {
+        UIComponent card = new UIComponent("oh-label-card");
+        card.addConfig("item", item);
+        card.addConfig("title", "Charging mode");
+        card.addConfig("icon", "f7:car_fill");
+        card.addConfig("iconColor", "#43a047");
+        card.addConfig("iconSize", Integer.valueOf(30));
+        card.addConfig("fontSize", "22px");
+        card.addConfig("fontWeight", "700");
+        card.addConfig("background", "linear-gradient(135deg, #43a04722, transparent 72%)");
+        card.addConfig("style", tileStyle());
+        card.addConfig("action", "options");
+        card.addConfig("actionItem", item);
+        return card;
+    }
+
+    private UIComponent switchCard(String item, String title, String icon, String accent) {
+        UIComponent c = new UIComponent("oh-toggle-card");
+        c.addConfig("item", item);
+        c.addConfig("title", title);
+        c.addConfig("icon", icon);
+        c.addConfig("iconColor", accent);
+        c.addConfig("iconSize", Integer.valueOf(28));
+        c.addConfig("style", tileStyle());
+        return c;
+    }
+
+    /** A momentary action: press it and the rule behind it fires. */
+    private UIComponent actionCard(String item, String title, String icon, String accent) {
+        UIComponent c = new UIComponent("oh-button-card");
+        c.addConfig("item", item);
+        c.addConfig("title", title);
+        c.addConfig("icon", icon);
+        c.addConfig("iconColor", accent);
+        c.addConfig("iconSize", Integer.valueOf(28));
+        c.addConfig("action", "command");
+        c.addConfig("actionItem", item);
+        c.addConfig("actionCommand", "ON");
+        c.addConfig("style", tileStyle());
+        return c;
+    }
+
+    // --- where the energy goes -----------------------------------------------------------------
+
+    /**
+     * The building, circuit by circuit.
+     * <p>
+     * This is the page that answers "where is it actually going", which is the question a meter reading never
+     * answers. Each circuit shows what it is drawing now and what it has used today, and the two totals underneath
+     * say how much of the house is measured at all - the honest part, because untracked load is the difference
+     * between a breakdown and a guess.
+     */
+    private RootUIComponent buildDevicesPage() {
+        RootUIComponent page = layoutPage(P_DEVICES, "Where it goes");
+        List<UIComponent> root = page.addSlot("default");
+
+        List<String> circuits = trackedCircuits();
+        if (circuits.isEmpty()) {
+            root.add(block("Nothing measured yet",
+                    row(col("100", note("No device meters are configured, so there is nothing to break down.")))));
+            return page;
+        }
+
+        List<UIComponent> live = new ArrayList<>();
+        for (String circuit : circuits) {
+            String watts = "EMS_DM_" + circuit + "_W";
+            UIComponent card = labelCard(watts, prettyCircuit(circuit), "oh:poweroutlet", "#5b8def");
+            card.addConfig("trendItem", watts);
+            // a circuit drawing nothing is not interesting and should not compete for attention
+            card.addConfig("background", "=items." + watts
+                    + ".numericState>0?'linear-gradient(135deg,#5b8def33,transparent 72%)':'transparent'");
+            live.add(colResponsive(card));
+        }
+        root.add(block("Drawing now", row(live.toArray(new UIComponent[0]))));
+
+        List<UIComponent> today = new ArrayList<>();
+        for (String circuit : circuits) {
+            String kwh = "EMS_DM_" + circuit + "_kWh";
+            if (has(kwh)) {
+                today.add(colResponsive(labelCard(kwh, prettyCircuit(circuit), "f7:sum", "#7e57c2")));
+            }
+        }
+        if (!today.isEmpty()) {
+            root.add(block("Used today", row(today.toArray(new UIComponent[0]))));
+        }
+
+        List<UIComponent> totals = new ArrayList<>();
+        if (has(I_DM_TRACKED)) {
+            totals.add(colHalf(labelCard(I_DM_TRACKED, "Measured circuits", "f7:checkmark_seal", "#43a047")));
+        }
+        if (has(I_DM_UNTRACKED)) {
+            UIComponent untracked = labelCard(I_DM_UNTRACKED, "Everything else", "f7:questionmark_circle", "#ff9800");
+            totals.add(colHalf(untracked));
+        }
+        if (!totals.isEmpty()) {
+            root.add(block("How much of the building is measured", row(totals.toArray(new UIComponent[0]))));
+        }
+        return page;
+    }
+
+    /**
+     * The circuits this site actually meters, taken from the Items the device-meter Things publish.
+     * <p>
+     * Discovered rather than configured: the meters are this binding's own Items, so what exists is the answer. The
+     * two roll-ups it also publishes are left out, because a total next to its own parts reads as double counting.
+     */
+    private List<String> trackedCircuits() {
+        java.util.Set<String> rollups = java.util.Set.of("Cars", "Lights");
+        List<String> out = new ArrayList<>();
+        for (org.openhab.core.items.Item item : itemRegistry.getItems()) {
+            String name = item.getName();
+            if (!name.startsWith("EMS_DM_") || !name.endsWith("_W")) {
+                continue;
+            }
+            String circuit = name.substring("EMS_DM_".length(), name.length() - "_W".length());
+            if (circuit.isEmpty() || rollups.contains(circuit)) {
+                continue;
+            }
+            out.add(circuit);
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /** {@code HeaterKitchen} reads badly on a card; {@code Heater kitchen} does not. */
+    private String prettyCircuit(String circuit) {
+        String spaced = circuit.replaceAll("(?<=[a-z])(?=[A-Z])", " ").replace('_', ' ');
+        return spaced.substring(0, 1).toUpperCase(java.util.Locale.ROOT)
+                + spaced.substring(1).toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private UIComponent note(String text) {
+        UIComponent c = new UIComponent("oh-label-card");
+        c.addConfig("title", text);
+        c.addConfig("icon", "f7:info_circle");
+        c.addConfig("iconColor", "#9e9e9e");
+        c.addConfig("style", tileStyle());
+        return c;
     }
 
     private RootUIComponent buildChartsPage(List<EnergyProvider> providers, List<EnergyConsumer> consumers) {
