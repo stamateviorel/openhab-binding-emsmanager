@@ -143,9 +143,9 @@ class EnergyUiProviderTest {
         EnergyUiProvider provider = providerWith(Set.of());
         Collection<RootUIComponent> pages = provider.getAll();
 
-        assertEquals(6, pages.size(), "tabs page plus Now, Control, Where it goes, Power and Today by circuit");
-        for (String uid : List.of("emsmanager_energy", "emsmanager_energy_now", "emsmanager_energy_control",
-                "emsmanager_energy_devices", "emsmanager_energy_charts", "emsmanager_energy_circuits")) {
+        assertEquals(6, pages.size(), "tabs page plus Ahead, Control, History, Power and Today by circuit");
+        for (String uid : List.of("emsmanager_energy", "emsmanager_energy_ahead", "emsmanager_energy_control",
+                "emsmanager_energy_history", "emsmanager_energy_charts", "emsmanager_energy_circuits")) {
             assertNotNull(page(provider, uid), "missing page: " + uid);
         }
     }
@@ -171,31 +171,32 @@ class EnergyUiProviderTest {
      */
     @Test
     public void aSiteWithNoneOfTheItemsGetsNoneOfTheBlocks() {
-        RootUIComponent now = page(providerWith(Set.of()), "emsmanager_energy_now");
+        RootUIComponent now = page(providerWith(Set.of()), "emsmanager_energy_ahead");
 
         List<String> blocks = blockTitles(now);
-        assertFalse(blocks.contains("Worth knowing right now"));
+        assertFalse(blocks.contains("Sun expected"));
+        assertFalse(blocks.contains("Prices ahead"));
     }
 
     @Test
     public void aBlockAppearsAsSoonAsOneOfItsItemsExists() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh")), "emsmanager_energy_now");
+        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh")), "emsmanager_energy_ahead");
 
-        assertTrue(blockTitles(now).contains("Worth knowing right now"), "one present Item earns the block");
+        assertTrue(blockTitles(now).contains("Prices ahead"), "one present Item earns the block");
         assertTrue(itemsOn(now).contains("EMS_Tariff_Now_EurPerKWh"));
     }
 
     /** The half-populated case: the block appears, but only for the Items that are actually there. */
     @Test
     public void onlyThePresentItemsOfABlockAreDrawn() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh", "EMS_Forecast_Next_1h")),
-                "emsmanager_energy_now");
+        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh", "EMS_Forecast_Tomorrow_kWh")),
+                "emsmanager_energy_ahead");
 
         List<String> items = itemsOn(now);
         assertTrue(items.contains("EMS_Tariff_Now_EurPerKWh"));
-        assertTrue(items.contains("EMS_Forecast_Next_1h"));
-        assertFalse(items.contains("EMS_SelfConsumption_kWh_Day"), "an absent Item must not become a card");
-        assertFalse(items.contains("EMS_Capacity_Current_Quarter"));
+        assertTrue(items.contains("EMS_Forecast_Tomorrow_kWh"));
+        assertFalse(items.contains("EMS_Tariff_Next_1h_Price"), "an absent Item must not become a card");
+        assertFalse(items.contains("EMS_Forecast_Today_kWh"));
     }
 
     @Test
@@ -208,10 +209,9 @@ class EnergyUiProviderTest {
 
     @Test
     public void theCapacityBlockAppearsWithItsOwnItems() {
-        RootUIComponent now = page(providerWith(Set.of("EMS_Capacity_Current_Quarter")), "emsmanager_energy_now");
+        RootUIComponent ahead = page(providerWith(Set.of("EMS_Capacity_Projected")), "emsmanager_energy_ahead");
 
-        assertTrue(blockTitles(now).contains("Worth knowing right now"));
-        assertTrue(itemsOn(now).contains("EMS_Capacity_Current_Quarter"));
+        assertTrue(itemsOn(ahead).contains("EMS_Capacity_Projected"), "the projection is a future figure");
     }
 
     /** A fully-equipped site gets the whole page, which is the shape this site actually runs. */
@@ -219,11 +219,11 @@ class EnergyUiProviderTest {
     public void aFullyEquippedSiteGetsEveryBlock() {
         RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh", "EMS_Forecast_Now",
                 "EMS_Battery_Setpoint_W", "EMS_Optimizer_Plan_24h", "EMS_Capacity_Current_Quarter",
-                "EMS_Cost_EUR_Month", "EMS_Cost_EUR_Total", "EMS_Anomaly_Count_Today")), "emsmanager_energy_now");
+                "EMS_Cost_EUR_Month", "EMS_Cost_EUR_Total", "EMS_Anomaly_Count_Today")), "emsmanager_energy_ahead");
 
         List<String> blocks = blockTitles(now);
-        assertTrue(blocks.contains("Worth knowing right now"));
-        assertTrue(blocks.size() <= 2, "Now stays short on purpose; it had eight headings and was unreadable");
+        assertTrue(blocks.contains("Prices ahead"));
+        assertTrue(blocks.size() <= 4, "Ahead stays short on purpose");
     }
 
     @Test
@@ -279,21 +279,22 @@ class EnergyUiProviderTest {
     @Test
     public void theBreakdownListsEachMeasuredCircuitButNotTheRollUps() {
         RootUIComponent devices = page(
-                providerWith(Set.of("EMS_DM_Airco_W", "EMS_DM_Boiler_W", "EMS_DM_Cars_W", "EMS_DM_Lights_W")),
-                "emsmanager_energy_devices");
+                providerWith(Set.of("EMS_DM_Airco_W", "EMS_DM_Airco_kWh", "EMS_DM_Boiler_W", "EMS_DM_Boiler_kWh",
+                        "EMS_DM_Cars_W", "EMS_DM_Cars_kWh", "EMS_DM_Lights_W", "EMS_DM_Lights_kWh")),
+                "emsmanager_energy_history");
 
         List<String> items = itemsOn(devices);
-        assertTrue(items.contains("EMS_DM_Airco_W"));
-        assertTrue(items.contains("EMS_DM_Boiler_W"));
-        assertFalse(items.contains("EMS_DM_Cars_W"), "a total next to its own parts reads as double counting");
-        assertFalse(items.contains("EMS_DM_Lights_W"));
+        assertTrue(items.contains("EMS_DM_Airco_kWh"));
+        assertTrue(items.contains("EMS_DM_Boiler_kWh"));
+        assertFalse(items.contains("EMS_DM_Cars_kWh"), "a total next to its own parts reads as double counting");
+        assertFalse(items.contains("EMS_DM_Lights_kWh"));
     }
 
     @Test
     public void aSiteWithNoMetersIsToldSoRatherThanShownAnEmptyPage() {
-        RootUIComponent devices = page(providerWith(Set.of()), "emsmanager_energy_devices");
+        RootUIComponent history = page(providerWith(Set.of()), "emsmanager_energy_history");
 
-        assertTrue(blockTitles(devices).contains("Nothing measured yet"));
+        assertTrue(blockTitles(history).isEmpty(), "a site with nothing kept gets no history headings at all");
     }
 
     /**

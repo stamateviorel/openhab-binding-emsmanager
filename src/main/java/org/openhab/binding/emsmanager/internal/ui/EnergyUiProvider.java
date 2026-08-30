@@ -62,7 +62,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     public static final String NAMESPACE = "ui:page";
 
     private static final String P_ROOT = "emsmanager_energy";
-    private static final String P_NOW = "emsmanager_energy_now";
+    private static final String P_AHEAD = "emsmanager_energy_ahead";
     private static final String P_CHARTS = "emsmanager_energy_charts";
 
     /** The engine-published site energy level items (see EmsManagerBridgeHandler). */
@@ -107,9 +107,19 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_ANOMALY_COUNT = "EMS_Anomaly_Count_Today";
     private static final String I_BOILER_PLAN = "EMS_BoilerPlan_Status";
     private static final String I_TARIFF_CHEAPEST_AT = "EMS_Tariff_Cheapest_Hour_Start";
+    private static final String I_TARIFF_DEAREST_AT = "EMS_Tariff_Expensive_Hour_Start";
+    private static final String I_TARIFF_NEXT_1H = "EMS_Tariff_Next_1h_Price";
+    private static final String I_FORECAST_TOMORROW = "EMS_Forecast_Tomorrow_kWh";
+    private static final String I_FORECAST_6H = "EMS_Forecast_Next_6h";
+    private static final String I_BOILER_WINDOW = "EMS_BoilerPlan_Window";
+    private static final String I_HP_PREHEAT_AT = "EMS_HeatPump_Plan_PreheatAt";
+
+    /** The period suffixes the services publish, in the order a person reads them. */
+    private static final String[][] PERIODS = { { "_Yesterday", "Yesterday" }, { "_Last7Days", "Last 7 days" },
+            { "_Last30Days", "Last 30 days" }, { "_Year", "This year" } };
 
     private static final String P_CONTROL = "emsmanager_energy_control";
-    private static final String P_DEVICES = "emsmanager_energy_devices";
+    private static final String P_HISTORY = "emsmanager_energy_history";
     private static final String P_CIRCUITS = "emsmanager_energy_circuits";
 
     /** Binding-published switches the control page offers. */
@@ -165,9 +175,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<EnergyConsumer> consumers = scanner.consumers();
         List<RootUIComponent> out = new ArrayList<>();
         out.add(buildTabsPage());
-        out.add(buildNowPage(providers, consumers));
+        out.add(buildAheadPage());
         out.add(buildControlPage(consumers));
-        out.add(buildDevicesPage());
+        out.add(buildHistoryPage());
         out.add(buildChartsPage(providers, consumers));
         out.add(buildCircuitsChartPage());
         return out;
@@ -234,9 +244,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         page.addConfig("icon", "f7:bolt_fill");
         page.updateTimestamp();
         List<UIComponent> tabs = page.addSlot("default");
-        tabs.add(tab("Now", "f7:gauge", P_NOW));
+        tabs.add(tab("Ahead", "f7:arrow_right_circle_fill", P_AHEAD));
         tabs.add(tab("Control", "f7:slider_horizontal_3", P_CONTROL));
-        tabs.add(tab("Where it goes", "f7:square_stack_3d_down_right", P_DEVICES));
+        tabs.add(tab("History", "f7:clock_fill", P_HISTORY));
         tabs.add(tab("Power", "f7:chart_bar_alt_fill", P_CHARTS));
         tabs.add(tab("Today by circuit", "f7:chart_pie_fill", P_CIRCUITS));
         return page;
@@ -289,65 +299,130 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * number you came for. This one leads with a sentence, then the four figures that describe the building right
      * now, then the two or three things worth acting on. Everything else moved to the tab it belongs to.
      */
-    private RootUIComponent buildNowPage(List<EnergyProvider> providers, List<EnergyConsumer> consumers) {
-        RootUIComponent page = layoutPage(P_NOW, "Now");
+    /**
+     * What is about to happen, which is the half of an energy system you can still do something about.
+     * <p>
+     * Deliberately not a live readout. What the roof is making this second is visible on any meter and cannot be
+     * acted on; what it will make this afternoon, when the cheap hours fall and what the battery intends to do are
+     * the things that change a decision.
+     */
+    private RootUIComponent buildAheadPage() {
+        RootUIComponent page = layoutPage(P_AHEAD, "Ahead");
         List<UIComponent> root = page.addSlot("default");
 
-        // One sentence, in words: how much of today ran on sun, whether you are buying or selling, and the level.
-        root.add(block(null, row(col("100", statusBanner(providers)))));
-
-        // The four numbers that say what the building is doing. Nothing else belongs at the top of this page.
-        List<UIComponent> live = new ArrayList<>();
-        for (EnergyProvider provider : providers) {
-            String title = switch (provider.role()) {
-                case PV -> "Roof is making";
-                case GRID -> "Grid";
-                case BATTERY -> "Battery";
-            };
-            UIComponent card = trendCard(provider.id(), title, providerIcon(provider.role()), provider.id());
-            if (provider.role() == ProviderRole.GRID) {
-                // green when you are selling, red when you are buying - the only two states that matter here
-                String g = "items." + provider.id() + ".numericState";
-                card.addConfig("background", "=" + g
-                        + ">=0?'linear-gradient(135deg,#43a04730,transparent 72%)':'linear-gradient(135deg,#ef535030,transparent 72%)'");
-                card.addConfig("title", "=" + g + ">=0?'Selling to grid':'Buying from grid'");
-            }
-            live.add(colResponsive(card));
-        }
-        UIComponent house = tileIfPresent(I_DM_TRACKED, "Building is using", "f7:house_fill", "#7e57c2");
-        if (house != null) {
-            house.addConfig("trendItem", I_DM_TRACKED);
-            live.add(colResponsive(house));
-        }
-        if (!live.isEmpty()) {
-            root.add(block(null, row(live.toArray(new UIComponent[0]))));
-        }
-
-        // Is now a good moment to run something, and how much sun is left to use.
         addIfPresent(root,
-                tileBlock("Worth knowing right now",
-                        tileIfPresent(I_TARIFF_NOW, "Price now", "f7:money_euro", "#5b8def"),
-                        tileIfPresent(I_FORECAST_1H, "Sun in the next hour", "f7:sun_max", "#ffa726"),
-                        tileIfPresent(I_SELFCONS_DAY, "Sun used today", "f7:checkmark_seal_fill", "#43a047"),
-                        tileIfPresent(I_CAP_QUARTER, "Peak you are billed on", "f7:gauge", "#9575cd")));
+                tileBlock("Sun expected",
+                        tileIfPresent(I_FORECAST_TODAY, "Rest of today", "f7:sun_max_fill", "#ff9800"),
+                        tileIfPresent(I_FORECAST_TOMORROW, "Tomorrow", "f7:sun_max", "#ffa726"),
+                        tileIfPresent(I_FORECAST_6H, "Next 6 hours", "f7:sun_min", "#ffb74d"),
+                        tileIfPresent(I_FORECAST_PEAK_AT, "Sunniest hour", "f7:clock", "#ffcc80")));
 
-        // Only shows up when it has something to say, so an ordinary day is a short page.
-        List<UIComponent> attention = new ArrayList<>();
-        UIComponent anomalies = tileIfPresent(I_ANOMALY_COUNT, "Something is using more than usual",
-                "f7:exclamationmark_triangle_fill", "#ef5350");
-        if (anomalies != null) {
-            anomalies.addConfig("visible", "=items." + I_ANOMALY_COUNT + ".numericState>0");
-            attention.add(colHalf(anomalies));
+        addIfPresent(root, tileBlock("Prices ahead", tileIfPresent(I_TARIFF_NOW, "Now", "f7:money_euro", "#5b8def"),
+                tileIfPresent(I_TARIFF_NEXT_1H, "Next hour", "f7:money_euro_circle", "#42a5f5"),
+                tileIfPresent(I_TARIFF_CHEAPEST_AT, "Cheapest hour today", "f7:arrow_down_circle_fill", "#43a047"),
+                tileIfPresent(I_TARIFF_DEAREST_AT, "Dearest hour today", "f7:arrow_up_circle_fill", "#ef5350")));
+
+        // What the system has already decided to do, so it is not a surprise when it happens.
+        List<UIComponent> plan = new ArrayList<>();
+        UIComponent charge = tileIfPresent(I_OPT_NEXT_CHARGE, "Battery charges at", "f7:arrow_down_circle", "#42a5f5");
+        if (charge != null) {
+            plan.add(colResponsive(charge));
         }
-        UIComponent exceeding = tileIfPresent(I_CAP_STATUS, "Peak warning", "f7:exclamationmark_circle_fill",
-                "#ef5350");
-        if (exceeding != null && has(I_CAP_WOULD_EXCEED)) {
-            exceeding.addConfig("visible", "=items." + I_CAP_WOULD_EXCEED + ".state=='ON'");
-            exceeding.addConfig("fontSize", "15px");
-            attention.add(colHalf(exceeding));
+        UIComponent discharge = tileIfPresent(I_OPT_NEXT_DISCHARGE, "Battery discharges at", "f7:arrow_up_circle",
+                "#ab47bc");
+        if (discharge != null) {
+            plan.add(colResponsive(discharge));
         }
-        if (!attention.isEmpty()) {
-            root.add(block(null, row(attention.toArray(new UIComponent[0]))));
+        UIComponent boiler = tileIfPresent(I_BOILER_WINDOW, "Water heated by", "f7:drop_fill", "#42a5f5");
+        if (boiler != null) {
+            plan.add(colResponsive(boiler));
+        }
+        UIComponent preheat = tileIfPresent(I_HP_PREHEAT_AT, "Pre-heating starts", "f7:thermometer", "#26a69a");
+        if (preheat != null) {
+            // the planner only answers once the pump is actually heating or cooling and its model has settled, so
+            // this Item exists long before it has anything to say - and a dash is worse than an absence
+            preheat.addConfig("visible", "=items." + I_HP_PREHEAT_AT + ".state!='NULL'");
+            plan.add(colResponsive(preheat));
+        }
+        if (!plan.isEmpty()) {
+            root.add(block("The plan", row(plan.toArray(new UIComponent[0]))));
+        }
+        if (has(I_OPT_PLAN_24H)) {
+            root.add(block(null, row(col("100", planStrip()))));
+        }
+
+        List<UIComponent> notes = new ArrayList<>();
+        UIComponent boilerPlan = tileIfPresent(I_BOILER_PLAN, "Water heating", "f7:drop", "#42a5f5");
+        if (boilerPlan != null) {
+            boilerPlan.addConfig("fontSize", "15px");
+            notes.add(colHalf(boilerPlan));
+        }
+        UIComponent capacity = tileIfPresent(I_CAP_PROJECTED, "Peak heading for this month", "f7:gauge", "#9575cd");
+        if (capacity != null) {
+            notes.add(colHalf(capacity));
+        }
+        if (!notes.isEmpty()) {
+            root.add(block(null, row(notes.toArray(new UIComponent[0]))));
+        }
+        return page;
+    }
+
+    /**
+     * What already happened, over the periods the services keep.
+     * <p>
+     * One row per period rather than one row per figure: the question is "was last week better than the one before",
+     * and that is answered by reading across, not by hunting four tiles apart for the same number over two spans.
+     */
+    private RootUIComponent buildHistoryPage() {
+        RootUIComponent page = layoutPage(P_HISTORY, "History");
+        List<UIComponent> root = page.addSlot("default");
+
+        for (String[] period : PERIODS) {
+            String suffix = period[0];
+            List<UIComponent> tiles = new ArrayList<>();
+            UIComponent cost = tileIfPresent("EMS_Cost_EUR" + suffix, "Bought", "f7:money_euro", "#ef5350");
+            if (cost != null) {
+                tiles.add(colResponsive(cost));
+            }
+            UIComponent saved = tileIfPresent("EMS_Savings_EUR" + suffix, "Saved", "f7:money_euro", "#43a047");
+            if (saved != null) {
+                tiles.add(colResponsive(saved));
+            }
+            UIComponent sun = tileIfPresent("EMS_SelfConsumption_kWh" + suffix, "Sun used", "f7:sun_max", "#ff9800");
+            if (sun != null) {
+                tiles.add(colResponsive(sun));
+            }
+            UIComponent sold = tileIfPresent("EMS_FeedIn_kWh" + suffix, "Sold", "f7:arrow_up_right_circle", "#66bb6a");
+            if (sold != null) {
+                tiles.add(colResponsive(sold));
+            }
+            if (!tiles.isEmpty()) {
+                root.add(block(period[1], row(tiles.toArray(new UIComponent[0]))));
+            }
+        }
+
+        // Where today's energy went, circuit by circuit. Cumulative rather than live, for the same reason the
+        // circuit chart is: it is the day's story rather than this second's.
+        List<UIComponent> circuits = new ArrayList<>();
+        for (String circuit : trackedCircuits()) {
+            String kwh = "EMS_DM_" + circuit + "_kWh";
+            if (has(kwh)) {
+                circuits.add(colResponsive(labelCard(kwh, prettyCircuit(circuit), "f7:sum", "#7e57c2")));
+            }
+        }
+        if (!circuits.isEmpty()) {
+            root.add(block("Used today, by circuit", row(circuits.toArray(new UIComponent[0]))));
+        }
+
+        List<UIComponent> totals = new ArrayList<>();
+        if (has(I_DM_TRACKED)) {
+            totals.add(colHalf(labelCard(I_DM_TRACKED, "Measured", "f7:checkmark_seal", "#43a047")));
+        }
+        if (has(I_DM_UNTRACKED)) {
+            totals.add(colHalf(labelCard(I_DM_UNTRACKED, "Not measured", "f7:questionmark_circle", "#ff9800")));
+        }
+        if (!totals.isEmpty()) {
+            root.add(block("How much of the building this covers", row(totals.toArray(new UIComponent[0]))));
         }
         return page;
     }
@@ -588,68 +663,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     // --- where the energy goes -----------------------------------------------------------------
-
-    /**
-     * The building, circuit by circuit.
-     * <p>
-     * This is the page that answers "where is it actually going", which is the question a meter reading never
-     * answers. Each circuit shows what it is drawing now and what it has used today, and the two totals underneath
-     * say how much of the house is measured at all - the honest part, because untracked load is the difference
-     * between a breakdown and a guess.
-     */
-    private RootUIComponent buildDevicesPage() {
-        RootUIComponent page = layoutPage(P_DEVICES, "Where it goes");
-        List<UIComponent> root = page.addSlot("default");
-
-        List<String> circuits = trackedCircuits();
-        if (circuits.isEmpty()) {
-            root.add(block("Nothing measured yet",
-                    row(col("100", note("No device meters are configured, so there is nothing to break down.")))));
-            return page;
-        }
-
-        List<UIComponent> live = new ArrayList<>();
-        for (String circuit : circuits) {
-            String watts = "EMS_DM_" + circuit + "_W";
-            UIComponent card = labelCard(watts, prettyCircuit(circuit), "oh:poweroutlet", "#5b8def");
-            card.addConfig("trendItem", watts);
-            // a circuit drawing nothing is not interesting and should not compete for attention
-            card.addConfig("background", "=items." + watts
-                    + ".numericState>0?'linear-gradient(135deg,#5b8def33,transparent 72%)':'transparent'");
-            live.add(colResponsive(card));
-        }
-        root.add(block("Using power now", row(live.toArray(new UIComponent[0]))));
-
-        List<UIComponent> today = new ArrayList<>();
-        for (String circuit : circuits) {
-            String kwh = "EMS_DM_" + circuit + "_kWh";
-            if (has(kwh)) {
-                today.add(colResponsive(labelCard(kwh, prettyCircuit(circuit), "f7:sum", "#7e57c2")));
-            }
-        }
-        if (!today.isEmpty()) {
-            root.add(block("Used so far today", row(today.toArray(new UIComponent[0]))));
-        }
-
-        addIfPresent(root,
-                tileBlock("What it cost", tileIfPresent(I_COST_MONTH, "Bought this month", "f7:money_euro", "#ef5350"),
-                        tileIfPresent(I_SAVINGS_MONTH, "Saved this month", "f7:money_euro", "#43a047"),
-                        tileIfPresent(I_EARNINGS_MONTH, "Earned selling", "f7:money_euro", "#66bb6a"),
-                        tileIfPresent(I_CO2_SAVED_TODAY, "CO\u2082 avoided today", "f7:smoke", "#26a69a")));
-
-        List<UIComponent> totals = new ArrayList<>();
-        if (has(I_DM_TRACKED)) {
-            totals.add(colHalf(labelCard(I_DM_TRACKED, "Measured", "f7:checkmark_seal", "#43a047")));
-        }
-        if (has(I_DM_UNTRACKED)) {
-            UIComponent untracked = labelCard(I_DM_UNTRACKED, "Not measured", "f7:questionmark_circle", "#ff9800");
-            totals.add(colHalf(untracked));
-        }
-        if (!totals.isEmpty()) {
-            root.add(block("How much of the building this covers", row(totals.toArray(new UIComponent[0]))));
-        }
-        return page;
-    }
 
     /**
      * The circuits this site actually meters, taken from the Items the device-meter Things publish.
