@@ -1,0 +1,198 @@
+/*
+ * Copyright (c) 2010-2025 Contributors to the openHAB project
+ *
+ * See the NOTICE file(s) distributed with this work for additional
+ * information.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License 2.0 which is available at
+ * http://www.eclipse.org/legal/epl-2.0
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ */
+package org.openhab.binding.emsmanager.internal.ui;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+import org.junit.jupiter.api.Test;
+import org.openhab.core.items.ItemRegistry;
+import org.openhab.core.items.MetadataRegistry;
+import org.openhab.core.library.items.NumberItem;
+import org.openhab.core.ui.components.RootUIComponent;
+import org.openhab.core.ui.components.UIComponent;
+
+/**
+ * Tests for {@link EnergyUiProvider}.
+ * <p>
+ * The page names Items this binding's own services publish, but which of those a site actually has depends on which
+ * services it runs. A card whose Item is absent renders as a dash on a page somebody is trying to read a number off,
+ * so the rule these tests hold the provider to is: <strong>no Item, no card; no cards, no block.</strong>
+ *
+ * @author Stamate Viorel - Initial contribution
+ */
+@NonNullByDefault
+class EnergyUiProviderTest {
+
+    /** A provider whose site has exactly the named Items and nothing else. */
+    private EnergyUiProvider providerWith(Set<String> presentItems) {
+        MetadataRegistry metadata = mock(MetadataRegistry.class);
+        when(metadata.getAll()).thenReturn(List.of());
+        ItemRegistry items = mock(ItemRegistry.class);
+        when(items.get(anyString()))
+                .thenAnswer(call -> presentItems.contains(call.getArgument(0)) ? new NumberItem("x") : null);
+        return new EnergyUiProvider(metadata, items);
+    }
+
+    private @Nullable RootUIComponent page(EnergyUiProvider provider, String uid) {
+        for (RootUIComponent page : provider.getAll()) {
+            if (uid.equals(page.getUID())) {
+                return page;
+            }
+        }
+        return null;
+    }
+
+    /** Every block title on a page, in order. */
+    private List<String> blockTitles(@Nullable UIComponent component) {
+        List<String> found = new ArrayList<>();
+        collectBlockTitles(component, found);
+        return found;
+    }
+
+    private void collectBlockTitles(@Nullable UIComponent component, List<String> found) {
+        if (component == null) {
+            return;
+        }
+        Object title = component.getConfig() == null ? null : component.getConfig().get("title");
+        if ("oh-block".equals(component.getType()) && title instanceof String text) {
+            found.add(text);
+        }
+        if (component.getSlots() != null) {
+            for (List<UIComponent> slot : component.getSlots().values()) {
+                for (UIComponent child : slot) {
+                    collectBlockTitles(child, found);
+                }
+            }
+        }
+    }
+
+    private List<String> itemsOn(@Nullable UIComponent component) {
+        List<String> found = new ArrayList<>();
+        collectItems(component, found);
+        return found;
+    }
+
+    private void collectItems(@Nullable UIComponent component, List<String> found) {
+        if (component == null) {
+            return;
+        }
+        Object item = component.getConfig() == null ? null : component.getConfig().get("item");
+        if (item instanceof String name) {
+            found.add(name);
+        }
+        if (component.getSlots() != null) {
+            for (List<UIComponent> slot : component.getSlots().values()) {
+                for (UIComponent child : slot) {
+                    collectItems(child, found);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void theEnergySectionIsThreePages() {
+        Collection<RootUIComponent> pages = providerWith(Set.of()).getAll();
+
+        assertEquals(3, pages.size(), "the section is the tabs page plus Now and Charts");
+        assertNotNull(page(providerWith(Set.of()), "emsmanager_energy"));
+        assertNotNull(page(providerWith(Set.of()), "emsmanager_energy_now"));
+        assertNotNull(page(providerWith(Set.of()), "emsmanager_energy_charts"));
+    }
+
+    /**
+     * A site running none of the optional services still gets a page rather than an error, and it carries none of the
+     * blocks whose Items it does not have.
+     */
+    @Test
+    public void aSiteWithNoneOfTheItemsGetsNoneOfTheBlocks() {
+        RootUIComponent now = page(providerWith(Set.of()), "emsmanager_energy_now");
+
+        List<String> blocks = blockTitles(now);
+        assertFalse(blocks.contains("Sun ahead"));
+        assertFalse(blocks.contains("Battery"));
+        assertFalse(blocks.contains("Grid capacity"));
+        assertFalse(blocks.contains("This month"));
+    }
+
+    @Test
+    public void aBlockAppearsAsSoonAsOneOfItsItemsExists() {
+        RootUIComponent now = page(providerWith(Set.of("EMS_Forecast_Now")), "emsmanager_energy_now");
+
+        assertTrue(blockTitles(now).contains("Sun ahead"), "one present Item is enough to earn the block");
+        assertTrue(itemsOn(now).contains("EMS_Forecast_Now"));
+    }
+
+    /** The half-populated case: the block appears, but only for the Items that are actually there. */
+    @Test
+    public void onlyThePresentItemsOfABlockAreDrawn() {
+        RootUIComponent now = page(providerWith(Set.of("EMS_Forecast_Now", "EMS_Forecast_Next_3h")),
+                "emsmanager_energy_now");
+
+        List<String> items = itemsOn(now);
+        assertTrue(items.contains("EMS_Forecast_Now"));
+        assertTrue(items.contains("EMS_Forecast_Next_3h"));
+        assertFalse(items.contains("EMS_Forecast_Next_1h"), "an absent Item must not become a card");
+        assertFalse(items.contains("EMS_Forecast_Peak_Today_At"));
+    }
+
+    @Test
+    public void theBatteryPlanStripIsDrawnOnlyWhenThePlanExists() {
+        assertFalse(itemsOn(page(providerWith(Set.of()), "emsmanager_energy_now")).contains("EMS_Optimizer_Plan_24h"));
+        assertTrue(itemsOn(page(providerWith(Set.of("EMS_Optimizer_Plan_24h")), "emsmanager_energy_now"))
+                .contains("EMS_Optimizer_Plan_24h"));
+    }
+
+    @Test
+    public void theCapacityBlockAppearsWithItsOwnItems() {
+        RootUIComponent now = page(providerWith(Set.of("EMS_Capacity_Current_Quarter", "EMS_Capacity_Status")),
+                "emsmanager_energy_now");
+
+        assertTrue(blockTitles(now).contains("Grid capacity"));
+        assertTrue(itemsOn(now).contains("EMS_Capacity_Status"));
+    }
+
+    /** A fully-equipped site gets the whole page, which is the shape this site actually runs. */
+    @Test
+    public void aFullyEquippedSiteGetsEveryBlock() {
+        RootUIComponent now = page(providerWith(Set.of("EMS_Tariff_Now_EurPerKWh", "EMS_Forecast_Now",
+                "EMS_Battery_Setpoint_W", "EMS_Optimizer_Plan_24h", "EMS_Capacity_Current_Quarter",
+                "EMS_Cost_EUR_Month", "EMS_Cost_EUR_Total", "EMS_Anomaly_Count_Today")), "emsmanager_energy_now");
+
+        List<String> blocks = blockTitles(now);
+        for (String expected : List.of("Today", "Sun ahead", "Battery", "Grid capacity", "This month",
+                "Since the beginning", "Worth knowing")) {
+            assertTrue(blocks.contains(expected), "missing block: " + expected);
+        }
+    }
+
+    @Test
+    public void everyPageKeepsItsIdentityAcrossRebuilds() {
+        EnergyUiProvider provider = providerWith(Set.of("EMS_Forecast_Now"));
+
+        List<String> first = new ArrayList<>();
+        provider.getAll().forEach(p -> first.add(p.getUID()));
+        List<String> second = new ArrayList<>();
+        provider.getAll().forEach(p -> second.add(p.getUID()));
+
+        assertEquals(first, second, "a page's UID is what MainUI keys on; it must not move");
+    }
+}

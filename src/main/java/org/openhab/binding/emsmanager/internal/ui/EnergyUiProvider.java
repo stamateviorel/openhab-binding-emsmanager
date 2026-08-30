@@ -214,12 +214,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return page;
     }
 
-    /** Live colour that tracks the site energy level (red -> blue -> lime -> green). */
-    private String levelColorExpr() {
-        String n = "items." + ITEM_LEVEL + ".numericState";
-        return "=" + n + ">=3?'#43a047':" + n + ">=2?'#7cb342':" + n + ">=1?'#42a5f5':'#ef5350'";
-    }
-
     /** Live gradient tint that tracks the energy level (over the theme card bg). */
     private String levelTintExpr() {
         String n = "items." + ITEM_LEVEL + ".numericState";
