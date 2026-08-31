@@ -109,7 +109,10 @@ public final class TariffHandler extends BaseThingHandler {
             case TouScheduleTariff.KIND:
                 return new TouScheduleTariff(cfg.hourlyPricesCsv);
             case DynamicSpotTariff.KIND:
-                return new DynamicSpotTariff(buildSpotClient(cfg), cfg.refreshIntervalMin);
+                // A cold start with the feed unreachable would otherwise publish UNDEF prices and
+                // silently stop every price-driven planner; fall back to the configured flat price.
+                return new FallbackTariff(new DynamicSpotTariff(buildSpotClient(cfg), cfg.refreshIntervalMin),
+                        new FlatTariff(cfg.flatPriceEurPerKWh));
             case FlatTariff.KIND:
             default:
                 return new FlatTariff(cfg.flatPriceEurPerKWh);
@@ -136,15 +139,30 @@ public final class TariffHandler extends BaseThingHandler {
         try {
             TariffSnapshot snap = p.snapshot(Instant.now());
             lastSnapshot = snap;
-            if (snap.lastError() != null) {
-                updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_ERROR, snap.lastError());
-            } else {
+            if (snap.lastError() == null) {
                 updateStatus(ThingStatus.ONLINE);
+            } else if (FallbackTariff.isFallback(snap)) {
+                // Still serving usable prices (fallback or stale cache), so the thing is not down.
+                updateStatus(ThingStatus.ONLINE, ThingStatusDetail.NONE, "Using fallback price - " + snap.lastError());
+            } else {
+                updateStatus(ThingStatus.OFFLINE, statusDetailFor(snap.lastError()), snap.lastError());
             }
             publish(snap);
         } catch (Throwable t) {
             logger.warn("Tariff snapshot threw", t);
         }
+    }
+
+    /**
+     * A rejected or missing key needs the user to act; anything else (maintenance, DNS, timeout) is
+     * transient and must not be reported as a configuration fault, which would imply an edit is due.
+     */
+    private static ThingStatusDetail statusDetailFor(@Nullable String error) {
+        if (error == null) {
+            return ThingStatusDetail.NONE;
+        }
+        boolean rejectedKey = error.contains("401") || error.contains("403") || error.contains("key not configured");
+        return rejectedKey ? ThingStatusDetail.CONFIGURATION_ERROR : ThingStatusDetail.COMMUNICATION_ERROR;
     }
 
     private void publish(TariffSnapshot snap) {
@@ -157,12 +175,26 @@ public final class TariffHandler extends BaseThingHandler {
         publishInstant(TR_CHANNEL_MOST_EXPENSIVE_HOUR_START, snap.mostExpensiveHourStart());
         publishCsv(TR_CHANNEL_SCHEDULE_24H, snap.schedule24h());
         publishCsv(TR_CHANNEL_SCHEDULE_48H, snap.schedule48h());
+        updateState(TR_CHANNEL_SOURCE, new StringType(describeSource(snap)));
         if (snap.refreshedAt() != null && !snap.refreshedAt().equals(Instant.EPOCH)) {
             updateState(TR_CHANNEL_LAST_REFRESH_AT,
                     new DateTimeType(ZonedDateTime.ofInstant(snap.refreshedAt(), ZoneId.systemDefault())));
         } else {
             updateState(TR_CHANNEL_LAST_REFRESH_AT, UnDefType.UNDEF);
         }
+    }
+
+    /** Plain-language provenance for the prices currently published. */
+    private String describeSource(TariffSnapshot snap) {
+        if (Double.isNaN(snap.nowPriceEurPerKWh())) {
+            return "unavailable - " + (snap.lastError() == null ? "no prices" : snap.lastError());
+        }
+        if (FallbackTariff.isFallback(snap)) {
+            return "estimate (feed unavailable: " + snap.lastError() + ")";
+        }
+        TariffConfig cfg = getConfigAs(TariffConfig.class);
+        return DynamicSpotTariff.KIND.equals(cfg.kind) ? "market prices (" + cfg.subProvider + ")"
+                : "configured " + cfg.kind + " rate";
     }
 
     private void publishDouble(String channel, double v) {

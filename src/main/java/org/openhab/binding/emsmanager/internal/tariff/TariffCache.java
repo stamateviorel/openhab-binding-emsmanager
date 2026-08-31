@@ -43,7 +43,18 @@ import com.google.gson.JsonObject;
 public final class TariffCache {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TariffCache.class);
-    private static final Path CACHE_PATH = Path.of("/var/lib/openhab/cache/emsmanager-tariff-cache.json");
+    private static final String CACHE_FILE = "emsmanager-tariff-cache.json";
+
+    /**
+     * Resolved per call rather than once: a hardcoded absolute path is wrong on any install that is
+     * not a Debian package (Windows, docker, custom prefix), and it also let unit tests write into
+     * the running system's cache.
+     */
+    private static Path cachePath() {
+        String userdata = System.getProperty("openhab.userdata", "/var/lib/openhab");
+        return Path.of(userdata, "cache", CACHE_FILE);
+    }
+
     private static final Gson GSON = new Gson();
 
     private TariffCache() {
@@ -51,10 +62,10 @@ public final class TariffCache {
 
     public static @Nullable HourlyPrices load() {
         try {
-            if (!Files.exists(CACHE_PATH)) {
+            if (!Files.exists(cachePath())) {
                 return null;
             }
-            String raw = Files.readString(CACHE_PATH);
+            String raw = Files.readString(cachePath());
             JsonObject obj = GSON.fromJson(raw, JsonObject.class);
             if (obj == null) {
                 return null;
@@ -84,7 +95,7 @@ public final class TariffCache {
                 pricesObj.addProperty(String.valueOf(e.getKey().toEpochMilli()), e.getValue());
             }
             obj.add("prices", pricesObj);
-            Files.writeString(CACHE_PATH, GSON.toJson(obj), StandardOpenOption.CREATE,
+            Files.writeString(cachePath(), GSON.toJson(obj), StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         } catch (Throwable t) {
             LOGGER.debug("TariffCache.save: {}", t.getMessage());

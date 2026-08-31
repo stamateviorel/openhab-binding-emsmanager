@@ -1021,6 +1021,7 @@
 			<channel id="schedule24hCsv" typeId="trSchedule24hCsv"/>
 			<channel id="schedule48hCsv" typeId="trSchedule48hCsv"/>
 			<channel id="tariffLastRefreshAt" typeId="trLastRefreshAt"/>
+			<channel id="tariffSource" typeId="trSource"/>
 		</channels>
 
 		<config-description>
@@ -1146,6 +1147,13 @@
 	<channel-type id="trMostExpensiveHourStart">
 		<item-type>DateTime</item-type>
 		<label>Tariff — most expensive hour starts</label>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="trSource">
+		<item-type>String</item-type>
+		<label>Tariff — price source</label>
+		<description>Where the current prices came from, so an estimate is never mistaken for a real market price.</description>
 		<state readOnly="true"/>
 	</channel-type>
 

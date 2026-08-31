@@ -112,6 +112,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_TARIFF_SCHEDULE = "EMS_Tariff_Schedule24h_CSV";
     private static final String I_TARIFF_MIN = "EMS_Tariff_Today_Min";
     private static final String I_TARIFF_MAX = "EMS_Tariff_Today_Max";
+    private static final String I_TARIFF_SOURCE = "EMS_Tariff_Source";
     private static final String I_FORECAST_HOURLY = "EMS_Forecast_Today_Hourly_CSV";
     private static final String I_FORECAST_TOMORROW = "EMS_Forecast_Tomorrow_kWh";
     private static final String I_FORECAST_6H = "EMS_Forecast_Next_6h";
@@ -368,6 +369,10 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 figureIfPresent(I_TARIFF_DEAREST_AT, "dearest hour", "arrow_up_circle_fill", "red"));
         if (prices != null) {
             root.add(cardRow(prices));
+            UIComponent note = estimateNote();
+            if (note != null) {
+                root.add(cardRow(note));
+            }
         }
 
         UIComponent plan = figureCard("Already decided",
@@ -1251,6 +1256,29 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** A card holding a list of rows (switches, buttons) rather than a row of figures. */
+    /**
+     * A warning shown only while the published prices are a stand-in for a feed that could not be
+     * reached. Prices drive what the EMS decides to run and when, so a figure the user reads as the
+     * market price when it is really a configured guess is the one number here worth interrupting for.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent estimateNote() {
+        if (!has(I_TARIFF_SOURCE)) {
+            return null;
+        }
+        UIComponent label = new UIComponent("Label");
+        label.addConfig("text", "=items." + I_TARIFF_SOURCE + ".state");
+        label.addConfig("style", java.util.Map.of("font-size", "13px", "color", "var(--f7-theme-color)"));
+
+        UIComponent box = new UIComponent("div");
+        box.addConfig("style",
+                java.util.Map.of("display",
+                        "=items." + I_TARIFF_SOURCE + ".state.indexOf('market') === 0 ? 'none' : 'block'", "padding",
+                        "10px 14px", "margin", "0 8px 8px 8px", "border-radius", "10px", "background",
+                        "rgba(255,149,0,0.12)", "border-left", "3px solid #ff9500"));
+        box.addSlot("default").add(label);
+        return box;
+    }
+
     private UIComponent listCard(String title, List<UIComponent> rows) {
         UIComponent card = new UIComponent("f7-card");
         card.addConfig("title", title);

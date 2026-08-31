@@ -108,7 +108,9 @@ Controllers emit `SetpointRequest`s; the bridge routes each to an asset handler 
 
 ## `tariff` Thing
 
-`kind=flat` (`flatPriceEurPerKWh`), `kind=day-night` (`dayPriceEurPerKWh`, `nightPriceEurPerKWh`, `dayStartHour`, `dayEndHour` — may wrap midnight), `kind=tou-schedule` (`hourlyPricesCsv` — 24 comma-separated prices), or `kind=dynamic-spot` (`subProvider` = `entsoe-be` / `tibber` / `csv-upload`, with `apiKey`/`csvUrl`/`markupEurPerKWh`). Channels: `nowPriceEurPerKWh`, `next1hPriceEurPerKWh`, `todayMin/Max/AvgPrice`, `cheapestHourStart`, `mostExpensiveHourStart`, `schedule24hCsv`, `schedule48hCsv`.
+`kind=flat` (`flatPriceEurPerKWh`), `kind=day-night` (`dayPriceEurPerKWh`, `nightPriceEurPerKWh`, `dayStartHour`, `dayEndHour` — may wrap midnight), `kind=tou-schedule` (`hourlyPricesCsv` — 24 comma-separated prices), or `kind=dynamic-spot` (`subProvider` = `entsoe-be` / `tibber` / `csv-upload`, with `apiKey`/`csvUrl`/`markupEurPerKWh`). Channels: `nowPriceEurPerKWh`, `next1hPriceEurPerKWh`, `todayMin/Max/AvgPrice`, `cheapestHourStart`, `mostExpensiveHourStart`, `schedule24hCsv`, `schedule48hCsv`, `tariffSource`.
+
+A remote price feed that cannot be reached does not take the tariff down with it: successful days are cached to disk, and if there is no cached day either — a cold start while the feed is in maintenance — the Thing serves `flatPriceEurPerKWh` so price-driven planning keeps working instead of silently stopping on UNDEF. The Thing stays `ONLINE` with the failure in its status, and `tariffSource` says in plain words where the current prices came from (`market prices (entsoe-be)` vs `estimate (feed unavailable: ...)`), which the Energy dashboard shows as a warning on the price card. Set a `flatPriceEurPerKWh` worth falling back to even when using `dynamic-spot`. Failed fetches are retried at most every 5 minutes regardless of poll rate, so an outage does not hammer the provider.
 
 ## `forecast-solar` Thing
 

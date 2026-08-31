@@ -89,6 +89,7 @@ public final class EmsManagerBindingConstants {
     public static final String TR_CHANNEL_SCHEDULE_24H = "schedule24hCsv";
     public static final String TR_CHANNEL_SCHEDULE_48H = "schedule48hCsv";
     public static final String TR_CHANNEL_LAST_REFRESH_AT = "tariffLastRefreshAt";
+    public static final String TR_CHANNEL_SOURCE = "tariffSource";
 
     // Bridge channel IDs — liveness
     public static final String CHANNEL_SHADOW_MODE = "shadowMode";

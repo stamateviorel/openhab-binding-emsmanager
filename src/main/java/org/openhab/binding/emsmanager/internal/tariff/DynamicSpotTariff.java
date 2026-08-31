@@ -15,6 +15,7 @@ package org.openhab.binding.emsmanager.internal.tariff;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.function.LongSupplier;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -43,14 +44,31 @@ public final class DynamicSpotTariff implements TariffProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DynamicSpotTariff.class);
 
+    /**
+     * Shortest gap between two calls to the remote feed. The handler polls once a minute, and with
+     * an empty cache every one of those polls would otherwise become an API call - which is exactly
+     * what happens during a feed outage, when hammering it is both useless and a good way to get a
+     * key rate-limited.
+     */
+    private static final long RETRY_SPACING_MS = 5L * 60L * 1000L;
+
     private final SpotPriceClient client;
     private final long refreshIntervalMs;
+    private final LongSupplier clock;
 
     private volatile @Nullable HourlyPrices cachedPrices;
     private volatile long lastFetchMs = 0L;
+    private volatile long lastAttemptMs = 0L;
+    private volatile @Nullable String lastAttemptError;
 
     public DynamicSpotTariff(SpotPriceClient client, int refreshIntervalMin) {
+        this(client, refreshIntervalMin, System::currentTimeMillis);
+    }
+
+    /** Visible for testing: lets a test advance time instead of sleeping through the retry spacing. */
+    DynamicSpotTariff(SpotPriceClient client, int refreshIntervalMin, LongSupplier clock) {
         this.client = client;
+        this.clock = clock;
         this.refreshIntervalMs = Math.max(5, refreshIntervalMin) * 60L * 1000L;
         // Try to seed from disk cache so a bundle restart doesn't burn an API call.
         HourlyPrices cached = TariffCache.load();
@@ -69,10 +87,20 @@ public final class DynamicSpotTariff implements TariffProvider {
 
     @Override
     public TariffSnapshot snapshot(Instant now) {
-        long nowMs = System.currentTimeMillis();
+        long nowMs = clock.getAsLong();
         HourlyPrices prices = cachedPrices;
         if (prices == null || prices.prices().isEmpty() || (nowMs - lastFetchMs) > refreshIntervalMs) {
+            if (lastAttemptMs != 0L && (nowMs - lastAttemptMs) < RETRY_SPACING_MS) {
+                // Too soon to ask again: report the last outcome instead of re-fetching.
+                if (prices != null && !prices.prices().isEmpty()) {
+                    return toSnapshot(prices, now, lastAttemptError);
+                }
+                return new TariffSnapshot(now, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null, null,
+                        new double[0], new double[0], lastAttemptError);
+            }
+            lastAttemptMs = nowMs;
             HourlyPrices fresh = client.fetch();
+            lastAttemptError = fresh.lastError();
             if (fresh.lastError() != null) {
                 // Keep returning the stale cache (if any) but flag the error.
                 if (prices != null && !prices.prices().isEmpty()) {
