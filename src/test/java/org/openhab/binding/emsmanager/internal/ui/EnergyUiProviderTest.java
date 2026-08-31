@@ -265,4 +265,64 @@ class EnergyUiProviderTest {
             }
         }
     }
+
+    /**
+     * A card that renders nothing is worse than a missing card: the heading promises something and the space below
+     * it is blank.
+     * <p>
+     * This caught a real one. {@code addSlot("default")} replaces the slot rather than appending to it, so calling it
+     * twice on the same component silently discards everything added the first time - the day strip shipped with its
+     * hour scale and no hours, and the period bars lost their labels. Nothing else would have noticed: the page was
+     * valid, the Items all resolved, and the card was empty.
+     */
+    @Test
+    public void noCardIsEmpty() {
+        EnergyUiProvider provider = providerWith(Set.of("EMS_Tariff_Schedule24h_CSV", "EMS_Forecast_Today_Hourly_CSV",
+                "EMS_Tariff_Today_Min", "EMS_Tariff_Today_Max", "EMS_Optimizer_Plan_24h", "EMS_SelfConsumption_kWh_Day",
+                "EMS_Supply_kWh_Day", "EMS_DM_Airco_kWh", "EMS_DM_Airco_W", "EMS_DeviceMeter_Tracked_W",
+                "EMS_DeviceMeter_Untracked_W"));
+
+        List<String> empty = new ArrayList<>();
+        for (RootUIComponent page : provider.getAll()) {
+            collectEmptyCards(page, empty);
+        }
+        assertTrue(empty.isEmpty(), "cards with a heading and no content: " + empty);
+    }
+
+    private void collectEmptyCards(@Nullable UIComponent component, List<String> empty) {
+        if (component == null) {
+            return;
+        }
+        if ("f7-card".equals(component.getType())) {
+            Object title = component.getConfig() == null ? null : component.getConfig().get("title");
+            int children = 0;
+            if (component.getSlots() != null) {
+                for (List<UIComponent> slot : component.getSlots().values()) {
+                    children += slot.size();
+                }
+            }
+            if (children == 0 && title instanceof String name) {
+                empty.add(name);
+            }
+        }
+        if (component.getSlots() != null) {
+            for (List<UIComponent> slot : component.getSlots().values()) {
+                for (UIComponent child : slot) {
+                    collectEmptyCards(child, empty);
+                }
+            }
+        }
+    }
+
+    /** The day strip must carry an hour, or it is a heading over a scale. */
+    @Test
+    public void theDayStripHasItsHours() {
+        RootUIComponent future = page(providerWith(Set.of("EMS_Tariff_Schedule24h_CSV", "EMS_Forecast_Today_Hourly_CSV",
+                "EMS_Tariff_Today_Min", "EMS_Tariff_Today_Max")), "emsmanager_energy_future");
+
+        List<String> types = new ArrayList<>();
+        collectTypes(future, types);
+        long divs = types.stream().filter("div"::equals).count();
+        assertTrue(divs >= 24, "the strip needs a column per hour, found " + divs + " divs on the page");
+    }
 }

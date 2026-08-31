@@ -109,6 +109,10 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_TARIFF_CHEAPEST_AT = "EMS_Tariff_Cheapest_Hour_Start";
     private static final String I_TARIFF_DEAREST_AT = "EMS_Tariff_Expensive_Hour_Start";
     private static final String I_TARIFF_NEXT_1H = "EMS_Tariff_Next_1h_Price";
+    private static final String I_TARIFF_SCHEDULE = "EMS_Tariff_Schedule24h_CSV";
+    private static final String I_TARIFF_MIN = "EMS_Tariff_Today_Min";
+    private static final String I_TARIFF_MAX = "EMS_Tariff_Today_Max";
+    private static final String I_FORECAST_HOURLY = "EMS_Forecast_Today_Hourly_CSV";
     private static final String I_FORECAST_TOMORROW = "EMS_Forecast_Tomorrow_kWh";
     private static final String I_FORECAST_6H = "EMS_Forecast_Next_6h";
     private static final String I_BOILER_WINDOW = "EMS_BoilerPlan_Window";
@@ -274,15 +278,27 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         RootUIComponent page = layoutPage(P_PAST, "Past");
         List<UIComponent> root = page.addSlot("default");
 
+        // Every period on one scale, so the bars compare as well as describe.
+        List<String> totals = new ArrayList<>();
         for (String[] period : PERIODS) {
-            String suffix = period[0];
-            UIComponent card = figureCard(period[1],
-                    figureIfPresent("EMS_Supply_kWh" + suffix, "bought", "arrow_down_left_circle", "red"),
-                    figureIfPresent("EMS_SelfConsumption_kWh" + suffix, "sun used", "sun_max", "orange"),
-                    figureIfPresent("EMS_FeedIn_kWh" + suffix, "sold", "arrow_up_right_circle", "green"),
-                    figureIfPresent("EMS_Cost_EUR" + suffix, "cost", "money_euro", "red"));
-            if (card != null) {
-                root.add(cardRow(card));
+            for (String metric : List.of("EMS_SelfConsumption_kWh", "EMS_Supply_kWh")) {
+                String item = metric + period[0];
+                if (has(item)) {
+                    totals.add(item);
+                }
+            }
+        }
+        if (!totals.isEmpty()) {
+            String scale = largestOf(totals);
+            List<UIComponent> bars = new ArrayList<>();
+            for (String[] period : PERIODS) {
+                UIComponent bar = periodBar(period[0], period[1], scale);
+                if (bar != null) {
+                    bars.add(bar);
+                }
+            }
+            if (!bars.isEmpty()) {
+                root.add(cardRow(barCard("Where your energy came from", bars)));
             }
         }
 
@@ -351,7 +367,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(plan));
         }
 
-        if (has(I_OPT_PLAN_24H)) {
+        if (has(I_TARIFF_SCHEDULE) && has(I_FORECAST_HOURLY)) {
+            root.add(cardRow(dayStrip()));
+        } else if (has(I_OPT_PLAN_24H)) {
             root.add(cardRow(planCard()));
         }
         return page;
@@ -778,6 +796,187 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     // Framework7 primitives rather than the stock oh-*-card tiles. A tile is one number in a large box, so a page of
     // them is a page of boxes: tall, repetitive and impossible to scan. A card holding a row of small columns puts
     // six related figures in the space one tile used, which is how the widgets already on this site are built.
+
+    /**
+     * One period as a single bar split into what it was made of.
+     * <p>
+     * Four numbers make you do the arithmetic - how much of that was sun? - and comparing two periods means doing it
+     * twice and holding both. One bar answers it by shape: the green length is the share that came off the roof, and
+     * the bar's own length says how the period compares to the others because they all share a scale.
+     *
+     * @param suffix the period's Item suffix
+     * @param label the period's name
+     * @param scale a javascript expression for the largest period, so every bar is drawn to one scale
+     * @return the row, or {@code null} where the period has no Items
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent periodBar(String suffix, String label, String scale) {
+        String sun = "EMS_SelfConsumption_kWh" + suffix;
+        String bought = "EMS_Supply_kWh" + suffix;
+        if (!has(sun) && !has(bought)) {
+            return null;
+        }
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style", java.util.Map.of("padding", "7px 2px"));
+        List<UIComponent> parts = row.addSlot("default");
+
+        UIComponent header = new UIComponent("div");
+        header.addConfig("style", java.util.Map.of("display", "flex", "justify-content", "space-between", "align-items",
+                "baseline", "margin-bottom", "4px"));
+        UIComponent name = new UIComponent("Label");
+        name.addConfig("text", label);
+        name.addConfig("style", java.util.Map.of("font-size", "13px", "font-weight", "bold"));
+        List<UIComponent> headerSlot = header.addSlot("default");
+        headerSlot.add(name);
+        if (has(sun) && has(bought)) {
+            String s = "(items." + sun + ".numericState||0)";
+            String b = "(items." + bought + ".numericState||0)";
+            UIComponent share = new UIComponent("Label");
+            share.addConfig("text", "=Math.round(100*" + s + "/((" + s + "+" + b + ")||1))+'% on sun'");
+            share.addConfig("style", java.util.Map.of("font-size", "11px", "opacity", "0.7"));
+            headerSlot.add(share);
+        }
+        parts.add(header);
+
+        UIComponent track = new UIComponent("div");
+        track.addConfig("style", java.util.Map.of("display", "flex", "height", "14px", "border-radius", "7px",
+                "background", "rgba(140,140,140,0.16)", "overflow", "hidden"));
+        List<UIComponent> segments = track.addSlot("default");
+        if (has(sun)) {
+            segments.add(segment(sun, scale, "#43a047"));
+        }
+        if (has(bought)) {
+            segments.add(segment(bought, scale, "#ef5350"));
+        }
+        parts.add(track);
+
+        UIComponent footer = new UIComponent("div");
+        footer.addConfig("style", java.util.Map.of("display", "flex", "gap", "12px", "margin-top", "4px", "font-size",
+                "11px", "opacity", "0.8"));
+        List<UIComponent> readings = footer.addSlot("default");
+        readings.add(reading(sun, "sun", "#43a047"));
+        readings.add(reading(bought, "grid", "#ef5350"));
+        readings.add(reading("EMS_FeedIn_kWh" + suffix, "sold", "#66bb6a"));
+        readings.add(reading("EMS_Cost_EUR" + suffix, "cost", "#ef5350"));
+        parts.add(footer);
+        return row;
+    }
+
+    /** A length of the stacked bar. */
+    private UIComponent segment(String item, String scale, String colour) {
+        UIComponent part = new UIComponent("div");
+        part.addConfig("style",
+                java.util.Map.of("height", "14px", "background", colour, "transition", "width 0.6s ease", "width",
+                        "=Math.max(0,Math.min(100,100*(items." + item + ".numericState||0)/(" + scale + ")))+'%'"));
+        return part;
+    }
+
+    /** A small coloured reading under the bar, or nothing where the Item is absent. */
+    private UIComponent reading(String item, String label, String colour) {
+        UIComponent wrapper = new UIComponent("div");
+        if (!has(item)) {
+            return wrapper;
+        }
+        wrapper.addConfig("style", java.util.Map.of("display", "flex", "gap", "4px", "align-items", "baseline"));
+        List<UIComponent> parts = wrapper.addSlot("default");
+        UIComponent dot = new UIComponent("Label");
+        dot.addConfig("text", label);
+        dot.addConfig("style", java.util.Map.of("color", colour, "font-size", "10px"));
+        parts.add(dot);
+        UIComponent value = new UIComponent("oh-label-item");
+        value.addConfig("item", item);
+        value.addConfig("style", java.util.Map.of("font-size", "11px", "font-weight", "bold"));
+        parts.add(value);
+        return wrapper;
+    }
+
+    /**
+     * The whole day in one strip: twenty-four columns, one per hour.
+     * <p>
+     * Height is the sun forecast for that hour, colour is what the electricity costs then, and the marker underneath
+     * is what the battery intends to do. Three series a person would otherwise have to read separately and hold in
+     * their head, laid over each other so the answer to "when should I run something" is a shape rather than a
+     * comparison.
+     * <p>
+     * Built from the hourly series the services already publish and nothing drew: the tariff schedule, the solar
+     * forecast and the optimiser's plan string.
+     */
+    private UIComponent dayStrip() {
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", "Your day");
+
+        UIComponent body = new UIComponent("div");
+        body.addConfig("style", java.util.Map.of("display", "flex", "align-items", "flex-end", "gap", "2px", "padding",
+                "10px 14px 4px 14px", "height", "84px"));
+        List<UIComponent> columns = body.addSlot("default");
+        String peak = hourlyPeakExpression();
+        for (int hour = 0; hour < 24; hour++) {
+            columns.add(hourColumn(hour, peak));
+        }
+        List<UIComponent> cardSlot = card.addSlot("default");
+        cardSlot.add(body);
+
+        UIComponent scale = new UIComponent("div");
+        scale.addConfig("style", java.util.Map.of("display", "flex", "justify-content", "space-between", "padding",
+                "0 14px 10px 14px", "font-size", "9px", "opacity", "0.55"));
+        List<UIComponent> marks = scale.addSlot("default");
+        for (String mark : List.of("00", "06", "12", "18", "24")) {
+            UIComponent label = new UIComponent("Label");
+            label.addConfig("text", mark);
+            marks.add(label);
+        }
+        cardSlot.add(scale);
+        return card;
+    }
+
+    /** One hour of the strip. */
+    private UIComponent hourColumn(int hour, String peak) {
+        String sun = hourlySunExpression(hour);
+        String price = "Number((items." + I_TARIFF_SCHEDULE + ".state||'').split(',')[" + hour + "]||0)";
+        String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
+        String span = "((items." + I_TARIFF_MAX + ".numericState||0)-" + low + ")";
+        // where this hour sits between the day's cheapest and dearest, 0..1
+        String position = "((" + span + ">0)?((" + price + "-" + low + ")/" + span + "):0)";
+
+        UIComponent column = new UIComponent("div");
+        column.addConfig("style", java.util.Map.of("flex", "1 1 0", "display", "flex", "flex-direction", "column",
+                "align-items", "center", "justify-content", "flex-end", "height", "100%"));
+        List<UIComponent> parts = column.addSlot("default");
+
+        UIComponent bar = new UIComponent("div");
+        bar.addConfig("style",
+                java.util.Map.of("width", "100%", "border-radius", "3px 3px 0 0", "transition", "height 0.6s ease",
+                        // a floor of 3px so an hour with no sun is still visibly an hour
+                        "height", "=Math.round(3+57*" + sun + "/" + peak + ")+'px'", "background",
+                        "=" + position + "<0.34?'#43a047':" + position + "<0.67?'#ffa726':'#ef5350'"));
+        parts.add(bar);
+
+        // what the battery means to do this hour, straight off the plan string
+        UIComponent marker = new UIComponent("Label");
+        marker.addConfig("text", "=((items." + I_OPT_PLAN_24H + ".state||'')[" + hour + "]||'.')==='c'?'▲':((items."
+                + I_OPT_PLAN_24H + ".state||'')[" + hour + "]||'.')==='d'?'▼':'·'");
+        marker.addConfig("style", java.util.Map.of("font-size", "9px", "line-height", "11px", "opacity", "0.8"));
+        parts.add(marker);
+        return column;
+    }
+
+    /** This hour's forecast watts, out of the {@code HH:MM=watts} series. */
+    private String hourlySunExpression(int hour) {
+        return "Number(((items." + I_FORECAST_HOURLY + ".state||'').split(',')[" + hour + "]||'=0').split('=')[1]||0)";
+    }
+
+    /**
+     * The sunniest hour of the day, so the strip is drawn to its own scale.
+     * <p>
+     * Written out as one {@code Math.max} over all twenty-four rather than a loop, because a MainUI expression
+     * cannot declare a function and there is nothing to sort with.
+     */
+    private String hourlyPeakExpression() {
+        StringBuilder peak = new StringBuilder("Math.max(1");
+        for (int hour = 0; hour < 24; hour++) {
+            peak.append(',').append(hourlySunExpression(hour));
+        }
+        return peak.append(')').toString();
+    }
 
     /**
      * A circular gauge.
