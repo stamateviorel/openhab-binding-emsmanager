@@ -234,7 +234,8 @@ class EnergyUiProviderTest {
                 "oh-toggle-item",
                 // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
                 // and Label is its text primitive
-                "div", "Label", "oh-gauge", "oh-stepper-item", "oh-list-card", "oh-slider-item");
+                "div", "Label", "oh-gauge", "oh-stepper-item", "oh-list-card", "oh-slider-item", "f7-chip",
+                "f7-progressbar");
 
         EnergyUiProvider provider = providerWith(Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h",
                 "EMS_Capacity_Current_Quarter", "EMS_Cost_EUR_Month", "EMS_Bridge_Shadow_Mode", "PeakShaving_Enabled",
@@ -357,5 +358,24 @@ class EnergyUiProviderTest {
 
         assertTrue(source.contains("\"releaseOnly\", Boolean.TRUE"),
                 "dragging a slider must not fire a command per pixel - each one reinitialises the bridge");
+    }
+
+    @Test
+    void aChipThatOnlyMattersSometimesHidesItself() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path
+                .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
+
+        assertTrue(source.contains("watching only, not acting"), "shadow mode is worth saying loudly while it is on");
+        assertTrue(source.contains("'inline-flex':'none'"),
+                "a chip reading 'inactive' is noise; absence is the clearer signal");
+    }
+
+    @Test
+    void theHotWaterBarIsAFractionOfTheTargetTheSliderSets() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path
+                .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
+
+        assertTrue(source.contains("Math.min(1,"), "a progress bar fed more than 1 renders as overflowing");
+        assertTrue(source.contains(">0?Math.min"), "dividing by a zero target would render NaN");
     }
 }

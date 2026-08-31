@@ -113,6 +113,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     // Things worth surfacing only when they have something to say.
     private static final String I_ANOMALY_COUNT = "EMS_Anomaly_Count_Today";
     private static final String I_BOILER_PLAN = "EMS_BoilerPlan_Status";
+    private static final String I_BOILER_DELIVERED = "EMS_BoilerPlan_Delivered_kWh";
     private static final String I_TARIFF_CHEAPEST_AT = "EMS_Tariff_Cheapest_Hour_Start";
     private static final String I_TARIFF_DEAREST_AT = "EMS_Tariff_Expensive_Hour_Start";
     private static final String I_TARIFF_NEXT_1H = "EMS_Tariff_Next_1h_Price";
@@ -752,6 +753,16 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         RootUIComponent page = layoutPage(P_CONTROL, "Control");
         List<UIComponent> root = page.addSlot("default");
 
+        UIComponent status = statusChips();
+        if (status != null) {
+            root.add(cardRow(status));
+        }
+
+        UIComponent hotWater = hotWaterProgress();
+        if (hotWater != null) {
+            root.add(cardRow(hotWater));
+        }
+
         UIComponent settings = settingsCard();
         if (settings != null) {
             root.add(cardRow(settings));
@@ -1277,6 +1288,80 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** A switch as a compact row rather than a card of its own. */
+    /**
+     * One line answering "what is it doing right now" before the page asks you to change anything.
+     * Chips rather than another table of rows: these are short states, and a chip that only appears
+     * when it matters says more by its absence than a row reading "inactive" ever does.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent statusChips() {
+        List<UIComponent> chips = new ArrayList<>();
+        if (has(ITEM_LEVEL_TEXT)) {
+            chips.add(chip(
+                    "=items." + ITEM_LEVEL_TEXT + ".state", "=items." + ITEM_LEVEL_TEXT
+                            + ".state==='critical'?'red':items." + ITEM_LEVEL_TEXT + ".state==='high'?'orange':'green'",
+                    null));
+        }
+        if (has(I_SHADOW_MODE)) {
+            // only worth saying while it is on, because then nothing else on this page takes effect
+            chips.add(chip("watching only, not acting", "orange",
+                    "=items." + I_SHADOW_MODE + ".state==='ON'?'inline-flex':'none'"));
+        }
+        if (has(I_TARIFF_SOURCE)) {
+            chips.add(chip("=items." + I_TARIFF_SOURCE + ".state",
+                    "=items." + I_TARIFF_SOURCE + ".state.indexOf('market')===0?'blue':'orange'", null));
+        }
+        if (chips.isEmpty()) {
+            return null;
+        }
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style",
+                java.util.Map.of("display", "flex", "flex-wrap", "wrap", "gap", "6px", "padding", "12px 14px"));
+        row.addSlot("default").addAll(chips);
+
+        UIComponent card = new UIComponent("f7-card");
+        card.addSlot("default").add(row);
+        return card;
+    }
+
+    private UIComponent chip(String text, String colour, @org.eclipse.jdt.annotation.Nullable String display) {
+        UIComponent chip = new UIComponent("f7-chip");
+        chip.addConfig("text", text);
+        chip.addConfig("color", colour);
+        if (display != null) {
+            chip.addConfig("style", java.util.Map.of("display", display));
+        }
+        return chip;
+    }
+
+    /**
+     * How the day's hot water is going against the target the slider below sets - the one number on
+     * this page where progress matters more than the value.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent hotWaterProgress() {
+        if (!has(I_BOILER_DELIVERED) || !has(I_SET_BOILER_TARGET)) {
+            return null;
+        }
+        String delivered = "(items." + I_BOILER_DELIVERED + ".numericState||0)";
+        String target = "(items." + I_SET_BOILER_TARGET + ".numericState||0)";
+
+        UIComponent bar = new UIComponent("f7-progressbar");
+        bar.addConfig("progress", "=" + target + ">0?Math.min(1," + delivered + "/" + target + "):0");
+        bar.addConfig("color", "=" + delivered + ">=" + target + "?'green':'blue'");
+        bar.addConfig("style", java.util.Map.of("margin", "6px 14px 4px 14px"));
+
+        UIComponent caption = new UIComponent("Label");
+        caption.addConfig("text", "=" + delivered + ".toFixed(1)+' of '+" + target + ".toFixed(1)+' kWh heated'");
+        caption.addConfig("style",
+                java.util.Map.of("padding", "0 14px 12px 14px", "font-size", "11px", "opacity", "0.65"));
+
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", "Hot water today");
+        List<UIComponent> slot = card.addSlot("default");
+        slot.add(bar);
+        slot.add(caption);
+        return card;
+    }
+
     /**
      * The settings the EMS actually runs on. These used to be reachable only by editing a Thing and
      * restarting, which is why the control page had nothing but on/off switches on it.
