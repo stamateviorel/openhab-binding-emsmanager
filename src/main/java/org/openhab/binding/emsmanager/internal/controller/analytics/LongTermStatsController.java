@@ -155,7 +155,9 @@ public final class LongTermStatsController implements Controller {
 
     /** Each tick — push rollups derived from the ring + today's running partial. */
     private void publishAllDerived(EnergyContext ctx) {
-        int dayOfYear = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).getDayOfYear();
+        ZonedDateTime now = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault());
+        int dayOfYear = now.getDayOfYear();
+        int dayOfMonth = now.getDayOfMonth();
         for (String[] m : METRICS) {
             DailyRollup r = rollups.get(m[1]);
             if (r == null) {
@@ -166,6 +168,13 @@ public final class LongTermStatsController implements Controller {
             publish(m[1] + "_Last7Days", r.sumLast(7) + today, energy);
             publish(m[1] + "_Last30Days", r.sumLast(30) + today, energy);
             publish(m[1] + "_Year", r.sumLast(dayOfYear - 1) + today, energy);
+            // Month-to-date, but never for a metric whose own source IS the month item: the EUR counters are read
+            // from _Month and publishing back onto them would feed the accumulator its own output. The kWh metrics
+            // read from _Day, and their _Month items had no writer at all - they held whatever a restart restored.
+            String monthItem = m[1] + "_Month";
+            if (!monthItem.equals(m[0])) {
+                publish(monthItem, r.sumLast(dayOfMonth - 1) + today, energy);
+            }
         }
     }
 
