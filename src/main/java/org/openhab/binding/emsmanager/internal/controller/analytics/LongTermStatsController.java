@@ -16,7 +16,6 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -29,6 +28,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemNotFoundException;
@@ -71,7 +71,7 @@ public final class LongTermStatsController implements Controller {
     public static final String NAME = "long-term-stats";
 
     private static final int RING_DAYS = 365;
-    private static final Path CACHE_PATH = Path.of("/var/lib/openhab/cache/emsmanager-stats-cache.json");
+    private static final String CACHE_FILE = "emsmanager-stats-cache.json";
     private static final Gson GSON = new Gson();
 
     /** {sourceItem, derived-items-prefix, unit} — kWh sources reset daily, EUR sources reset monthly. */
@@ -216,10 +216,10 @@ public final class LongTermStatsController implements Controller {
 
     private void loadFromDisk() {
         try {
-            if (!Files.exists(CACHE_PATH)) {
+            if (!Files.exists(CachePaths.cacheFile(CACHE_FILE))) {
                 return;
             }
-            JsonObject obj = GSON.fromJson(Files.readString(CACHE_PATH), JsonObject.class);
+            JsonObject obj = GSON.fromJson(Files.readString(CachePaths.cacheFile(CACHE_FILE)), JsonObject.class);
             if (obj == null) {
                 return;
             }
@@ -274,7 +274,7 @@ public final class LongTermStatsController implements Controller {
                 rj.add(e.getKey(), mo);
             }
             obj.add("rollups", rj);
-            Files.writeString(CACHE_PATH, GSON.toJson(obj), StandardOpenOption.CREATE,
+            Files.writeString(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj), StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         } catch (IOException e) {
             LOGGER.debug("LongTermStats.save: {}", e.getMessage());

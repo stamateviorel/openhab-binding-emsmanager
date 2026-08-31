@@ -22,6 +22,7 @@ import java.util.TreeMap;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.emsmanager.internal.tariff.spot.HourlyPrices;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,20 +45,13 @@ public final class TariffCache {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TariffCache.class);
     private static final String CACHE_FILE = "emsmanager-tariff-cache.json";
-
-    /**
-     * Resolved per call rather than once: a hardcoded absolute path is wrong on any install that is
-     * not a Debian package (Windows, docker, custom prefix), and it also let unit tests write into
-     * the running system's cache.
-     */
-    private static Path cachePath() {
-        String userdata = System.getProperty("openhab.userdata", "/var/lib/openhab");
-        return Path.of(userdata, "cache", CACHE_FILE);
-    }
-
     private static final Gson GSON = new Gson();
 
     private TariffCache() {
+    }
+
+    private static Path cachePath() {
+        return CachePaths.cacheFile(CACHE_FILE);
     }
 
     public static @Nullable HourlyPrices load() {
