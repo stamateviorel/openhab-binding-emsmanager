@@ -25,6 +25,7 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.eclipse.jetty.client.HttpClient;
 import org.openhab.binding.emsmanager.internal.config.TariffConfig;
 import org.openhab.binding.emsmanager.internal.tariff.spot.CsvFetcher;
+import org.openhab.binding.emsmanager.internal.tariff.spot.EnergyChartsClient;
 import org.openhab.binding.emsmanager.internal.tariff.spot.EntsoeBeClient;
 import org.openhab.binding.emsmanager.internal.tariff.spot.SpotPriceClient;
 import org.openhab.binding.emsmanager.internal.tariff.spot.TibberClient;
@@ -125,6 +126,8 @@ public final class TariffHandler extends BaseThingHandler {
                 return new TibberClient(httpClient, cfg.apiKey);
             case CsvFetcher.KEY:
                 return new CsvFetcher(httpClient, cfg.csvUrl, cfg.markupEurPerKWh);
+            case EnergyChartsClient.KEY:
+                return new EnergyChartsClient(httpClient, cfg.biddingZone, cfg.markupEurPerKWh);
             case EntsoeBeClient.KEY:
             default:
                 return new EntsoeBeClient(httpClient, cfg.apiKey, cfg.markupEurPerKWh);

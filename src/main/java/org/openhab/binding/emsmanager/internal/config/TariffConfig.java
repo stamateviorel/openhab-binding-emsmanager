@@ -37,7 +37,9 @@ public class TariffConfig {
     public String hourlyPricesCsv = "0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.32,0.18,0.18";
 
     /** dynamic-spot — picks the spot-price client by subProvider. */
-    public String subProvider = "entsoe-be"; // entsoe-be | tibber | csv-upload
+    public String subProvider = "entsoe-be"; // entsoe-be | energy-charts | tibber | csv-upload
+    /** energy-charts - bidding zone code (BE, NL, DE-LU, FR, ...). */
+    public String biddingZone = "BE";
     public String apiKey = ""; // ENTSO-E or Tibber token
     public String csvUrl = ""; // csv-upload only — URL or local file path
     /**

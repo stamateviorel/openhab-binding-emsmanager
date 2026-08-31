@@ -1045,15 +1045,22 @@
 					suppliers without APIs (Engie Dynamic / Bolt / Mega Flow / TotalEnergies).</description>
 				<options>
 					<option value="entsoe-be">ENTSO-E day-ahead BE (raw spot + markup)</option>
+					<option value="energy-charts">energy-charts.info (no API key, raw spot + markup)</option>
 					<option value="tibber">Tibber (taxes included)</option>
 					<option value="csv-upload">CSV (URL or local file)</option>
 				</options>
 				<default>entsoe-be</default>
 			</parameter>
+			<parameter name="biddingZone" type="text" required="false">
+				<label>Bidding zone</label>
+				<description>Market bidding zone for energy-charts (BE, NL, DE-LU, FR, AT, ...). Ignored by other
+					sub-providers.</description>
+				<default>BE</default>
+			</parameter>
 			<parameter name="apiKey" type="text" required="false">
 				<label>API key / token</label>
 				<description>ENTSO-E security token (register free at transparency.entsoe.eu), OR Tibber personal access token
-					(developer.tibber.com). Leave blank for csv-upload.</description>
+					(developer.tibber.com). Leave blank for csv-upload and energy-charts.</description>
 				<context>password</context>
 			</parameter>
 			<parameter name="csvUrl" type="text" required="false">
