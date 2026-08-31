@@ -364,6 +364,22 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         RootUIComponent page = layoutPage(P_NOW, "Now");
         List<UIComponent> root = page.addSlot("default");
 
+        List<UIComponent> dials = new ArrayList<>();
+        if (has(I_SELFCONS_DAY) && has(I_SUPPLY_DAY)) {
+            dials.add(gaugeColumn(selfSufficiencyExpression(), "ran on sun today", selfSufficiencyExpression() + "+'%'",
+                    "#43a047"));
+        }
+        if (has(I_DM_TRACKED) && has(I_DM_UNTRACKED)) {
+            String tracked = "(items." + I_DM_TRACKED + ".numericState||0)";
+            String untracked = "(items." + I_DM_UNTRACKED + ".numericState||0)";
+            String share = "=Math.max(0,Math.min(100,Math.round(100*" + tracked + "/((" + tracked + "+" + untracked
+                    + ")||1))))";
+            dials.add(gaugeColumn(share, "of the building measured", share + "+'%'", "#5b8def"));
+        }
+        if (!dials.isEmpty()) {
+            root.add(cardRow(card(null, dials)));
+        }
+
         List<UIComponent> live = new ArrayList<>();
         for (EnergyProvider provider : providers) {
             String caption = switch (provider.role()) {
@@ -762,6 +778,54 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     // Framework7 primitives rather than the stock oh-*-card tiles. A tile is one number in a large box, so a page of
     // them is a page of boxes: tall, repetitive and impossible to scan. A card holding a row of small columns puts
     // six related figures in the space one tile used, which is how the widgets already on this site are built.
+
+    /**
+     * A circular gauge.
+     * <p>
+     * A percentage is the one figure a dial says better than a number: full, half or nearly empty reads before the
+     * digits do. Everything else on these pages is a quantity, where a dial would be guesswork about the maximum.
+     *
+     * @param valueExpression a javascript expression yielding 0..100
+     * @param caption the label under the dial
+     * @param valueText what to print in the middle
+     * @param colour the arc colour
+     * @return the column
+     */
+    private UIComponent gaugeColumn(String valueExpression, String caption, String valueText, String colour) {
+        UIComponent column = new UIComponent("f7-col");
+        column.addConfig("class",
+                List.of("display-flex", "flex-direction-column", "align-items-center", "padding-vertical-half"));
+        column.addConfig("width", "50");
+        column.addConfig("medium", "25");
+        List<UIComponent> slot = column.addSlot("default");
+
+        UIComponent gauge = new UIComponent("oh-gauge");
+        gauge.addConfig("type", "circle");
+        gauge.addConfig("value", valueExpression);
+        gauge.addConfig("min", Integer.valueOf(0));
+        gauge.addConfig("max", Integer.valueOf(100));
+        gauge.addConfig("valueText", valueText);
+        gauge.addConfig("valueFontSize", Integer.valueOf(19));
+        gauge.addConfig("valueTextColor", colour);
+        gauge.addConfig("borderColor", colour);
+        gauge.addConfig("borderWidth", Integer.valueOf(9));
+        gauge.addConfig("size", Integer.valueOf(96));
+        gauge.addConfig("bgColor", "rgba(140,140,140,0.14)");
+        slot.add(gauge);
+
+        UIComponent label = new UIComponent("Label");
+        label.addConfig("text", caption);
+        label.addConfig("style", java.util.Map.of("font-size", "10px", "opacity", "0.65", "margin-top", "4px"));
+        slot.add(label);
+        return column;
+    }
+
+    /** The share of what the building used today that came off the roof rather than the grid. */
+    private String selfSufficiencyExpression() {
+        String sun = "(items." + I_SELFCONS_DAY + ".numericState||0)";
+        String grid = "(items." + I_SUPPLY_DAY + ".numericState||0)";
+        return "=Math.max(0,Math.min(100,Math.round(100*" + sun + "/((" + sun + "+" + grid + ")||1))))";
+    }
 
     /**
      * A labelled bar: name on the left, a bar as long as its share, the value on the right.
