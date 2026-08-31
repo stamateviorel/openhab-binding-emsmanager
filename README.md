@@ -77,6 +77,21 @@ Most parameters are documented in `thing-types.xml`; a few advanced ones (CO₂ 
 
 `gridLoadRawW`, `gridLoadSmoothedW`, `solarLoadW`, `houseLoadSumW`, `batteryLoadW`, `batterySoC`, `batteryReserveTargetPct`, `batteryBelowReserve`, `availableExcessW`, `energyMode` (`SOLAR_EXCESS`/`BALANCED`/`GRID_IMPORT`/`BATTERY_DEPLETING`/`UNKNOWN`), `softPeakShavingEcoCapA`, `breakerHeadroomA`, `lastDecisionLog`, `hardPeakShavingLevel`/`hardPeakShavingStatus`/`hardPeakShavingDetail`, `car1Reason`…`car4Reason` (per-car decision reason — which controller is steering each car and why), `gridLoad5minAvgW`, `surplusOnThresholdW`, `capacityMonthlyPeakW`/`capacityCurrentQuarterAvgW`/`capacityProjectedQuarterW`/`capacityWouldExceedMonthlyPeak`/`capacityTariffStatus`, `optimizerPlan24hCsv`/`optimizerNextChargeHour`/`optimizerNextDischargeHour`, `controllerCount`/`lastTickAt`/`tickCount`.
 
+## Adjustable from the dashboard
+
+Five settings can be changed at runtime instead of by editing the Thing: `shadowMode` (the stop
+switch), `setBoilerDailyTargetKwh`, `setBoilerReadyByHour`, `setGridSafetyMarginW` and
+`setCapacityMinBillableW`. Commanding one stores the value, rebuilds the controller stack with it
+and survives a restart; a setting nobody has touched keeps following the Thing configuration, so
+the file remains the way to set defaults.
+
+The overrides are kept in the binding's own cache rather than in Thing configuration on purpose:
+a Thing defined in a `.things` file is owned by that file, and `updateConfiguration` on it is
+silently dropped — a control routed that way reports success and changes nothing.
+
+The Control page renders these as sliders and steppers, and they only command on release, because
+each change tears down and rebuilds the controllers.
+
 ## The controller stack
 
 Run order (lowest priority first; later controllers can defer to earlier ones). Every controller honors `shadowMode`.

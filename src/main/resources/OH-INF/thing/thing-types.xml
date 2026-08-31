@@ -14,6 +14,10 @@
 		<channels>
 			<!-- Liveness -->
 			<channel id="shadowMode" typeId="shadowMode"/>
+			<channel id="setBoilerDailyTargetKwh" typeId="setBoilerDailyTargetKwh"/>
+			<channel id="setBoilerReadyByHour" typeId="setBoilerReadyByHour"/>
+			<channel id="setGridSafetyMarginW" typeId="setGridSafetyMarginW"/>
+			<channel id="setCapacityMinBillableW" typeId="setCapacityMinBillableW"/>
 			<channel id="lastTickAt" typeId="lastTickAt"/>
 			<channel id="tickCount" typeId="tickCount"/>
 			<channel id="controllerCount" typeId="controllerCount"/>
@@ -458,9 +462,38 @@
 	<!-- Liveness channel types -->
 	<channel-type id="shadowMode">
 		<item-type>Switch</item-type>
-		<label>Shadow mode (active)</label>
-		<description>Live readback of the bridge's shadow-mode state. ON = no writes are happening.</description>
-		<state readOnly="true"/>
+		<label>Shadow mode</label>
+		<description>ON = the binding decides but writes nothing. Sending a command rewrites the Thing
+			configuration, so the
+			choice survives a restart.</description>
+	</channel-type>
+
+	<channel-type id="setBoilerDailyTargetKwh">
+		<item-type>Number:Energy</item-type>
+		<label>Hot water target today</label>
+		<description>Energy the DHW planner guarantees by the ready-by hour. 0 disables the planner.</description>
+		<state min="0" max="30" step="0.5" pattern="%.1f kWh"/>
+	</channel-type>
+
+	<channel-type id="setBoilerReadyByHour">
+		<item-type>Number</item-type>
+		<label>Hot water ready by</label>
+		<description>Hour of day the daily hot-water target must be met.</description>
+		<state min="0" max="23" step="1" pattern="%d h"/>
+	</channel-type>
+
+	<channel-type id="setGridSafetyMarginW">
+		<item-type>Number:Power</item-type>
+		<label>Grid headroom kept</label>
+		<description>Power deliberately left unused against the grid limit. Higher is safer and slower.</description>
+		<state min="0" max="3000" step="50" pattern="%.0f W"/>
+	</channel-type>
+
+	<channel-type id="setCapacityMinBillableW">
+		<item-type>Number:Power</item-type>
+		<label>Capacity tariff budget</label>
+		<description>Quarter-hour demand the capacity controller aims to stay under.</description>
+		<state min="0" max="15000" step="250" pattern="%.0f W"/>
 	</channel-type>
 
 	<channel-type id="lastTickAt">

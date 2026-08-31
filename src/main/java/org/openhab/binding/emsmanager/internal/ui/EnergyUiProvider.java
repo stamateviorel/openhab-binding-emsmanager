@@ -92,6 +92,12 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_OPT_PLAN_24H = "EMS_Optimizer_Plan_24h";
     private static final String I_CLOCK_HOUR = "EMS_Clock_Hour";
 
+    // Live setpoints - a command on these rewrites Thing config, so the dashboard can tune the EMS.
+    private static final String I_SET_BOILER_TARGET = "EMS_Set_Boiler_Target_kWh";
+    private static final String I_SET_BOILER_READY_BY = "EMS_Set_Boiler_ReadyBy_Hour";
+    private static final String I_SET_GRID_MARGIN = "EMS_Set_Grid_Margin_W";
+    private static final String I_SET_CAPACITY_BUDGET = "EMS_Set_Capacity_Budget_W";
+
     // The capacity tariff - the quarter-hour peak this country bills on.
     private static final String I_CAP_QUARTER = "EMS_Capacity_Current_Quarter";
     private static final String I_CAP_PROJECTED = "EMS_Capacity_Projected";
@@ -746,6 +752,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         RootUIComponent page = layoutPage(P_CONTROL, "Control");
         List<UIComponent> root = page.addSlot("default");
 
+        UIComponent settings = settingsCard();
+        if (settings != null) {
+            root.add(cardRow(settings));
+        }
+
         List<UIComponent> switches = new ArrayList<>();
         if (has(I_BOILER_OVERRIDE)) {
             switches.add(switchRow(I_BOILER_OVERRIDE, "Heat the water now"));
@@ -1266,6 +1277,59 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** A switch as a compact row rather than a card of its own. */
+    /**
+     * The settings the EMS actually runs on. These used to be reachable only by editing a Thing and
+     * restarting, which is why the control page had nothing but on/off switches on it.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent settingsCard() {
+        List<UIComponent> rows = new ArrayList<>();
+        if (has(I_SET_BOILER_TARGET)) {
+            rows.add(sliderRow(I_SET_BOILER_TARGET, "Hot water wanted today", 0, 30, 0.5));
+        }
+        if (has(I_SET_BOILER_READY_BY)) {
+            rows.add(stepperRow(I_SET_BOILER_READY_BY, "Hot water ready by", 0, 23, 1));
+        }
+        if (has(I_SET_GRID_MARGIN)) {
+            rows.add(sliderRow(I_SET_GRID_MARGIN, "Grid headroom kept spare", 0, 3000, 50));
+        }
+        if (has(I_SET_CAPACITY_BUDGET)) {
+            rows.add(sliderRow(I_SET_CAPACITY_BUDGET, "Peak budget to stay under", 0, 15000, 250));
+        }
+        if (rows.isEmpty()) {
+            return null;
+        }
+        UIComponent card = new UIComponent("oh-list-card");
+        card.addConfig("title", "How it should behave");
+        card.addConfig("footer", "Changes apply within a couple of seconds and survive a restart");
+        card.addSlot("default").addAll(rows);
+        return card;
+    }
+
+    private UIComponent sliderRow(String item, String label, double min, double max, double step) {
+        UIComponent row = new UIComponent("oh-slider-item");
+        row.addConfig("item", item);
+        row.addConfig("title", label);
+        row.addConfig("min", min);
+        row.addConfig("max", max);
+        row.addConfig("step", step);
+        row.addConfig("unit", "");
+        row.addConfig("label", Boolean.TRUE);
+        row.addConfig("scale", Boolean.FALSE);
+        // without this the item is commanded on every pixel of the drag
+        row.addConfig("releaseOnly", Boolean.TRUE);
+        return row;
+    }
+
+    private UIComponent stepperRow(String item, String label, int min, int max, int step) {
+        UIComponent row = new UIComponent("oh-stepper-item");
+        row.addConfig("item", item);
+        row.addConfig("title", label);
+        row.addConfig("min", min);
+        row.addConfig("max", max);
+        row.addConfig("step", step);
+        return row;
+    }
+
     private UIComponent switchRow(String item, String label) {
         UIComponent toggle = new UIComponent("oh-toggle-item");
         toggle.addConfig("item", item);

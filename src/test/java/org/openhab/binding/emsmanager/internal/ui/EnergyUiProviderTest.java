@@ -234,7 +234,7 @@ class EnergyUiProviderTest {
                 "oh-toggle-item",
                 // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
                 // and Label is its text primitive
-                "div", "Label", "oh-gauge", "oh-stepper-item");
+                "div", "Label", "oh-gauge", "oh-stepper-item", "oh-list-card", "oh-slider-item");
 
         EnergyUiProvider provider = providerWith(Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h",
                 "EMS_Capacity_Current_Quarter", "EMS_Cost_EUR_Month", "EMS_Bridge_Shadow_Mode", "PeakShaving_Enabled",
@@ -334,5 +334,28 @@ class EnergyUiProviderTest {
         assertTrue(source.contains("I_CLOCK_HOUR + \".numericState===\""),
                 "the current hour must be identified per column, not assumed");
         assertTrue(source.contains("colour = price"), "a three-variable strip needs its encoding named");
+    }
+
+    @Test
+    void theControlPageOffersTheSetpointsAndNotJustSwitches() {
+        EnergyUiProvider provider = providerWith(Set.of("EMS_Set_Boiler_Target_kWh", "EMS_Set_Boiler_ReadyBy_Hour",
+                "EMS_Set_Grid_Margin_W", "EMS_Set_Capacity_Budget_W"));
+
+        List<String> types = new ArrayList<>();
+        for (RootUIComponent page : provider.getAll()) {
+            collectTypes(page, types);
+        }
+
+        assertTrue(types.contains("oh-slider-item"), "a numeric setpoint deserves a slider, not a read-only figure");
+        assertTrue(types.contains("oh-stepper-item"), "an hour is a stepper");
+    }
+
+    @Test
+    void aSliderOnlyCommandsOnRelease() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path
+                .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
+
+        assertTrue(source.contains("\"releaseOnly\", Boolean.TRUE"),
+                "dragging a slider must not fire a command per pixel - each one reinitialises the bridge");
     }
 }

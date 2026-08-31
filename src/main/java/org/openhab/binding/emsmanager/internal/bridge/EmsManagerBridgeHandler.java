@@ -96,6 +96,7 @@ import org.openhab.core.thing.ThingRegistry;
 import org.openhab.core.thing.ThingStatus;
 import org.openhab.core.thing.binding.BaseBridgeHandler;
 import org.openhab.core.types.Command;
+import org.openhab.core.types.RefreshType;
 import org.openhab.core.types.State;
 import org.openhab.core.types.UnDefType;
 import org.slf4j.Logger;
@@ -138,6 +139,11 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private final Object tickLock = new Object();
     private final PriorityScheduler controllerScheduler = new PriorityScheduler();
     private final Map<String, AssetHandler> assets = new HashMap<>();
+    private static final long SETTINGS_DEBOUNCE_MS = 1500;
+
+    private final EmsSettingsStore settingsStore = new EmsSettingsStore();
+    private final Map<String, Object> pendingSettings = new java.util.concurrent.ConcurrentHashMap<>();
+    private @Nullable ScheduledFuture<?> settingsApply;
     private volatile boolean shadowMode = true;
     private volatile boolean publishLegacyMirrorItems = false;
     // Cutover switch: when true (and the engine is enabled), the Kai #3478 engine OWNS the dispatch
@@ -189,7 +195,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
     @Override
     public void initialize() {
-        EmsBridgeConfig config = getConfigAs(EmsBridgeConfig.class);
+        EmsBridgeConfig config = settingsStore.applyTo(getConfigAs(EmsBridgeConfig.class));
         shadowMode = config.shadowMode;
         publishLegacyMirrorItems = config.publishLegacyMirrorItems;
         emsOwnsDispatch = config.emsOwnsDispatch;
@@ -409,6 +415,9 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                 "EMS Manager bridge initialized: tick={}s, shadowMode={}, gridSafetyMargin={}W, ewmaTau={}s, controllers={}, assets={}",
                 interval, shadowMode, config.gridSafetyMarginW, config.gridEwmaTauSec, controllerScheduler.size(),
                 assets.size());
+        // Without this the setpoint channels stay UNDEF until someone commands one, so every
+        // control on the dashboard opens blank and a slider reads zero rather than its real value.
+        publishSettings();
         if (shadowMode) {
             logger.info("EMS Manager: SHADOW MODE ACTIVE — controllers will not write setpoints.");
         } else {
@@ -514,9 +523,73 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
     @Override
     public void handleCommand(ChannelUID channelUID, Command command) {
-        if (CHANNEL_SHADOW_MODE.equals(channelUID.getId())) {
-            updateState(CHANNEL_SHADOW_MODE, OnOffType.from(shadowMode));
+        if (command instanceof RefreshType) {
+            publishSettings();
+            return;
         }
+        BridgeSetpoints.resolve(channelUID.getId(), command).ifPresentOrElse(s -> applySetting(s.key(), s.value()),
+                () -> {
+                    if (CHANNEL_SHADOW_MODE.equals(channelUID.getId())) {
+                        updateState(CHANNEL_SHADOW_MODE, OnOffType.from(shadowMode));
+                    }
+                });
+    }
+
+    /**
+     * Setpoints live in Thing configuration, not in a field: controllers take these values in their
+     * constructors, so a change has to rebuild them, and writing config is also what makes the
+     * choice outlive a restart. Rebuilding is deferred briefly because a dragged slider emits a
+     * command per pixel and each one would otherwise tear down the whole controller stack.
+     */
+    private synchronized void applySetting(String key, Object value) {
+        pendingSettings.put(key, value);
+        publishSettings();
+        ScheduledFuture<?> pending = settingsApply;
+        if (pending != null) {
+            pending.cancel(false);
+        }
+        settingsApply = scheduler.schedule(this::commitSettings, SETTINGS_DEBOUNCE_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private synchronized void commitSettings() {
+        if (pendingSettings.isEmpty()) {
+            return;
+        }
+        pendingSettings.forEach(settingsStore::put);
+        logger.info("EMS settings changed from the UI: {} - rebuilding controllers", pendingSettings);
+        pendingSettings.clear();
+        // Controllers take these values in their constructors, so the stack is torn down and rebuilt.
+        // updateConfiguration() would be the idiomatic route and does not work here: a Thing defined
+        // in a .things file is owned by that file, so the change is silently dropped and the control
+        // appears to work while changing nothing.
+        try {
+            dispose();
+            initialize();
+        } catch (RuntimeException e) {
+            logger.warn("Rebuilding after a settings change failed", e);
+        }
+    }
+
+    /** Mirror the live settings onto their channels so a control shows where it actually stands. */
+    private void publishSettings() {
+        EmsBridgeConfig cfg = settingsStore.applyTo(getConfigAs(EmsBridgeConfig.class));
+        updateState(CHANNEL_SHADOW_MODE, OnOffType.from(asBool(pendingSettings.get("shadowMode"), cfg.shadowMode)));
+        updateState(CHANNEL_SET_BOILER_TARGET_KWH, new QuantityType<>(
+                asNum(pendingSettings.get("boilerDailyTargetKwh"), cfg.boilerDailyTargetKwh), Units.KILOWATT_HOUR));
+        updateState(CHANNEL_SET_BOILER_READY_BY_HOUR,
+                new DecimalType(asNum(pendingSettings.get("boilerReadyByHour"), cfg.boilerReadyByHour)));
+        updateState(CHANNEL_SET_GRID_SAFETY_MARGIN_W,
+                new QuantityType<>(asNum(pendingSettings.get("gridSafetyMarginW"), cfg.gridSafetyMarginW), Units.WATT));
+        updateState(CHANNEL_SET_CAPACITY_BUDGET_W, new QuantityType<>(
+                asNum(pendingSettings.get("capacityMinBillableW"), cfg.capacityMinBillableW), Units.WATT));
+    }
+
+    private static double asNum(@Nullable Object pending, double fallback) {
+        return pending instanceof Number n ? n.doubleValue() : fallback;
+    }
+
+    private static boolean asBool(@Nullable Object pending, boolean fallback) {
+        return pending instanceof Boolean b ? b : fallback;
     }
 
     public boolean isShadowMode() {
@@ -781,7 +854,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                 return;
             }
             EnergyContext ctx = builder.build(shadowMode);
-            EmsBridgeConfig config = getConfigAs(EmsBridgeConfig.class);
+            EmsBridgeConfig config = settingsStore.applyTo(getConfigAs(EmsBridgeConfig.class));
 
             // Observe the PeakShaving manual engage / reset items and forward to
             // the controller. The items use expire="2s,command=OFF" so we only see

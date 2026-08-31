@@ -93,6 +93,12 @@ public final class EmsManagerBindingConstants {
 
     // Bridge channel IDs — liveness
     public static final String CHANNEL_SHADOW_MODE = "shadowMode";
+
+    /** Live-settable bridge setpoints: a command on these rewrites Thing config and re-initialises. */
+    public static final String CHANNEL_SET_BOILER_TARGET_KWH = "setBoilerDailyTargetKwh";
+    public static final String CHANNEL_SET_BOILER_READY_BY_HOUR = "setBoilerReadyByHour";
+    public static final String CHANNEL_SET_GRID_SAFETY_MARGIN_W = "setGridSafetyMarginW";
+    public static final String CHANNEL_SET_CAPACITY_BUDGET_W = "setCapacityMinBillableW";
     public static final String CHANNEL_LAST_TICK_AT = "lastTickAt";
     public static final String CHANNEL_TICK_COUNT = "tickCount";
     public static final String CHANNEL_CONTROLLER_COUNT = "controllerCount";
