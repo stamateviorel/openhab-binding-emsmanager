@@ -234,7 +234,7 @@ class EnergyUiProviderTest {
                 "oh-toggle-item",
                 // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
                 // and Label is its text primitive
-                "div", "Label", "oh-gauge");
+                "div", "Label", "oh-gauge", "oh-stepper-item");
 
         EnergyUiProvider provider = providerWith(Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h",
                 "EMS_Capacity_Current_Quarter", "EMS_Cost_EUR_Month", "EMS_Bridge_Shadow_Mode", "PeakShaving_Enabled",

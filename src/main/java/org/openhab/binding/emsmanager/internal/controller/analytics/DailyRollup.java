@@ -152,4 +152,46 @@ public final class DailyRollup {
         this.dayStartBaseline = baseline;
         this.lastReading = last;
     }
+
+    /**
+     * A single completed day's amount, counting back from the most recent.
+     *
+     * @param daysAgo 1 is yesterday, 2 the day before, and so on
+     * @return the amount, or 0 where the ring does not reach that far back
+     */
+    public double amountAgo(int daysAgo) {
+        if (daysAgo <= 0) {
+            return dayAmount();
+        }
+        Double[] arr = ring.toArray(new Double[0]);
+        int index = arr.length - daysAgo;
+        return index < 0 || index >= arr.length ? 0.0 : arr[index];
+    }
+
+    /**
+     * The total over a window of completed days.
+     * <p>
+     * Both bounds count back from today, and the window includes them: {@code sumRange(1, 7)} is the last seven
+     * completed days. Today's running partial is never included - a caller that wants it adds {@link #dayAmount()},
+     * which is what makes "this month so far" different from "last month".
+     *
+     * @param fromDaysAgo the nearer bound, 1 being yesterday
+     * @param toDaysAgo the further bound
+     * @return the total, or 0 where the window lies outside the ring
+     */
+    public double sumRange(int fromDaysAgo, int toDaysAgo) {
+        if (fromDaysAgo > toDaysAgo || toDaysAgo <= 0) {
+            return 0.0;
+        }
+        double sum = 0.0;
+        for (int day = Math.max(1, fromDaysAgo); day <= toDaysAgo; day++) {
+            sum += amountAgo(day);
+        }
+        return sum;
+    }
+
+    /** How many completed days the ring actually holds, so a caller can say when it is asking beyond its history. */
+    public int daysHeld() {
+        return ring.size();
+    }
 }

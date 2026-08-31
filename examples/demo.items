@@ -62,3 +62,15 @@ Number        EMS_Earnings_EUR_Total        "Feed-in earnings [%.2f]"
 Number        EMS_CO2_Net_Today_kg          "CO2 net today [%.2f kg]"
 // + the binding also writes the _Yesterday/_Last7Days/_Last30Days/_Year
 //   rollups and the EMS_Stat_* daily-snapshot series (see ARCHITECTURE.md).
+
+// Period browsing. The dashboard writes Scale (day/month/year) and Back (0 = the current
+// period, 1 = the previous one); the history browser republishes the four figures for
+// whatever is selected. It answers as far back as the daily ring reaches - a year - and
+// says "before records began" rather than returning a zero that reads like a quiet month.
+String        EMS_Browse_Scale                "Period [%s]"
+Number        EMS_Browse_Back                 "Periods back [%d]"
+String        EMS_Browse_Label                "Selected period [%s]"
+Number:Energy EMS_Browse_Supply_kWh           "Bought [%.1f %unit%]"
+Number:Energy EMS_Browse_SelfConsumption_kWh  "Sun used [%.1f %unit%]"
+Number:Energy EMS_Browse_FeedIn_kWh           "Sold [%.1f %unit%]"
+Number        EMS_Browse_Cost_EUR             "Cost [%.2f]"

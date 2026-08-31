@@ -41,6 +41,7 @@ import org.openhab.binding.emsmanager.internal.config.BatteryConfig;
 import org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig;
 import org.openhab.binding.emsmanager.internal.controller.analytics.Co2TrackingController;
 import org.openhab.binding.emsmanager.internal.controller.analytics.CostAnalyticsController;
+import org.openhab.binding.emsmanager.internal.controller.analytics.HistoryBrowserController;
 import org.openhab.binding.emsmanager.internal.controller.analytics.LongTermStatsController;
 import org.openhab.binding.emsmanager.internal.controller.capacity.CapacityTariffShavingController;
 import org.openhab.binding.emsmanager.internal.controller.dispatch.BatteryTouDispatcher;
@@ -300,7 +301,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         analytics.initFromItems(itemRegistry);
         controllerScheduler.register(analytics);
         // Long-term stats rollups (yesterday / week / month / year) for the time-range UI.
-        controllerScheduler.register(new LongTermStatsController(eventPublisher, itemRegistry));
+        LongTermStatsController longTermStats = new LongTermStatsController(eventPublisher, itemRegistry);
+        controllerScheduler.register(longTermStats);
+        // the browser answers the same history for whichever period the dashboard is pointed at
+        controllerScheduler.register(new HistoryBrowserController(eventPublisher, itemRegistry, longTermStats));
         // Battery sizing service (heavy; manually triggered).
         PersistenceServiceRegistry localPersistenceRegistry = persistenceRegistry;
         if (localPersistenceRegistry != null) {

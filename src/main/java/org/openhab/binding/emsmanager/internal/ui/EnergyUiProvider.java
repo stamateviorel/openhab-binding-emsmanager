@@ -143,6 +143,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_PEAK_ENGAGE = "PeakShaving_Manual_Engage";
     private static final String I_PEAK_RESET = "PeakShaving_Manual_Reset";
     private static final String I_DM_TRACKED = "EMS_DeviceMeter_Tracked_W";
+    private static final String I_BROWSE_SCALE = "EMS_Browse_Scale";
+    private static final String I_BROWSE_BACK = "EMS_Browse_Back";
+    private static final String I_BROWSE_LABEL = "EMS_Browse_Label";
+    private static final String ITEM_BROWSE_SUPPLY = "EMS_Browse_Supply_kWh";
+    private static final String ITEM_BROWSE_SELFCONS = "EMS_Browse_SelfConsumption_kWh";
+    private static final String ITEM_BROWSE_FEEDIN = "EMS_Browse_FeedIn_kWh";
+    private static final String ITEM_BROWSE_COST = "EMS_Browse_Cost_EUR";
     private static final String I_DM_UNTRACKED = "EMS_DeviceMeter_Untracked_W";
 
     private final Logger logger = LoggerFactory.getLogger(EnergyUiProvider.class);
@@ -277,6 +284,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private RootUIComponent buildPastPage() {
         RootUIComponent page = layoutPage(P_PAST, "Past");
         List<UIComponent> root = page.addSlot("default");
+
+        UIComponent browser = browserCard();
+        if (browser != null) {
+            root.add(cardRow(browser));
+        }
 
         // Every period on one scale, so the bars compare as well as describe.
         List<String> totals = new ArrayList<>();
@@ -887,6 +899,64 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         value.addConfig("style", java.util.Map.of("font-size", "11px", "font-weight", "bold"));
         parts.add(value);
         return wrapper;
+    }
+
+    /**
+     * Pick a period and read it, instead of being handed four the binding chose.
+     * <p>
+     * Day, month or year, and a stepper for how far back - so "what did last August cost" is two taps rather than a
+     * question the dashboard could not answer at all. The figures underneath are republished by the history browser
+     * for whatever is selected.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent browserCard() {
+        if (!has(I_BROWSE_SCALE) || !has(I_BROWSE_BACK)) {
+            return null;
+        }
+        UIComponent card = new UIComponent("f7-card");
+        List<UIComponent> slot = card.addSlot("default");
+
+        UIComponent header = new UIComponent("div");
+        header.addConfig("style", java.util.Map.of("display", "flex", "align-items", "center", "justify-content",
+                "space-between", "padding", "12px 14px 6px 14px"));
+        List<UIComponent> headerSlot = header.addSlot("default");
+        UIComponent title = new UIComponent("oh-label-item");
+        title.addConfig("item", I_BROWSE_LABEL);
+        title.addConfig("style", java.util.Map.of("font-size", "17px", "font-weight", "bold"));
+        headerSlot.add(title);
+
+        UIComponent segmented = new UIComponent("f7-segmented");
+        segmented.addConfig("raised", Boolean.TRUE);
+        segmented.addConfig("tag", "p");
+        segmented.addConfig("style", java.util.Map.of("margin", "0", "width", "auto"));
+        List<UIComponent> buttons = segmented.addSlot("default");
+        for (String[] scale : new String[][] { { "day", "Day" }, { "month", "Month" }, { "year", "Year" } }) {
+            UIComponent button = new UIComponent("oh-button");
+            button.addConfig("text", scale[1]);
+            button.addConfig("small", Boolean.TRUE);
+            button.addConfig("fill", "=items." + I_BROWSE_SCALE + ".state === '" + scale[0] + "'");
+            button.addConfig("action", "command");
+            button.addConfig("actionItem", I_BROWSE_SCALE);
+            button.addConfig("actionCommand", scale[0]);
+            buttons.add(button);
+        }
+        headerSlot.add(segmented);
+        slot.add(header);
+
+        UIComponent stepper = new UIComponent("oh-stepper-item");
+        stepper.addConfig("item", I_BROWSE_BACK);
+        stepper.addConfig("title", "Periods back");
+        stepper.addConfig("min", Integer.valueOf(0));
+        stepper.addConfig("max", Integer.valueOf(365));
+        stepper.addConfig("step", Integer.valueOf(1));
+        slot.add(stepper);
+
+        UIComponent figures = card("",
+                List.of(figure(ITEM_BROWSE_SUPPLY, "bought", "arrow_down_left_circle", "red"),
+                        figure(ITEM_BROWSE_SELFCONS, "sun used", "sun_max", "orange"),
+                        figure(ITEM_BROWSE_FEEDIN, "sold", "arrow_up_right_circle", "green"),
+                        figure(ITEM_BROWSE_COST, "cost", "money_euro", "red")));
+        slot.add(figures);
+        return card;
     }
 
     /**

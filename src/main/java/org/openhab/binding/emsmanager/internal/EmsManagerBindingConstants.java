@@ -190,6 +190,7 @@ public final class EmsManagerBindingConstants {
     public static final int PRIO_LONG_TERM_STATS = 115; // read-only observer, runs after CostAnalytics
     public static final int PRIO_CO2_TRACKING = 117; // read-only observer, runs after LongTermStats
     public static final int PRIO_ANOMALY_DETECTION = 118; // read-only observer, runs after Co2Tracking
+    public static final int PRIO_HISTORY_BROWSER = 116; // read-only observer; answers whichever period is selected
     public static final int PRIO_STATS_ROLLUP = 119; // read-only observer, runs last (needs fresh CO₂ net)
 
     // Tariff mirror item (linked to the tariff Thing's nowPrice channel).
@@ -207,6 +208,17 @@ public final class EmsManagerBindingConstants {
     public static final String ITEM_EMS_SAVINGS_EUR_MONTH = "EMS_Savings_EUR_Month";
     public static final String ITEM_EMS_SAVINGS_EUR_TOTAL = "EMS_Savings_EUR_Total";
     public static final String ITEM_EMS_EARNINGS_EUR_MONTH = "EMS_Earnings_EUR_Month";
+
+    /** The period the History tab is looking at: {@code day}, {@code month} or {@code year}. */
+    public static final String ITEM_EMS_BROWSE_SCALE = "EMS_Browse_Scale";
+    /** How far back, in whole periods. 0 is the current one, 1 the previous, and so on. */
+    public static final String ITEM_EMS_BROWSE_BACK = "EMS_Browse_Back";
+    /** What that period is called, written for a person: "Yesterday", "July 2026", "2025". */
+    public static final String ITEM_EMS_BROWSE_LABEL = "EMS_Browse_Label";
+    public static final String ITEM_EMS_BROWSE_SUPPLY_KWH = "EMS_Browse_Supply_kWh";
+    public static final String ITEM_EMS_BROWSE_SELFCONSUMPTION_KWH = "EMS_Browse_SelfConsumption_kWh";
+    public static final String ITEM_EMS_BROWSE_FEEDIN_KWH = "EMS_Browse_FeedIn_kWh";
+    public static final String ITEM_EMS_BROWSE_COST_EUR = "EMS_Browse_Cost_EUR";
     public static final String ITEM_EMS_EARNINGS_EUR_TOTAL = "EMS_Earnings_EUR_Total";
 
     // CO₂ items written by Co2TrackingController (read by the rollup tier).

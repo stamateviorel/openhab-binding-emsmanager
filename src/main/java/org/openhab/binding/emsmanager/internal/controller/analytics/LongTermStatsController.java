@@ -280,4 +280,14 @@ public final class LongTermStatsController implements Controller {
             LOGGER.debug("LongTermStats.save: {}", e.getMessage());
         }
     }
+
+    /**
+     * The ring for a metric, so another controller can ask the same history a different question.
+     *
+     * @param prefix the derived-items prefix, for example {@code EMS_Supply_kWh}
+     * @return the rollup, or {@code null} where no such metric is kept
+     */
+    public @org.eclipse.jdt.annotation.Nullable DailyRollup rollupOf(String prefix) {
+        return rollups.get(prefix);
+    }
 }
