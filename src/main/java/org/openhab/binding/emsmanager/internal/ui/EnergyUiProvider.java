@@ -286,15 +286,24 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             }
         }
 
-        List<UIComponent> circuits = new ArrayList<>();
+        // Circuits as bars, longest first by value at a glance: this is the "what should I look at" card.
+        List<String> meters = new ArrayList<>();
         for (String circuit : trackedCircuits()) {
             String kwh = "EMS_DM_" + circuit + "_kWh";
             if (has(kwh)) {
-                circuits.add(figure(kwh, prettyCircuit(circuit).toLowerCase(java.util.Locale.ROOT), "sum", "purple"));
+                meters.add(kwh);
             }
         }
-        if (!circuits.isEmpty()) {
-            root.add(cardRow(card("Today, circuit by circuit", circuits)));
+        if (!meters.isEmpty()) {
+            String scale = largestOf(meters);
+            List<UIComponent> bars = new ArrayList<>();
+            int hue = 0;
+            for (String kwh : meters) {
+                String circuit = kwh.substring("EMS_DM_".length(), kwh.length() - "_kWh".length());
+                bars.add(barRow(kwh, prettyCircuit(circuit), CIRCUIT_COLORS[hue % CIRCUIT_COLORS.length], scale));
+                hue++;
+            }
+            root.add(cardRow(barCard("Today, circuit by circuit", bars)));
         }
 
         UIComponent coverage = figureCard("How much of the building this covers",
@@ -753,6 +762,72 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     // Framework7 primitives rather than the stock oh-*-card tiles. A tile is one number in a large box, so a page of
     // them is a page of boxes: tall, repetitive and impossible to scan. A card holding a row of small columns puts
     // six related figures in the space one tile used, which is how the widgets already on this site are built.
+
+    /**
+     * A labelled bar: name on the left, a bar as long as its share, the value on the right.
+     * <p>
+     * A column of numbers tells you what each circuit used; a column of bars tells you which one to do something
+     * about, without reading any of them. The bar is a plain {@code div} whose width is an expression over the same
+     * Items, which is how the widgets on this site draw - MainUI accepts raw HTML elements as components.
+     *
+     * @param item the Item whose value the bar is drawn from
+     * @param label the name shown on the left
+     * @param colour the bar's colour
+     * @param scale a javascript expression for the value the bar is measured against
+     * @return the row
+     */
+    private UIComponent barRow(String item, String label, String colour, String scale) {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style",
+                java.util.Map.of("display", "flex", "align-items", "center", "gap", "10px", "padding", "5px 2px"));
+        List<UIComponent> cells = row.addSlot("default");
+
+        UIComponent name = new UIComponent("Label");
+        name.addConfig("text", label);
+        name.addConfig("style", java.util.Map.of("flex", "0 0 33%", "font-size", "12px", "opacity", "0.75",
+                "white-space", "nowrap", "overflow", "hidden", "text-overflow", "ellipsis"));
+        cells.add(name);
+
+        // the track the bar sits in, so short bars still read as "small share" rather than "missing"
+        UIComponent track = new UIComponent("div");
+        track.addConfig("style", java.util.Map.of("flex", "1 1 auto", "height", "10px", "border-radius", "5px",
+                "background", "rgba(140,140,140,0.18)", "overflow", "hidden"));
+        UIComponent fill = new UIComponent("div");
+        String value = "(items." + item + ".numericState||0)";
+        fill.addConfig("style",
+                java.util.Map.of("height", "10px", "border-radius", "5px", "background", colour, "transition",
+                        "width 0.6s ease", "width",
+                        "=Math.max(1,Math.min(100,Math.round(100*" + value + "/(" + scale + "))))+'%'"));
+        track.addSlot("default").add(fill);
+        cells.add(track);
+
+        UIComponent reading = new UIComponent("oh-label-item");
+        reading.addConfig("item", item);
+        reading.addConfig("style",
+                java.util.Map.of("flex", "0 0 22%", "text-align", "right", "font-size", "12px", "font-weight", "bold"));
+        cells.add(reading);
+        return row;
+    }
+
+    /** A javascript expression for the largest of the given Items, so bars are drawn against the biggest one. */
+    private String largestOf(List<String> items) {
+        StringBuilder expression = new StringBuilder("Math.max(0.001");
+        for (String item : items) {
+            expression.append(",(items.").append(item).append(".numericState||0)");
+        }
+        return expression.append(")").toString();
+    }
+
+    /** A card of bars rather than a row of figures. */
+    private UIComponent barCard(String title, List<UIComponent> rows) {
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", title);
+        UIComponent body = new UIComponent("div");
+        body.addConfig("style", java.util.Map.of("padding", "4px 14px 12px 14px"));
+        body.addSlot("default").addAll(rows);
+        card.addSlot("default").add(body);
+        return card;
+    }
 
     /** A card with a heading and one row of columns inside it. */
     private UIComponent card(@org.eclipse.jdt.annotation.Nullable String title, List<UIComponent> columns) {

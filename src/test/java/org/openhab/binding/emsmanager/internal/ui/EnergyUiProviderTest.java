@@ -231,7 +231,10 @@ class EnergyUiProviderTest {
                 "oh-label-card", "oh-toggle-card", "oh-gauge-card", "oh-chart-page", "oh-chart-grid", "oh-time-axis",
                 "oh-value-axis", "oh-time-series", "oh-chart-legend", "oh-chart-tooltip", "oh-chart-datazoom",
                 "f7-card", "f7-row", "f7-col", "f7-icon", "f7-segmented", "oh-label-item", "oh-button",
-                "oh-toggle-item");
+                "oh-toggle-item",
+                // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
+                // and Label is its text primitive
+                "div", "Label");
 
         EnergyUiProvider provider = providerWith(Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h",
                 "EMS_Capacity_Current_Quarter", "EMS_Cost_EUR_Month", "EMS_Bridge_Shadow_Mode", "PeakShaving_Enabled",
