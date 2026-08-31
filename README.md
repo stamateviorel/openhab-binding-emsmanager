@@ -136,19 +136,22 @@ One per EV. Config: `carKey`, and the per-charger item names (`modeItem`, `cable
 
 Once installed, the binding registers its own MainUI page through the core `UIComponentProvider` whiteboard, so an **Energy** section (⚡ sidebar icon) appears automatically — nothing to paste into JSONDB, and it disappears again when the binding is uninstalled.
 
-The section is deliberately **not a live readout**. What the roof is making this second is visible on any meter and cannot be acted on; the tabs are built around what you can still change and what already happened:
+The section is deliberately **not a live readout**. What the roof is making this second is visible on any meter and cannot be acted on; the tabs are built around what already happened, what is still to come, and what you can change:
 
-- **Ahead** — sun expected for the rest of today and tomorrow, the sunniest hour, prices now and next hour, the cheapest and dearest hours of the day, and what the system has already decided to do: when the battery charges and discharges, when the water gets heated, the 24-hour battery plan, and the peak the month is heading for.
-- **Control** — charging mode per car (as buttons, not a dropdown), pause, the battery's current setpoint, anything else switchable, peak protection with *turn things down now* / *turn everything back on*, the on-demand checks, and the stop button.
-- **History** — bought, saved, sun used and sold across yesterday, the last 7 and 30 days and the year; then today's energy circuit by circuit, and how much of the building is measured at all.
+- **Past** — **pick any day, month or year and read it**: a scale selector and a stepper, with bought / sun used / sold / cost republished for whatever is selected. Then every period as a stacked bar on one shared scale so they compare as well as describe, and today's energy circuit by circuit as bars — the longest bar is the circuit to look at. Ends with how much of the building is measured at all.
+- **Future** — sun expected for the rest of today, tomorrow and the next six hours; prices now, next hour, and the day's cheapest and dearest; what the system has already decided (when the battery charges and discharges, when the water is heated, the peak the month is heading for); and **"Your day"**: twenty-four columns where height is that hour's sun, colour is what it costs then, and the mark below is what the battery intends to do.
+- **Now** — two dials (the share of today that ran on sun, and how much of the building is measured) over what the building is drawing right now.
+- **Control** — the switches, the on-demand checks and their answers, the heat-pump advice, and the stop button.
 - **Power** — the power series with the solar forecast drawn ahead of *now*.
-- **Today by circuit** — today's energy per circuit as rising curves; the one climbing fastest is the one spending it.
+- **By circuit** — today's energy per circuit as stacked bands; the height of the stack is the day's total and the thickness of a band is what that circuit spent.
 
-**Nothing is drawn for an Item that does not exist, a block with no surviving cards does not appear, and a figure that has nothing to say yet hides itself rather than showing a dash.** Which Items exist depends on which services you run, so a partial installation gets a smaller page. The charger controls read the item-name patterns from the bridge's own configuration, so renaming your charger items keeps them working.
+Three rules hold everywhere. **Nothing is drawn for an Item that does not exist**, **a card with no surviving content does not appear**, and **a figure with nothing to say yet hides itself rather than showing a dash.** Which Items exist depends on which services you run, so a partial installation gets a smaller page rather than a page of gaps.
 
 The participant tiles are driven by `energy:` item metadata: tag an item as a producer or consumer and it appears; the page rebuilds live when tags are added, changed or removed.
 
-> The **Today by circuit** chart needs the per-device `EMS_DM_*_kWh` meters persisted — see [`examples/influxdb.persist`](examples/influxdb.persist). Without that it renders empty; everything else still works.
+> **Browsing** reaches as far back as the daily ring keeps — a year. A period older than that is labelled *before records began* rather than returning a zero, which on a card looks exactly like a month where nothing was bought.
+
+> The **By circuit** chart and the circuit bars need the per-device `EMS_DM_*_kWh` meters persisted — see [`examples/influxdb.persist`](examples/influxdb.persist). Without that they are empty; everything else still works.
 
 ### Energy Flow widget — [`widgets/energy_flow/`](widgets/energy_flow/)
 
