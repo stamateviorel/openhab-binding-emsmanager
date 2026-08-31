@@ -325,4 +325,14 @@ class EnergyUiProviderTest {
         long divs = types.stream().filter("div"::equals).count();
         assertTrue(divs >= 24, "the strip needs a column per hour, found " + divs + " divs on the page");
     }
+
+    @Test
+    void theDayStripMarksTheCurrentHourAndSaysWhatItsColoursMean() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path
+                .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
+
+        assertTrue(source.contains("I_CLOCK_HOUR + \".numericState===\""),
+                "the current hour must be identified per column, not assumed");
+        assertTrue(source.contains("colour = price"), "a three-variable strip needs its encoding named");
+    }
 }

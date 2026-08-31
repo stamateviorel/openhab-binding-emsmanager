@@ -109,4 +109,13 @@ class LongTermStatsPublicationTest {
             throw new IllegalStateException("controller source not readable", e);
         }
     }
+
+    @Test
+    void theClockHourIsPublishedForHourIndexedWidgets() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java/org/openhab/binding/"
+                + "emsmanager/internal/controller/analytics/LongTermStatsController.java"));
+
+        assertTrue(source.contains("publish(ITEM_EMS_CLOCK_HOUR, now.getHour()"),
+                "the day strip cannot mark the current hour without this");
+    }
 }

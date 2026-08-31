@@ -206,6 +206,8 @@ public final class EmsManagerBindingConstants {
     public static final String ITEM_EMS_SUPPLY_KWH_MONTH = "EMS_Supply_kWh_Month";
     public static final String ITEM_EMS_COST_EUR_MONTH = "EMS_Cost_EUR_Month";
     public static final String ITEM_EMS_COST_EUR_TOTAL = "EMS_Cost_EUR_Total";
+    /** Local hour 0..23, published so hour-indexed widgets can mark the current hour. */
+    public static final String ITEM_EMS_CLOCK_HOUR = "EMS_Clock_Hour";
     public static final String ITEM_EMS_SAVINGS_EUR_MONTH = "EMS_Savings_EUR_Month";
     public static final String ITEM_EMS_SAVINGS_EUR_TOTAL = "EMS_Savings_EUR_Total";
     public static final String ITEM_EMS_EARNINGS_EUR_MONTH = "EMS_Earnings_EUR_Month";

@@ -158,6 +158,9 @@ public final class LongTermStatsController implements Controller {
         ZonedDateTime now = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault());
         int dayOfYear = now.getDayOfYear();
         int dayOfMonth = now.getDayOfMonth();
+        // A 24-hour strip cannot say "you are here" without knowing the hour, and the widget
+        // expression subset has no clock of its own.
+        publish(ITEM_EMS_CLOCK_HOUR, now.getHour(), false);
         for (String[] m : METRICS) {
             DailyRollup r = rollups.get(m[1]);
             if (r == null) {

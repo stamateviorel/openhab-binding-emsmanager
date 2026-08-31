@@ -90,6 +90,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_OPT_NEXT_CHARGE = "EMS_Optimizer_Next_Charge";
     private static final String I_OPT_NEXT_DISCHARGE = "EMS_Optimizer_Next_Discharge";
     private static final String I_OPT_PLAN_24H = "EMS_Optimizer_Plan_24h";
+    private static final String I_CLOCK_HOUR = "EMS_Clock_Hour";
 
     // The capacity tariff - the quarter-hour peak this country bills on.
     private static final String I_CAP_QUARTER = "EMS_Capacity_Current_Quarter";
@@ -1000,7 +1001,23 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             marks.add(label);
         }
         cardSlot.add(scale);
+        cardSlot.add(stripLegend());
         return card;
+    }
+
+    /**
+     * The strip carries three variables at once (bar height, bar colour, marker). Without naming
+     * them it reads as decoration, which is how a dense chart ends up ignored.
+     */
+    private UIComponent stripLegend() {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style", java.util.Map.of("padding", "0 14px 12px 14px", "font-size", "10px", "opacity", "0.6",
+                "line-height", "14px"));
+        UIComponent text = new UIComponent("Label");
+        text.addConfig("text", "bar height = sun expected · colour = price (green cheap, red dear) "
+                + "· triangle = battery charges, inverted triangle = discharges");
+        row.addSlot("default").add(text);
+        return row;
     }
 
     /** One hour of the strip. */
@@ -1031,6 +1048,21 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 + I_OPT_PLAN_24H + ".state||'')[" + hour + "]||'.')==='d'?'▼':'·'");
         marker.addConfig("style", java.util.Map.of("font-size", "9px", "line-height", "11px", "opacity", "0.8"));
         parts.add(marker);
+
+        if (has(I_CLOCK_HOUR)) {
+            String isNow = "(items." + I_CLOCK_HOUR + ".numericState===" + hour + ")";
+            // A strip of 24 identical columns gives no sense of where the day has got to; without
+            // this, "cheapest hour 12:00" cannot be read as past or still ahead.
+            bar.addConfig("style", java.util.Map.of("width", "100%", "border-radius", "3px 3px 0 0", "transition",
+                    "height 0.6s ease", "height", "=Math.round(3+57*" + sun + "/" + peak + ")+'px'", "background",
+                    "=" + position + "<0.34?'#43a047':" + position + "<0.67?'#ffa726':'#ef5350'", "opacity",
+                    "=" + isNow + "?'1':'0.55'", "outline", "=" + isNow + "?'2px solid var(--f7-theme-color)':'none'"));
+            UIComponent tick = new UIComponent("Label");
+            tick.addConfig("text", "=" + isNow + "?'nu':''");
+            tick.addConfig("style", java.util.Map.of("font-size", "8px", "line-height", "9px", "font-weight", "600",
+                    "color", "var(--f7-theme-color)"));
+            parts.add(tick);
+        }
         return column;
     }
 
