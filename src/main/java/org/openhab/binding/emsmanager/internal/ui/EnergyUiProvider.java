@@ -25,8 +25,6 @@ import org.openhab.core.common.registry.AbstractProvider;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
-import org.openhab.core.thing.Thing;
-import org.openhab.core.thing.ThingRegistry;
 import org.openhab.core.ui.components.RootUIComponent;
 import org.openhab.core.ui.components.UIComponent;
 import org.openhab.core.ui.components.UIComponentProvider;
@@ -62,7 +60,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     public static final String NAMESPACE = "ui:page";
 
     private static final String P_ROOT = "emsmanager_energy";
-    private static final String P_AHEAD = "emsmanager_energy_ahead";
+    private static final String P_PAST = "emsmanager_energy_past";
+    private static final String P_FUTURE = "emsmanager_energy_future";
+    private static final String P_NOW = "emsmanager_energy_now";
     private static final String P_CHARTS = "emsmanager_energy_charts";
 
     /** The engine-published site energy level items (see EmsManagerBridgeHandler). */
@@ -114,12 +114,16 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_BOILER_WINDOW = "EMS_BoilerPlan_Window";
     private static final String I_HP_PREHEAT_AT = "EMS_HeatPump_Plan_PreheatAt";
 
-    /** The period suffixes the services publish, in the order a person reads them. */
-    private static final String[][] PERIODS = { { "_Yesterday", "Yesterday" }, { "_Last7Days", "Last 7 days" },
-            { "_Last30Days", "Last 30 days" }, { "_Year", "This year" } };
+    /**
+     * The spans this page reports, past and future alike, in the order a person asks about them.
+     * <p>
+     * Day, month, year - the same three everywhere, so a figure means the same thing on whichever page it appears.
+     */
+    private static final String[][] PERIODS = { { "_Day", "Today" }, { "_Yesterday", "Yesterday" },
+            { "_Month", "This month" }, { "_Year", "This year" } };
 
     private static final String P_CONTROL = "emsmanager_energy_control";
-    private static final String P_HISTORY = "emsmanager_energy_history";
+
     private static final String P_CIRCUITS = "emsmanager_energy_circuits";
 
     /** Binding-published switches the control page offers. */
@@ -140,15 +144,12 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private final Logger logger = LoggerFactory.getLogger(EnergyUiProvider.class);
     private final MetadataRegistry metadataRegistry;
     private final ItemRegistry itemRegistry;
-    private final ThingRegistry thingRegistry;
     private volatile List<RootUIComponent> pages = new ArrayList<>();
 
     @Activate
-    public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry,
-            @Reference ThingRegistry thingRegistry) {
+    public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry) {
         this.metadataRegistry = metadataRegistry;
         this.itemRegistry = itemRegistry;
-        this.thingRegistry = thingRegistry;
         this.pages = computePages();
         metadataRegistry.addRegistryChangeListener(metadataListener);
         logger.info("EnergyUiProvider activated — Energy section served from the binding (namespace {})", NAMESPACE);
@@ -176,9 +177,10 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<EnergyConsumer> consumers = scanner.consumers();
         List<RootUIComponent> out = new ArrayList<>();
         out.add(buildTabsPage());
-        out.add(buildAheadPage());
+        out.add(buildPastPage());
+        out.add(buildFuturePage());
+        out.add(buildNowPage(providers));
         out.add(buildControlPage(consumers));
-        out.add(buildHistoryPage());
         out.add(buildChartsPage(providers, consumers));
         out.add(buildCircuitsChartPage());
         return out;
@@ -245,51 +247,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         page.addConfig("icon", "f7:bolt_fill");
         page.updateTimestamp();
         List<UIComponent> tabs = page.addSlot("default");
-        tabs.add(tab("Ahead", "f7:arrow_right_circle_fill", P_AHEAD));
+        tabs.add(tab("Past", "f7:clock_fill", P_PAST));
+        tabs.add(tab("Future", "f7:arrow_right_circle_fill", P_FUTURE));
+        tabs.add(tab("Now", "f7:gauge", P_NOW));
         tabs.add(tab("Control", "f7:slider_horizontal_3", P_CONTROL));
-        tabs.add(tab("History", "f7:clock_fill", P_HISTORY));
         tabs.add(tab("Power", "f7:chart_bar_alt_fill", P_CHARTS));
-        tabs.add(tab("Today by circuit", "f7:chart_pie_fill", P_CIRCUITS));
+        tabs.add(tab("By circuit", "f7:chart_pie_fill", P_CIRCUITS));
         return page;
-    }
-
-    /** Live gradient tint that tracks the energy level (over the theme card bg). */
-    private String levelTintExpr() {
-        String n = "items." + ITEM_LEVEL + ".numericState";
-        return "=" + n + ">=3?'linear-gradient(135deg,#43a04742,transparent 80%)':" + n
-                + ">=2?'linear-gradient(135deg,#7cb34242,transparent 80%)':" + n
-                + ">=1?'linear-gradient(135deg,#42a5f542,transparent 80%)':'linear-gradient(135deg,#ef535042,transparent 80%)'";
-    }
-
-    /** An intelligent, self-updating status line: solar share + grid flow + energy level. */
-    private UIComponent statusBanner(List<EnergyProvider> providers) {
-        String grid = null;
-        for (EnergyProvider p : providers) {
-            if (p.role() == ProviderRole.GRID) {
-                grid = p.id();
-            }
-        }
-        String sc = "items." + I_SELFCONS_DAY + ".numericState";
-        String sup = "items." + I_SUPPLY_DAY + ".numericState";
-        String pct = "Math.round(100*" + sc + "/((" + sc + "+" + sup + ")||1))";
-        StringBuilder sentence = new StringBuilder("=" + pct + "+'% solar-powered today'");
-        if (grid != null) {
-            String g = "items." + grid + ".numericState";
-            sentence.append(
-                    "+'   \u00b7   '+(" + g + ">=0?'exporting ':'importing ')+Math.round(Math.abs(" + g + "))+' W'");
-        }
-        sentence.append("+'   \u00b7   energy '+items." + ITEM_LEVEL_TEXT + ".state");
-
-        UIComponent c = new UIComponent("oh-label-card");
-        c.addConfig("icon", "f7:bolt_fill");
-        c.addConfig("iconColor", "#ffb300");
-        c.addConfig("iconSize", Integer.valueOf(34));
-        c.addConfig("label", sentence.toString());
-        c.addConfig("fontSize", "19px");
-        c.addConfig("fontWeight", "600");
-        c.addConfig("background", levelTintExpr());
-        c.addConfig("style", tileStyle());
-        return c;
     }
 
     /**
@@ -301,14 +265,55 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * now, then the two or three things worth acting on. Everything else moved to the tab it belongs to.
      */
     /**
-     * What is about to happen, which is the half of an energy system you can still do something about.
+     * What already happened, over the same spans everywhere: today, yesterday, this month, this year.
      * <p>
-     * Deliberately not a live readout. What the roof is making this second is visible on any meter and cannot be
-     * acted on; what it will make this afternoon, when the cheap hours fall and what the battery intends to do are
-     * the things that change a decision.
+     * One card per span with the same four figures in the same order, so the eye compares by reading down the same
+     * position rather than hunting. Bought and sold in kWh, what it cost and what it saved in euro.
      */
-    private RootUIComponent buildAheadPage() {
-        RootUIComponent page = layoutPage(P_AHEAD, "Ahead");
+    private RootUIComponent buildPastPage() {
+        RootUIComponent page = layoutPage(P_PAST, "Past");
+        List<UIComponent> root = page.addSlot("default");
+
+        for (String[] period : PERIODS) {
+            String suffix = period[0];
+            UIComponent card = figureCard(period[1],
+                    figureIfPresent("EMS_Supply_kWh" + suffix, "bought", "arrow_down_left_circle", "red"),
+                    figureIfPresent("EMS_SelfConsumption_kWh" + suffix, "sun used", "sun_max", "orange"),
+                    figureIfPresent("EMS_FeedIn_kWh" + suffix, "sold", "arrow_up_right_circle", "green"),
+                    figureIfPresent("EMS_Cost_EUR" + suffix, "cost", "money_euro", "red"));
+            if (card != null) {
+                root.add(cardRow(card));
+            }
+        }
+
+        List<UIComponent> circuits = new ArrayList<>();
+        for (String circuit : trackedCircuits()) {
+            String kwh = "EMS_DM_" + circuit + "_kWh";
+            if (has(kwh)) {
+                circuits.add(figure(kwh, prettyCircuit(circuit).toLowerCase(java.util.Locale.ROOT), "sum", "purple"));
+            }
+        }
+        if (!circuits.isEmpty()) {
+            root.add(cardRow(card("Today, circuit by circuit", circuits)));
+        }
+
+        UIComponent coverage = figureCard("How much of the building this covers",
+                figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
+                figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
+        if (coverage != null) {
+            root.add(cardRow(coverage));
+        }
+        return page;
+    }
+
+    /**
+     * What is still to come, over the spans it can be known for.
+     * <p>
+     * A forecast only reaches as far as the data does, so this is honest about its horizon: the rest of today and
+     * tomorrow for sun, the day's prices, and the decisions already taken for the hours ahead.
+     */
+    private RootUIComponent buildFuturePage() {
+        RootUIComponent page = layoutPage(P_FUTURE, "Future");
         List<UIComponent> root = page.addSlot("default");
 
         UIComponent sun = figureCard("Sun expected",
@@ -320,7 +325,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(sun));
         }
 
-        UIComponent prices = figureCard("Prices", figureIfPresent(I_TARIFF_NOW, "now", "money_euro", "blue"),
+        UIComponent prices = figureCard("Prices today", figureIfPresent(I_TARIFF_NOW, "now", "money_euro", "blue"),
                 figureIfPresent(I_TARIFF_NEXT_1H, "next hour", "money_euro", "blue"),
                 figureIfPresent(I_TARIFF_CHEAPEST_AT, "cheapest hour", "arrow_down_circle_fill", "green"),
                 figureIfPresent(I_TARIFF_DEAREST_AT, "dearest hour", "arrow_up_circle_fill", "red"));
@@ -328,11 +333,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(prices));
         }
 
-        UIComponent plan = figureCard("What it intends to do",
+        UIComponent plan = figureCard("Already decided",
                 figureIfPresent(I_OPT_NEXT_CHARGE, "battery charges", "arrow_down_circle", "blue"),
                 figureIfPresent(I_OPT_NEXT_DISCHARGE, "battery discharges", "arrow_up_circle", "purple"),
                 figureIfPresent(I_BOILER_WINDOW, "water heated by", "drop_fill", "blue"),
-                figureIfPresent(I_CAP_PROJECTED, "peak heading for", "gauge", "purple"));
+                figureIfPresent(I_CAP_PROJECTED, "month heading for", "gauge", "purple"));
         if (plan != null) {
             root.add(cardRow(plan));
         }
@@ -341,6 +346,57 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(planCard()));
         }
         return page;
+    }
+
+    /**
+     * The current situation, kept to one card because it is the least useful of the three.
+     */
+    private RootUIComponent buildNowPage(List<EnergyProvider> providers) {
+        RootUIComponent page = layoutPage(P_NOW, "Now");
+        List<UIComponent> root = page.addSlot("default");
+
+        List<UIComponent> live = new ArrayList<>();
+        for (EnergyProvider provider : providers) {
+            String caption = switch (provider.role()) {
+                case PV -> "roof is making";
+                case GRID -> "grid";
+                case BATTERY -> "battery";
+            };
+            live.add(figure(provider.id(), caption, providerGlyph(provider.role()), providerHue(provider.role())));
+        }
+        if (has(I_DM_TRACKED)) {
+            live.add(figure(I_DM_TRACKED, "building is using", "house_fill", "purple"));
+        }
+        if (!live.isEmpty()) {
+            root.add(cardRow(card("Right now", live)));
+        }
+
+        UIComponent state = figureCard("Where it stands",
+                figureIfPresent(ITEM_LEVEL_TEXT, "energy level", "bolt_fill", "orange"),
+                figureIfPresent(I_CAP_QUARTER, "this quarter-hour", "gauge", "purple"),
+                figureIfPresent(I_CAP_STATUS, "peak budget", "checkmark_seal", "green"),
+                figureIfPresent(I_ANOMALY_COUNT, "odd devices today", "exclamationmark_triangle", "red"));
+        if (state != null) {
+            root.add(cardRow(state));
+        }
+        return page;
+    }
+
+    /** Framework7 glyph names, which are not the same as the oh: icon set the cards used. */
+    private String providerGlyph(ProviderRole role) {
+        return switch (role) {
+            case PV -> "sun_max_fill";
+            case GRID -> "bolt_horizontal_fill";
+            case BATTERY -> "battery_25";
+        };
+    }
+
+    private String providerHue(ProviderRole role) {
+        return switch (role) {
+            case PV -> "orange";
+            case GRID -> "blue";
+            case BATTERY -> "green";
+        };
     }
 
     /**
@@ -358,49 +414,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 "2px", "font-weight", "bold"));
         card.addSlot("default").add(value);
         return card;
-    }
-
-    /**
-     * What already happened, over the periods the services keep.
-     * <p>
-     * One row per period rather than one row per figure: the question is "was last week better than the one before",
-     * and that is answered by reading across, not by hunting four tiles apart for the same number over two spans.
-     */
-    private RootUIComponent buildHistoryPage() {
-        RootUIComponent page = layoutPage(P_HISTORY, "History");
-        List<UIComponent> root = page.addSlot("default");
-
-        for (String[] period : PERIODS) {
-            String suffix = period[0];
-            UIComponent card = figureCard(period[1],
-                    figureIfPresent("EMS_Cost_EUR" + suffix, "bought", "money_euro", "red"),
-                    figureIfPresent("EMS_Savings_EUR" + suffix, "saved", "money_euro", "green"),
-                    figureIfPresent("EMS_SelfConsumption_kWh" + suffix, "sun used", "sun_max", "orange"),
-                    figureIfPresent("EMS_FeedIn_kWh" + suffix, "sold", "arrow_up_right_circle", "green"));
-            if (card != null) {
-                root.add(cardRow(card));
-            }
-        }
-
-        // Today's energy circuit by circuit, six to a card instead of one tile each.
-        List<UIComponent> circuits = new ArrayList<>();
-        for (String circuit : trackedCircuits()) {
-            String kwh = "EMS_DM_" + circuit + "_kWh";
-            if (has(kwh)) {
-                circuits.add(figure(kwh, prettyCircuit(circuit).toLowerCase(java.util.Locale.ROOT), "sum", "purple"));
-            }
-        }
-        if (!circuits.isEmpty()) {
-            root.add(cardRow(card("Used today, by circuit", circuits)));
-        }
-
-        UIComponent coverage = figureCard("How much of the building this covers",
-                figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
-                figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
-        if (coverage != null) {
-            root.add(cardRow(coverage));
-        }
-        return page;
     }
 
     // --- control -------------------------------------------------------------------------------
@@ -460,15 +473,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         String spaced = circuit.replaceAll("(?<=[a-z])(?=[A-Z])", " ").replace('_', ' ');
         return spaced.substring(0, 1).toUpperCase(java.util.Locale.ROOT)
                 + spaced.substring(1).toLowerCase(java.util.Locale.ROOT);
-    }
-
-    private UIComponent note(String text) {
-        UIComponent c = new UIComponent("oh-label-card");
-        c.addConfig("title", text);
-        c.addConfig("icon", "f7:info_circle");
-        c.addConfig("iconColor", "#9e9e9e");
-        c.addConfig("style", tileStyle());
-        return c;
     }
 
     private RootUIComponent buildChartsPage(List<EnergyProvider> providers, List<EnergyConsumer> consumers) {
@@ -674,152 +678,12 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return t;
     }
 
-    /** The energy-level hero: a semicircle gauge (0..3) recolored red->green by level; centre = word. */
-    private UIComponent energyLevelGauge() {
-        UIComponent g = new UIComponent("oh-gauge-card");
-        g.addConfig("item", ITEM_LEVEL);
-        g.addConfig("min", Integer.valueOf(0));
-        g.addConfig("max", Integer.valueOf(3));
-        g.addConfig("type", "circle");
-        g.addConfig("size", Integer.valueOf(170));
-        g.addConfig("borderWidth", Integer.valueOf(16));
-        g.addConfig("labelText", "Energy level");
-        g.addConfig("valueText", "=items." + ITEM_LEVEL_TEXT + ".state");
-        g.addConfig("valueFontSize", Integer.valueOf(22));
-        g.addConfig("valueTextColor", "var(--f7-text-color)");
-        g.addConfig("borderColor", "=" + levelColorTernary());
-        g.addConfig("style", reactiveCardStyle(levelColorTernary()));
-        return g;
-    }
-
-    /** Self-sufficiency % gauge — solar self-consumed / total consumption today. */
-    private UIComponent selfSufficiencyGauge() {
-        UIComponent g = new UIComponent("oh-gauge-card");
-        g.addConfig("min", Integer.valueOf(0));
-        g.addConfig("max", Integer.valueOf(100));
-        g.addConfig("type", "circle");
-        g.addConfig("size", Integer.valueOf(170));
-        g.addConfig("borderWidth", Integer.valueOf(16));
-        g.addConfig("borderColor", "#43a047");
-        g.addConfig("labelText", "Self-sufficient");
-        g.addConfig("valueFontSize", Integer.valueOf(22));
-        g.addConfig("valueTextColor", "var(--f7-text-color)");
-        // numericState is the unit-stripped number (the expression sandbox has no parseFloat);
-        // guard the divide-by-zero with ||1.
-        String sc = "items." + I_SELFCONS_DAY + ".numericState";
-        String sup = "items." + I_SUPPLY_DAY + ".numericState";
-        String pct = "Math.round(100*" + sc + "/((" + sc + "+" + sup + ")||1))";
-        g.addConfig("value", "=" + pct);
-        g.addConfig("valueText", "=" + pct + "+'%'");
-        g.addConfig("style", reactiveCardStyle("'#43a047'"));
-        return g;
-    }
-
-    /** A grid column: full-width on a phone, half-width on a tablet+ (two gauges side by side). */
-    /** A grid column that fills 1/N of a tablet+ row (packs N cards edge-to-edge). */
-    private UIComponent colFill(UIComponent child, int mediumPct) {
-        UIComponent c = new UIComponent("oh-grid-col");
-        c.addConfig("width", "50");
-        c.addConfig("medium", String.valueOf(mediumPct));
-        c.addSlot("default").add(child);
-        return c;
-    }
-
-    private UIComponent colHalf(UIComponent child) {
-        UIComponent c = new UIComponent("oh-grid-col");
-        c.addConfig("width", "100");
-        c.addConfig("medium", "50");
-        c.addSlot("default").add(child);
-        return c;
-    }
-
-    /** Modern tile styling — rounded, soft depth, subtle border. Theme-safe (no fixed bg/text). */
-    private java.util.Map<String, Object> tileStyle() {
-        java.util.Map<String, Object> m = new java.util.HashMap<>();
-        m.put("border-radius", "18px");
-        m.put("box-shadow", "0 10px 30px rgba(0,0,0,0.18)");
-        m.put("border", "1px solid rgba(140,140,140,0.16)");
-        m.put("overflow", "hidden");
-        return m;
-    }
-
-    /** Level colour (numericState): red -> blue -> lime -> green. Matches the hero ring + glow. */
-    private String levelColorTernary() {
-        String n = "items." + ITEM_LEVEL + ".numericState";
-        return n + ">=3?'#43a047':" + n + ">=2?'#7cb342':" + n + ">=1?'#42a5f5':'#ef5350'";
-    }
-
-    /** A reactive card style that TINTS and GLOWS in a live colour (colorExpr = a JS colour fragment). */
-    private java.util.Map<String, Object> reactiveCardStyle(String colorExpr) {
-        java.util.Map<String, Object> m = new java.util.HashMap<>();
-        m.put("border-radius", "18px");
-        m.put("border", "1px solid rgba(140,140,140,0.14)");
-        m.put("background",
-                "='linear-gradient(135deg,'+(" + colorExpr + ")+'42,transparent 82%), var(--f7-card-bg-color)'");
-        m.put("box-shadow", "='0 0 60px -16px '+(" + colorExpr + ")+'cc, 0 12px 34px rgba(0,0,0,0.18)'");
-        return m;
-    }
-
-    /**
-     * The site's own item-name patterns, read from the bridge Thing, so the page never assumes what the chargers are
-     * called.
-     */
-    private @org.eclipse.jdt.annotation.Nullable String pattern(String key) {
-        for (Thing thing : thingRegistry.getAll()) {
-            if (!"emsmanager".equals(thing.getUID().getBindingId())
-                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
-                continue;
-            }
-            Object value = thing.getConfiguration().get(key);
-            if (value instanceof String text && !text.isBlank()) {
-                return text;
-            }
-        }
-        return null;
-    }
-
-    private int carCount() {
-        for (Thing thing : thingRegistry.getAll()) {
-            if (!"emsmanager".equals(thing.getUID().getBindingId())
-                    || !"bridge".equals(thing.getThingTypeUID().getId())) {
-                continue;
-            }
-            Object value = thing.getConfiguration().get("carCount");
-            if (value instanceof Number number) {
-                return number.intValue();
-            }
-        }
-        return 0;
-    }
-
-    private @org.eclipse.jdt.annotation.Nullable String carItem(String patternKey, int car) {
-        String pattern = pattern(patternKey);
-        if (pattern == null) {
-            return null;
-        }
-        String name = String.format(pattern, car);
-        return has(name) ? name : null;
-    }
-
     /**
      * The things you can actually change, and the answers to the things you can ask it.
      */
     private RootUIComponent buildControlPage(List<EnergyConsumer> consumers) {
         RootUIComponent page = layoutPage(P_CONTROL, "Control");
         List<UIComponent> root = page.addSlot("default");
-
-        // Every charger in one card, side by side, the way the charging widget on this site does it.
-        List<UIComponent> chargers = new ArrayList<>();
-        for (int car = 1; car <= carCount(); car++) {
-            String mode = carItem("carModeItemPattern", car);
-            if (mode != null) {
-                chargers.add(chargerColumn(mode, "Car " + car, carItem("carStatusItemPattern", car),
-                        carItem("carCableItemPattern", car)));
-            }
-        }
-        if (!chargers.isEmpty()) {
-            root.add(cardRow(card("Cars", chargers)));
-        }
 
         List<UIComponent> switches = new ArrayList<>();
         if (has(I_BOILER_OVERRIDE)) {
@@ -956,98 +820,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return block(null, row(col("100", card)));
     }
 
-    /**
-     * A charger column: an icon that changes with its state, the mode underneath, and a button per mode.
-     * <p>
-     * The buttons are built from the Item's own command options, so a site whose modes are not ECO/SNEL/OFF gets its
-     * own words on its own buttons. A dropdown hides the choice behind a tap; three buttons show it.
-     */
-    private UIComponent chargerColumn(String modeItem, String label,
-            @org.eclipse.jdt.annotation.Nullable String statusItem,
-            @org.eclipse.jdt.annotation.Nullable String cableItem) {
-        UIComponent column = new UIComponent("f7-col");
-        column.addConfig("class",
-                List.of("display-flex", "flex-direction-column", "align-items-center", "padding-vertical-half"));
-        column.addConfig("width", "50");
-        column.addConfig("medium", "25");
-        List<UIComponent> slot = column.addSlot("default");
-
-        UIComponent name = new UIComponent("oh-label-item");
-        name.addConfig("title", label);
-        name.addConfig("class", List.of("text-align-center"));
-        name.addConfig("style", java.util.Map.of("font-weight", "bold", "font-size", "13px"));
-        slot.add(name);
-
-        UIComponent glyph = new UIComponent("f7-icon");
-        if (cableItem != null) {
-            glyph.addConfig("f7", "=items." + cableItem + ".state === 'ON' ? 'bolt_car_fill' : 'bolt_car'");
-        } else {
-            glyph.addConfig("f7", "bolt_car");
-        }
-        if (statusItem != null) {
-            glyph.addConfig("color", "=items." + statusItem + ".state === 'Charging' ? 'green' : "
-                    + (cableItem != null ? "items." + cableItem + ".state === 'ON' ? 'blue' : 'gray'" : "'gray'"));
-        } else {
-            glyph.addConfig("color", "gray");
-        }
-        glyph.addConfig("size", Integer.valueOf(34));
-        slot.add(glyph);
-
-        if (statusItem != null) {
-            UIComponent status = new UIComponent("oh-label-item");
-            status.addConfig("item", statusItem);
-            status.addConfig("class", List.of("text-align-center"));
-            status.addConfig("style", java.util.Map.of("font-size", "10px", "line-height", "1.2", "opacity", "0.7"));
-            slot.add(status);
-        }
-
-        // the mode itself, always shown - a charger whose Item offers no command options still has a mode, and a
-        // column with no buttons and no mode says nothing at all
-        UIComponent current = new UIComponent("oh-label-item");
-        current.addConfig("item", modeItem);
-        current.addConfig("class", List.of("text-align-center"));
-        current.addConfig("style", java.util.Map.of("font-size", "12px", "font-weight", "bold"));
-        slot.add(current);
-
-        List<UIComponent> buttons = new ArrayList<>();
-        for (String option : commandOptions(modeItem)) {
-            UIComponent button = new UIComponent("oh-button");
-            button.addConfig("text", option);
-            button.addConfig("small", Boolean.TRUE);
-            button.addConfig("fill", "=items." + modeItem + ".state === '" + option + "'");
-            button.addConfig("action", "command");
-            button.addConfig("actionItem", modeItem);
-            button.addConfig("actionCommand", option);
-            buttons.add(button);
-        }
-        if (!buttons.isEmpty()) {
-            UIComponent segmented = new UIComponent("f7-segmented");
-            segmented.addConfig("raised", Boolean.TRUE);
-            segmented.addConfig("tag", "p");
-            segmented.addConfig("style", java.util.Map.of("margin-top", "4px"));
-            segmented.addSlot("default").addAll(buttons);
-            slot.add(segmented);
-        }
-        return column;
-    }
-
-    /** The commands an Item offers, so the page never invents a mode this site does not have. */
-    private List<String> commandOptions(String item) {
-        org.openhab.core.items.Item found = itemRegistry.get(item);
-        if (found == null) {
-            return List.of();
-        }
-        org.openhab.core.types.CommandDescription description = found.getCommandDescription();
-        if (description == null) {
-            return List.of();
-        }
-        List<String> options = new ArrayList<>();
-        for (org.openhab.core.types.CommandOption option : description.getCommandOptions()) {
-            options.add(option.getCommand());
-        }
-        return options;
-    }
-
     /** A switch as a compact row rather than a card of its own. */
     private UIComponent switchRow(String item, String label) {
         UIComponent toggle = new UIComponent("oh-toggle-item");
@@ -1092,11 +864,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** A tile, or nothing where the Item behind it does not exist on this site. */
-    private @org.eclipse.jdt.annotation.Nullable UIComponent tileIfPresent(String item, String title, String icon,
-            String accent) {
-        return has(item) ? labelCard(item, title, icon, accent) : null;
-    }
-
     /**
      * A block of tiles, dropping the ones whose Items are absent and the whole block when none survive.
      *
@@ -1104,85 +871,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * @param tiles the candidate tiles, nulls allowed
      * @return the block, or {@code null} where this site has nothing to put in it
      */
-    private @org.eclipse.jdt.annotation.Nullable UIComponent tileBlock(String title,
-            @org.eclipse.jdt.annotation.Nullable UIComponent... tiles) {
-        List<UIComponent> cols = new ArrayList<>();
-        for (UIComponent tile : tiles) {
-            if (tile != null) {
-                cols.add(colResponsive(tile));
-            }
-        }
-        return cols.isEmpty() ? null : block(title, row(cols.toArray(new UIComponent[0])));
-    }
-
-    /** Adds a block when there is one to add. */
-    private void addIfPresent(List<UIComponent> root, @org.eclipse.jdt.annotation.Nullable UIComponent block) {
-        if (block != null) {
-            root.add(block);
-        }
-    }
-
-    /**
-     * The optimizer's own 24-hour plan, drawn as the string it publishes.
-     * <p>
-     * One character per hour - charge, discharge or idle - so a glance says what the battery intends to do today. It
-     * is monospaced deliberately: the characters line up with the hours only if they are the same width.
-     */
-    private UIComponent planStrip() {
-        UIComponent c = new UIComponent("oh-label-card");
-        c.addConfig("item", I_OPT_PLAN_24H);
-        c.addConfig("title", "Battery plan, next 24 hours");
-        c.addConfig("icon", "f7:square_grid_2x2");
-        c.addConfig("iconColor", "#7e57c2");
-        c.addConfig("iconSize", Integer.valueOf(30));
-        c.addConfig("fontSize", "17px");
-        c.addConfig("fontWeight", "600");
-        c.addConfig("background", "linear-gradient(135deg, #7e57c222, transparent 72%)");
-        java.util.Map<String, Object> style = tileStyle();
-        // the characters line up with the hours only if they are all the same width
-        style.put("font-family", "monospace");
-        style.put("letter-spacing", "2px");
-        c.addConfig("style", style);
-        return c;
-    }
-
-    private UIComponent labelCard(String item, String title, String icon) {
-        return labelCard(item, title, icon, "#5b8def");
-    }
-
-    /** A modern tile: rounded depth, accent-tinted gradient, big bold value, accent icon. */
-    private UIComponent labelCard(String item, String title, String icon, String accent) {
-        UIComponent c = new UIComponent("oh-label-card");
-        c.addConfig("item", item);
-        c.addConfig("title", title);
-        c.addConfig("icon", icon);
-        c.addConfig("iconColor", accent);
-        c.addConfig("iconSize", Integer.valueOf(30));
-        c.addConfig("fontSize", "26px");
-        c.addConfig("fontWeight", "700");
-        c.addConfig("background", "linear-gradient(135deg, " + accent + "22, transparent 72%)");
-        c.addConfig("style", tileStyle());
-        return c;
-    }
-
-    private UIComponent trendCard(String item, String title, String icon, String trendItem) {
-        UIComponent c = labelCard(item, title, icon);
-        c.addConfig("trendItem", trendItem);
-        return c;
-    }
-
     private UIComponent col(String width, UIComponent child) {
         UIComponent c = new UIComponent("oh-grid-col");
         c.addConfig("width", width);
-        c.addSlot("default").add(child);
-        return c;
-    }
-
-    /** A responsive column: two per row on a phone, four on a tablet. */
-    private UIComponent colResponsive(UIComponent child) {
-        UIComponent c = new UIComponent("oh-grid-col");
-        c.addConfig("width", "50");
-        c.addConfig("medium", "25");
         c.addSlot("default").add(child);
         return c;
     }
@@ -1216,14 +907,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             case PV -> "Solar";
             case GRID -> "Grid";
             case BATTERY -> "Battery";
-        };
-    }
-
-    private String providerIcon(ProviderRole role) {
-        return switch (role) {
-            case PV -> "oh:solarplant";
-            case GRID -> "oh:energy";
-            case BATTERY -> "oh:battery_70";
         };
     }
 
