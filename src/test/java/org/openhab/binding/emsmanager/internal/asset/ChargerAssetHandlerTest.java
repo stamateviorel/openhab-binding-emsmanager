@@ -129,4 +129,15 @@ class ChargerAssetHandlerTest {
         assertEquals(1, sent.size(), "a misconfigured limit must not clamp every charge to zero");
         assertTrue(sent.get(0).contains("16"));
     }
+
+    @Test
+    void theDefaultConstructorStillClampsSomewhere() {
+        ChargerAssetHandler handler = new ChargerAssetHandler(recordingPublisher(), "car1", "Car1_Pause", "Car1_Limit",
+                "Car1_Charging");
+
+        handler.apply(amps(500), contextWithCarAt(6), false);
+
+        assertEquals(1, sent.size());
+        assertFalse(sent.get(0).contains("500"), "even the fallback bound has to be a bound");
+    }
 }

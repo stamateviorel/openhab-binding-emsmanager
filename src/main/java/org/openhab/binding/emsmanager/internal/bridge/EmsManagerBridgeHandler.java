@@ -373,7 +373,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             String currentLimit = String.format(nameOr(config.carCurrentLimitItemPattern, ITEM_CAR_CURRENT_LIMIT_FMT),
                     n);
             String charging = String.format(nameOr(config.carChargingItemPattern, ITEM_CAR_CHARGING_FMT), n);
-            assets.put(key, new ChargerAssetHandler(eventPublisher, key, pause, currentLimit, charging));
+            // Without a charger Thing there is no per-charger rating, so the site main breaker is the
+            // tightest bound available - still far better than the 63 A default it used before.
+            assets.put(key, new ChargerAssetHandler(eventPublisher, key, pause, currentLimit, charging,
+                    config.mainBreakerAmpsPerPhase));
         }
         // Per-charger asset handlers from emsmanager:charger Things. A charger
         // Thing's carKey overrides the matching fixed car%d handler with its own
