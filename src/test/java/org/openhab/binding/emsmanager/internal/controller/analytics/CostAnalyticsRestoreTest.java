@@ -20,6 +20,7 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -166,6 +167,63 @@ class CostAnalyticsRestoreTest {
 
         assertEquals(465.57, after.savingsEurTotal(), 1e-6);
         assertEquals(829.0, after.costEurTotal(), 1e-6);
+    }
+
+    /**
+     * A restart at 23:55 that comes back at 00:05. The snapshot and the restored items both still hold
+     * yesterday's figures, and before the snapshot carried a date they were simply carried into the
+     * new day; the day counters then ran a whole day too high.
+     */
+    @Test
+    void aSnapshotFromYesterdayStartsTheDayAtZeroButKeepsTheTotals() throws Exception {
+        LocalDate yesterday = LocalDate.of(2026, 8, 30);
+        CostAnalyticsController saver = controller();
+        Map<String, Double> m = new HashMap<>();
+        m.put(ITEM_EMS_SELFCONSUMPTION_KWH_DAY, 10.0);
+        m.put(ITEM_EMS_COST_EUR_MONTH, 85.0);
+        m.put(ITEM_EMS_SAVINGS_EUR_TOTAL, 465.57);
+        saver.initFromItems(registryWith(m), yesterday);
+        saver.saveSnapshot();
+
+        CostAnalyticsController after = controller();
+        after.initFromItems(registryWith(m), yesterday.plusDays(1));
+
+        assertEquals(0.0, after.selfConsumptionKwhDay(), 1e-9, "yesterday's kWh must not become today's");
+        assertEquals(85.0, after.costEurMonth(), 1e-9, "same month, the month total carries on");
+        assertEquals(465.57, after.savingsEurTotal(), 1e-6, "all-time totals are never reset");
+    }
+
+    @Test
+    void aSnapshotFromLastMonthStartsTheMonthAtZero() throws Exception {
+        CostAnalyticsController saver = controller();
+        Map<String, Double> m = new HashMap<>();
+        m.put(ITEM_EMS_SELFCONSUMPTION_KWH_DAY, 10.0);
+        m.put(ITEM_EMS_COST_EUR_MONTH, 85.0);
+        m.put(ITEM_EMS_COST_EUR_TOTAL, 829.0);
+        saver.initFromItems(registryWith(m), LocalDate.of(2026, 8, 31));
+        saver.saveSnapshot();
+
+        CostAnalyticsController after = controller();
+        after.initFromItems(registryWith(m), LocalDate.of(2026, 9, 1));
+
+        assertEquals(0.0, after.costEurMonth(), 1e-9, "August's cost must not open September");
+        assertEquals(0.0, after.selfConsumptionKwhDay(), 1e-9);
+        assertEquals(829.0, after.costEurTotal(), 1e-6);
+    }
+
+    @Test
+    void aSnapshotFromTodayKeepsTheDayFigures() throws Exception {
+        LocalDate today = LocalDate.of(2026, 8, 30);
+        CostAnalyticsController saver = controller();
+        Map<String, Double> m = new HashMap<>();
+        m.put(ITEM_EMS_SELFCONSUMPTION_KWH_DAY, 10.0);
+        saver.initFromItems(registryWith(m), today);
+        saver.saveSnapshot();
+
+        CostAnalyticsController after = controller();
+        after.initFromItems(registryWith(new HashMap<>()), today);
+
+        assertEquals(10.0, after.selfConsumptionKwhDay(), 1e-9, "a same-day restart resumes, it does not reset");
     }
 
     @Test

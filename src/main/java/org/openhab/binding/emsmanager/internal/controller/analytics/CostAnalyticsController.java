@@ -17,6 +17,7 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -90,6 +91,9 @@ public final class CostAnalyticsController implements Controller {
     private int ticksSinceSave = 0;
     private boolean restored = false;
     private @Nullable ItemRegistry itemRegistry;
+    /** The period the loaded snapshot's accumulators belong to; null for a snapshot that predates the field. */
+    private @Nullable LocalDate snapshotDay;
+    private @Nullable YearMonth snapshotMonth;
 
     // Accumulators (kWh + €).
     private double selfConsumptionKwhDay = 0.0;
@@ -117,12 +121,17 @@ public final class CostAnalyticsController implements Controller {
      * every tick and we never publish 0 over a good total.
      */
     public void initFromItems(ItemRegistry items) {
+        initFromItems(items, LocalDate.now(ZoneId.systemDefault()));
+    }
+
+    /** Package-private so a test can restore "today" on a day other than the one the snapshot was written. */
+    void initFromItems(ItemRegistry items, LocalDate today) {
         this.itemRegistry = items;
-        this.restored = restoreFrom(items);
+        this.restored = restoreFrom(items, today);
     }
 
     /** @return true once the accumulators were restored from readable items. */
-    private boolean restoreFrom(ItemRegistry items) {
+    private boolean restoreFrom(ItemRegistry items, LocalDate today) {
         // Own snapshot first. Item restore is asynchronous and partial: a counter still UNDEF when
         // this runs used to be seeded to zero and then written straight back over the good value,
         // which is how 465 EUR of all-time savings was destroyed by a restart on 2026-08-30 while
@@ -147,6 +156,23 @@ public final class CostAnalyticsController implements Controller {
         savingsEurTotal = highest(readNumber(items, ITEM_EMS_SAVINGS_EUR_TOTAL), savingsEurTotal);
         earningsEurMonth = pick(readNumber(items, ITEM_EMS_EARNINGS_EUR_MONTH), earningsEurMonth);
         earningsEurTotal = highest(readNumber(items, ITEM_EMS_EARNINGS_EUR_TOTAL), earningsEurTotal);
+
+        // Neither the snapshot nor the items know a restart happened across midnight or the 1st:
+        // both still hold the old period's figures. The snapshot at least says which period that
+        // was; an item does not, so the snapshot's date decides for both.
+        LocalDate savedDay = snapshotDay;
+        if (savedDay != null && !savedDay.equals(today)) {
+            resetDay();
+            LOGGER.info("CostAnalytics: snapshot is from {}, day accumulators start at 0 for {}", savedDay, today);
+        }
+        YearMonth savedMonth = snapshotMonth;
+        if (savedMonth != null && !savedMonth.equals(YearMonth.from(today))) {
+            resetMonth();
+            LOGGER.info("CostAnalytics: snapshot is from {}, month accumulators start at 0", savedMonth);
+        }
+        lastDay = today;
+        lastMonth = today.getMonthValue();
+        lastYear = today.getYear();
         LOGGER.info(
                 "CostAnalytics restored (snapshot={}): dayKWh sc={} fi={} sup={}, monthEUR cost={} sav={} earn={}, totalEUR cost={} sav={}",
                 fromSnapshot, fmt(selfConsumptionKwhDay), fmt(feedInKwhDay), fmt(supplyKwhDay), fmt(costEurMonth),
@@ -166,6 +192,29 @@ public final class CostAnalyticsController implements Controller {
 
     boolean isRestored() {
         return restored;
+    }
+
+    double selfConsumptionKwhDay() {
+        return selfConsumptionKwhDay;
+    }
+
+    double costEurMonth() {
+        return costEurMonth;
+    }
+
+    private void resetDay() {
+        selfConsumptionKwhDay = 0.0;
+        feedInKwhDay = 0.0;
+        supplyKwhDay = 0.0;
+    }
+
+    private void resetMonth() {
+        selfConsumptionKwhMonth = 0.0;
+        feedInKwhMonth = 0.0;
+        supplyKwhMonth = 0.0;
+        costEurMonth = 0.0;
+        savingsEurMonth = 0.0;
+        earningsEurMonth = 0.0;
     }
 
     /** An unreadable item leaves whatever the snapshot already gave us, rather than zeroing it. */
@@ -210,9 +259,11 @@ public final class CostAnalyticsController implements Controller {
         // Resume guard: until the accumulators are restored from readable items, do NOT
         // publish — a fresh controller starts at 0 and publishing would wipe good totals.
         // Retry the restore each tick until the items become available.
+        ZonedDateTime zdt = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault());
+        LocalDate today = zdt.toLocalDate();
         if (!restored) {
             ItemRegistry ir = itemRegistry;
-            if (ir == null || !(restored = restoreFrom(ir))) {
+            if (ir == null || !(restored = restoreFrom(ir, today))) {
                 return List.of();
             }
         }
@@ -229,23 +280,14 @@ public final class CostAnalyticsController implements Controller {
         }
 
         // Day / month rollover BEFORE we add the new tick's contribution.
-        ZonedDateTime zdt = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault());
-        LocalDate today = zdt.toLocalDate();
         int month = zdt.getMonthValue();
         int year = zdt.getYear();
         if (!today.equals(lastDay) && lastDay != LocalDate.MIN) {
-            selfConsumptionKwhDay = 0.0;
-            feedInKwhDay = 0.0;
-            supplyKwhDay = 0.0;
+            resetDay();
             LOGGER.info("CostAnalytics day rollover — kWh_Day accumulators reset");
         }
         if ((month != lastMonth || year != lastYear) && lastMonth != -1) {
-            selfConsumptionKwhMonth = 0.0;
-            feedInKwhMonth = 0.0;
-            supplyKwhMonth = 0.0;
-            costEurMonth = 0.0;
-            savingsEurMonth = 0.0;
-            earningsEurMonth = 0.0;
+            resetMonth();
             LOGGER.info("CostAnalytics month rollover — Month accumulators reset");
             saveSnapshot();
         }
@@ -313,6 +355,10 @@ public final class CostAnalyticsController implements Controller {
         o.addProperty("savingsEurTotal", savingsEurTotal);
         o.addProperty("earningsEurMonth", earningsEurMonth);
         o.addProperty("earningsEurTotal", earningsEurTotal);
+        if (lastDay != LocalDate.MIN) {
+            o.addProperty("day", lastDay.toString());
+            o.addProperty("month", YearMonth.from(lastDay).toString());
+        }
         return o;
     }
 
@@ -339,6 +385,8 @@ public final class CostAnalyticsController implements Controller {
             savingsEurTotal = num(o, "savingsEurTotal");
             earningsEurMonth = num(o, "earningsEurMonth");
             earningsEurTotal = num(o, "earningsEurTotal");
+            snapshotDay = o.has("day") ? LocalDate.parse(o.get("day").getAsString()) : null;
+            snapshotMonth = o.has("month") ? YearMonth.parse(o.get("month").getAsString()) : null;
             return true;
         } catch (Throwable t) {
             LOGGER.warn("CostAnalytics snapshot unreadable, falling back to item state: {}", t.getMessage());
