@@ -383,7 +383,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             if (h instanceof org.openhab.binding.emsmanager.internal.charger.ChargerHandler ch) {
                 var ccfg = ch.getCfg();
                 assets.put(ch.carKey(), new ChargerAssetHandler(eventPublisher, ch.carKey(), ccfg.pauseItem,
-                        ccfg.currentLimitItem, ccfg.chargingItem));
+                        ccfg.currentLimitItem, ccfg.chargingItem, ccfg.breakerLimitA));
                 chargerThings++;
             }
         }

@@ -46,6 +46,7 @@ public final class ChargerAssetHandler implements AssetHandler {
     private final String pauseItemName;
     private final String currentLimitItemName;
     private final String chargingItemName;
+    private final int breakerLimitA;
     private final SetpointDedupe dedupe = new SetpointDedupe();
 
     /**
@@ -58,11 +59,19 @@ public final class ChargerAssetHandler implements AssetHandler {
             @org.eclipse.jdt.annotation.Nullable String pauseItemName,
             @org.eclipse.jdt.annotation.Nullable String currentLimitItemName,
             @org.eclipse.jdt.annotation.Nullable String chargingItemName) {
+        this(eventPublisher, carKey, pauseItemName, currentLimitItemName, chargingItemName, 63);
+    }
+
+    public ChargerAssetHandler(EventPublisher eventPublisher, String carKey,
+            @org.eclipse.jdt.annotation.Nullable String pauseItemName,
+            @org.eclipse.jdt.annotation.Nullable String currentLimitItemName,
+            @org.eclipse.jdt.annotation.Nullable String chargingItemName, int breakerLimitA) {
         this.eventPublisher = eventPublisher;
         this.carKey = carKey;
         this.pauseItemName = pauseItemName == null ? "" : pauseItemName;
         this.currentLimitItemName = currentLimitItemName == null ? "" : currentLimitItemName;
         this.chargingItemName = chargingItemName == null ? "" : chargingItemName;
+        this.breakerLimitA = breakerLimitA > 0 ? breakerLimitA : 63;
     }
 
     @Override
@@ -116,7 +125,15 @@ public final class ChargerAssetHandler implements AssetHandler {
         if (currentLimitItemName.isBlank()) {
             return false;
         }
-        int amps = (int) Math.round(req.value());
+        int requested = (int) Math.round(req.value());
+        int amps = Math.max(0, Math.min(breakerLimitA, requested));
+        if (amps != requested) {
+            // Controllers are supposed to have done this arithmetic already; this is the last thing
+            // between a wrong number and a 63 A breaker, so it clamps and says so rather than
+            // trusting its callers.
+            LOGGER.warn("ChargerAssetHandler[{}]: {} asked for {} A, clamped to {} A", carKey, req.controllerName(),
+                    requested, amps);
+        }
         String desired = String.valueOf(amps);
         String current = (car != null) ? String.valueOf((int) Math.round(car.currentLimitA())) : "0";
         long now = System.currentTimeMillis();
