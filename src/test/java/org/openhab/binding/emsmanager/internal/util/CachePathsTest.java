@@ -14,6 +14,12 @@ package org.openhab.binding.emsmanager.internal.util;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Stream;
+
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -81,6 +87,35 @@ class CachePathsTest {
 
         assertTrue(CachePaths.cacheDir().startsWith("/tmp/ems-somewhere-else"),
                 "code that ignores the property escapes the sandbox the build set up");
+    }
+
+    @Test
+    void anAtomicWriteLeavesExactlyTheTargetFileWithTheNewContent() throws IOException {
+        Path dir = Files.createTempDirectory("ems-atomic");
+        Path target = dir.resolve("state.json");
+        Files.writeString(target, "old");
+        Object before = Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
+
+        CachePaths.writeAtomic(target, "new");
+
+        assertEquals("new", Files.readString(target));
+        Object after = Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
+        assertNotEquals(before, after,
+                "an in-place write keeps the inode and can be caught truncated; a rename swaps the whole file");
+        try (Stream<Path> listing = Files.list(dir)) {
+            assertEquals(List.of(target), listing.toList(),
+                    "the temporary file must be renamed onto the target, not left beside it");
+        }
+    }
+
+    @Test
+    void anAtomicWriteCreatesTheDirectoryItNeeds() throws IOException {
+        Path dir = Files.createTempDirectory("ems-atomic").resolve("cache");
+        Path target = dir.resolve("state.json");
+
+        CachePaths.writeAtomic(target, "{}");
+
+        assertEquals("{}", Files.readString(target));
     }
 
     @Test

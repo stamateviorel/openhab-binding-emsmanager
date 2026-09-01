@@ -14,7 +14,6 @@ package org.openhab.binding.emsmanager.internal.forecast;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -82,7 +81,7 @@ public final class ForecastCache {
                     todayKwh, tomorrowKwh, peakMs == null ? null : Instant.ofEpochMilli(peakMs), rateLimit, null,
                     hourlyCsv, seriesCsv);
         } catch (Throwable t) {
-            LOGGER.debug("ForecastCache.load: {}", t.getMessage());
+            LOGGER.warn("ForecastCache.load: cache unreadable, next poll starts from nothing: {}", t.getMessage());
             return null;
         }
     }
@@ -110,10 +109,9 @@ public final class ForecastCache {
                 obj.addProperty("hourlyTodayCsv", snap.hourlyTodayCsv());
                 obj.addProperty("hourlySeriesCsv", snap.hourlySeriesCsv());
             }
-            Files.writeString(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj), StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            CachePaths.writeAtomic(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj));
         } catch (IOException e) {
-            LOGGER.debug("ForecastCache.save: {}", e.getMessage());
+            LOGGER.warn("ForecastCache.save: {}", e.getMessage());
         }
     }
 

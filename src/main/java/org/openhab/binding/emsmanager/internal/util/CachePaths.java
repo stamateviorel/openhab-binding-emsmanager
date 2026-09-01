@@ -12,7 +12,11 @@
  */
 package org.openhab.binding.emsmanager.internal.util;
 
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 
@@ -43,5 +47,29 @@ public final class CachePaths {
     /** A sibling of the cache directory, such as where reports are written. */
     public static Path userDataDir(String name) {
         return Path.of(System.getProperty("openhab.userdata", "/var/lib/openhab"), name);
+    }
+
+    /**
+     * Replaces {@code target} with {@code content} so that a reader only ever sees the old file or
+     * the new one, never a truncated one. The temporary file has to live in the target's own
+     * directory: a rename is only atomic within one filesystem.
+     */
+    public static void writeAtomic(Path target, String content) throws IOException {
+        Path dir = target.toAbsolutePath().getParent();
+        if (dir == null) {
+            throw new IOException("no parent directory for " + target);
+        }
+        Files.createDirectories(dir);
+        Path tmp = Files.createTempFile(dir, target.getFileName().toString(), ".tmp");
+        try {
+            Files.writeString(tmp, content);
+            try {
+                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
     }
 }

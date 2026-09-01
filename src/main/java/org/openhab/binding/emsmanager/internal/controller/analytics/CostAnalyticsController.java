@@ -16,7 +16,6 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -349,12 +348,9 @@ public final class CostAnalyticsController implements Controller {
 
     void saveSnapshot() {
         try {
-            Path path = CachePaths.cacheFile(CACHE_FILE);
-            Files.createDirectories(path.getParent());
-            Files.writeString(path, GSON.toJson(toJson()), StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
+            CachePaths.writeAtomic(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(toJson()));
         } catch (Throwable t) {
-            LOGGER.debug("CostAnalytics snapshot save failed: {}", t.getMessage());
+            LOGGER.warn("CostAnalytics snapshot save failed: {}", t.getMessage());
         }
     }
 

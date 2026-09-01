@@ -15,7 +15,6 @@ package org.openhab.binding.emsmanager.internal.anomaly;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -92,7 +91,7 @@ public final class AnomalyState {
                 }
             }
         } catch (Throwable t) {
-            LOGGER.debug("AnomalyState.load[{}]: {}", deviceId, t.toString());
+            LOGGER.warn("AnomalyState.load[{}]: cache unreadable, baseline starts empty: {}", deviceId, t.toString());
         }
         return st;
     }
@@ -103,10 +102,9 @@ public final class AnomalyState {
             JsonObject obj = new JsonObject();
             obj.addProperty("lastAlertMs", lastAlertMs);
             obj.add("historyByDow", GSON.toJsonTree(historyByDow));
-            Files.writeString(cacheDir().resolve("emsmanager-anomaly-" + deviceId + ".json"), GSON.toJson(obj),
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            CachePaths.writeAtomic(cacheDir().resolve("emsmanager-anomaly-" + deviceId + ".json"), GSON.toJson(obj));
         } catch (IOException e) {
-            LOGGER.debug("AnomalyState.save[{}]: {}", deviceId, e.toString());
+            LOGGER.warn("AnomalyState.save[{}]: {}", deviceId, e.toString());
         }
     }
 
