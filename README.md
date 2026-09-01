@@ -77,6 +77,15 @@ Most parameters are documented in `thing-types.xml`; a few advanced ones (CO₂ 
 
 `gridLoadRawW`, `gridLoadSmoothedW`, `solarLoadW`, `houseLoadSumW`, `batteryLoadW`, `batterySoC`, `batteryReserveTargetPct`, `batteryBelowReserve`, `availableExcessW`, `energyMode` (`SOLAR_EXCESS`/`BALANCED`/`GRID_IMPORT`/`BATTERY_DEPLETING`/`UNKNOWN`), `softPeakShavingEcoCapA`, `breakerHeadroomA`, `lastDecisionLog`, `hardPeakShavingLevel`/`hardPeakShavingStatus`/`hardPeakShavingDetail`, `car1Reason`…`car4Reason` (per-car decision reason — which controller is steering each car and why), `gridLoad5minAvgW`, `surplusOnThresholdW`, `capacityMonthlyPeakW`/`capacityCurrentQuarterAvgW`/`capacityProjectedQuarterW`/`capacityWouldExceedMonthlyPeak`/`capacityTariffStatus`, `optimizerPlan24hCsv`/`optimizerNextChargeHour`/`optimizerNextDischargeHour`, `controllerCount`/`lastTickAt`/`tickCount`.
 
+## Comparing periods
+
+Whatever period the Past page is browsing, the four figures also carry how they compare to the same
+span of the previous period: `EMS_Browse_*_Delta_Pct`. A running period is compared against the same
+number of elapsed days rather than the whole previous one, so month-to-date on the 3rd does not
+report a 90% saving purely from the calendar. The comparison is UNDEF - and the arrow hidden - when
+there is nothing honest to compare against: a previous period of zero, or one older than the ring.
+Percentages saturate at 999, because a near-zero baseline yields arithmetic rather than meaning.
+
 ## Adjustable from the dashboard
 
 Five settings can be changed at runtime instead of by editing the Thing: `shadowMode` (the stop

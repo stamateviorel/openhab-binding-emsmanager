@@ -184,4 +184,66 @@ class HistoryBrowserControllerTest {
                     period + " begins within a 27-day ring; partial coverage is not the same as no records");
         }
     }
+
+    @Test
+    void aRunningMonthIsComparedAgainstTheSameNumberOfDaysNotTheWholeOne() {
+        // 15 August: month-to-date is 15 days. Comparing that against all 31 days of July would
+        // report a saving of roughly half, every month, purely from the calendar.
+        int[] comparison = controller().comparisonForTest("month", 0, MID_AUGUST);
+
+        int days = comparison[1] - comparison[0] + 1;
+        assertEquals(15, days, "the comparison must span the same elapsed days as the selection");
+    }
+
+    @Test
+    void theComparisonForARunningMonthStartsAtTheFirstOfThePreviousMonth() {
+        int[] comparison = controller().comparisonForTest("month", 0, MID_AUGUST);
+
+        // 1 July is 45 days before 15 August; the span runs from there forward 15 days.
+        assertEquals(45, comparison[1], "aligned to the first of the previous month, not merely the days before");
+        assertEquals(31, comparison[0]);
+    }
+
+    @Test
+    void aCompletedMonthIsComparedAgainstTheWholePreviousMonth() {
+        int[] comparison = controller().comparisonForTest("month", 1, MID_AUGUST);
+
+        int days = comparison[1] - comparison[0] + 1;
+        assertEquals(30, days, "July has 30 days and all of them count once the month is over");
+    }
+
+    @Test
+    void aComparisonNeverOverlapsThePeriodItCompares() {
+        for (String scale : java.util.List.of("day", "month", "year")) {
+            for (int back = 0; back < 3; back++) {
+                int[] selection = controller().windowsForTest(MID_AUGUST).getOrDefault(scale + back,
+                        new int[] { 0, 0, 0 });
+                int[] comparison = controller().comparisonForTest(scale, back, MID_AUGUST);
+                if (selection[1] == 0 && selection[0] == 0) {
+                    continue; // combination not exposed by the test seam
+                }
+                assertTrue(comparison[0] > selection[1],
+                        scale + back + ": a period counted on both sides would compare against itself");
+            }
+        }
+    }
+
+    @Test
+    void yesterdayIsComparedAgainstTheDayBeforeIt() {
+        int[] comparison = controller().comparisonForTest("day", 1, MID_AUGUST);
+
+        assertEquals(2, comparison[0]);
+        assertEquals(2, comparison[1], "one day compares against exactly one day");
+    }
+
+    @Test
+    void anAbsurdPercentageSaturatesInsteadOfBeingReported() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java/org/openhab/binding/"
+                + "emsmanager/internal/controller/analytics/HistoryBrowserController.java"));
+
+        assertTrue(source.contains("DELTA_LIMIT_PCT"),
+                "0.013 kWh of feed-in against 7.6 gives +59627%, seen live on 2026-09-01");
+        assertTrue(source.contains("Math.max(-DELTA_LIMIT_PCT, Math.min(DELTA_LIMIT_PCT"),
+                "it has to clamp both directions, not just the rise");
+    }
 }

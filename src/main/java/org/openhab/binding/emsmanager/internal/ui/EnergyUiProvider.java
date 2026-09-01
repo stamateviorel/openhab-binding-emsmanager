@@ -97,6 +97,10 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_SET_BOILER_READY_BY = "EMS_Set_Boiler_ReadyBy_Hour";
     private static final String I_SET_GRID_MARGIN = "EMS_Set_Grid_Margin_W";
     private static final String I_SET_CAPACITY_BUDGET = "EMS_Set_Capacity_Budget_W";
+    private static final String I_BROWSE_SUPPLY_DELTA = "EMS_Browse_Supply_Delta_Pct";
+    private static final String I_BROWSE_SELFCONS_DELTA = "EMS_Browse_SelfConsumption_Delta_Pct";
+    private static final String I_BROWSE_FEEDIN_DELTA = "EMS_Browse_FeedIn_Delta_Pct";
+    private static final String I_BROWSE_COST_DELTA = "EMS_Browse_Cost_Delta_Pct";
 
     // The capacity tariff - the quarter-hour peak this country bills on.
     private static final String I_CAP_QUARTER = "EMS_Capacity_Current_Quarter";
@@ -978,11 +982,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         stepper.addConfig("step", Integer.valueOf(1));
         slot.add(stepper);
 
-        UIComponent figures = card("",
-                List.of(figure(ITEM_BROWSE_SUPPLY, "bought", "arrow_down_left_circle", "red"),
-                        figure(ITEM_BROWSE_SELFCONS, "sun used", "sun_max", "orange"),
-                        figure(ITEM_BROWSE_FEEDIN, "sold", "arrow_up_right_circle", "green"),
-                        figure(ITEM_BROWSE_COST, "cost", "money_euro", "red")));
+        UIComponent figures = card("", List.of(
+                comparedFigure(ITEM_BROWSE_SUPPLY, I_BROWSE_SUPPLY_DELTA, "bought", "arrow_down_left_circle", "red",
+                        false),
+                comparedFigure(ITEM_BROWSE_SELFCONS, I_BROWSE_SELFCONS_DELTA, "sun used", "sun_max", "orange", true),
+                comparedFigure(ITEM_BROWSE_FEEDIN, I_BROWSE_FEEDIN_DELTA, "sold", "arrow_up_right_circle", "green",
+                        true),
+                comparedFigure(ITEM_BROWSE_COST, I_BROWSE_COST_DELTA, "cost", "money_euro", "red", false)));
         slot.add(figures);
         return card;
     }
@@ -1235,6 +1241,35 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** One figure in a column: an icon, the value, and a small caption under it. */
+    /**
+     * A figure with how it compares to the same span of the previous period.
+     *
+     * @param moreIsBetter whether a rise is good news - selling more is, buying more is not, and a
+     *            green arrow on a rising bill would be worse than showing nothing
+     */
+    private UIComponent comparedFigure(String item, String deltaItem, String caption, String icon, String colour,
+            boolean moreIsBetter) {
+        UIComponent column = figure(item, caption, icon, colour);
+        if (!has(deltaItem)) {
+            return column;
+        }
+        String pct = "(items." + deltaItem + ".numericState||0)";
+        String good = moreIsBetter ? pct + ">0" : pct + "<0";
+
+        UIComponent chip = new UIComponent("Label");
+        chip.addConfig("text", "=" + pct + ">0?'\u25b2 '+Math.round(" + pct + ")+'%':" + pct
+                + "<0?'\u25bc '+Math.round(-" + pct + ")+'%':'\u2014'");
+        chip.addConfig("style", java.util.Map.of("font-size", "10px", "font-weight", "600", "line-height", "13px",
+                "color", "=" + good + "?'#43a047':'#ef5350'",
+                // no comparison at all is different from no change, and must not read as a flat zero
+                "display",
+                "=items." + deltaItem + ".state==='UNDEF'||items." + deltaItem + ".state===null?'none':'block'"));
+        // addSlot() allocates a fresh list and overwrites the slot, so appending to an existing one
+        // has to go through addComponent - calling addSlot here would erase the icon and the value.
+        column.addComponent("default", chip);
+        return column;
+    }
+
     private UIComponent figure(String item, String caption, String icon, String colour) {
         UIComponent column = new UIComponent("f7-col");
         column.addConfig("class",

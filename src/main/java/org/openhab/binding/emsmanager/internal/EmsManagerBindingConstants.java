@@ -228,6 +228,12 @@ public final class EmsManagerBindingConstants {
     public static final String ITEM_EMS_BROWSE_SELFCONSUMPTION_KWH = "EMS_Browse_SelfConsumption_kWh";
     public static final String ITEM_EMS_BROWSE_FEEDIN_KWH = "EMS_Browse_FeedIn_kWh";
     public static final String ITEM_EMS_BROWSE_COST_EUR = "EMS_Browse_Cost_EUR";
+
+    /** Change against the same elapsed span of the previous period, in percent. */
+    public static final String ITEM_EMS_BROWSE_SUPPLY_DELTA = "EMS_Browse_Supply_Delta_Pct";
+    public static final String ITEM_EMS_BROWSE_SELFCONSUMPTION_DELTA = "EMS_Browse_SelfConsumption_Delta_Pct";
+    public static final String ITEM_EMS_BROWSE_FEEDIN_DELTA = "EMS_Browse_FeedIn_Delta_Pct";
+    public static final String ITEM_EMS_BROWSE_COST_DELTA = "EMS_Browse_Cost_Delta_Pct";
     public static final String ITEM_EMS_EARNINGS_EUR_TOTAL = "EMS_Earnings_EUR_Total";
 
     // CO₂ items written by Co2TrackingController (read by the rollup tier).

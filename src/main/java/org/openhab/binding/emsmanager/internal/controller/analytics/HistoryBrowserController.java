@@ -62,10 +62,15 @@ public final class HistoryBrowserController implements Controller {
     public static final String NAME = "history-browser";
 
     /** The metric prefixes this republishes, paired with the Item each answer is written to. */
-    private static final String[][] FIGURES = { { "EMS_Supply_kWh", ITEM_EMS_BROWSE_SUPPLY_KWH, "kWh" },
-            { "EMS_SelfConsumption_kWh", ITEM_EMS_BROWSE_SELFCONSUMPTION_KWH, "kWh" },
-            { "EMS_FeedIn_kWh", ITEM_EMS_BROWSE_FEEDIN_KWH, "kWh" },
-            { "EMS_Cost_EUR", ITEM_EMS_BROWSE_COST_EUR, "eur" } };
+    private static final String[][] FIGURES = {
+            { "EMS_Supply_kWh", ITEM_EMS_BROWSE_SUPPLY_KWH, "kWh", ITEM_EMS_BROWSE_SUPPLY_DELTA },
+            { "EMS_SelfConsumption_kWh", ITEM_EMS_BROWSE_SELFCONSUMPTION_KWH, "kWh",
+                    ITEM_EMS_BROWSE_SELFCONSUMPTION_DELTA },
+            { "EMS_FeedIn_kWh", ITEM_EMS_BROWSE_FEEDIN_KWH, "kWh", ITEM_EMS_BROWSE_FEEDIN_DELTA },
+            { "EMS_Cost_EUR", ITEM_EMS_BROWSE_COST_EUR, "eur", ITEM_EMS_BROWSE_COST_DELTA } };
+
+    /** Beyond this a percentage stops informing; see {@link #publishDelta}. */
+    private static final double DELTA_LIMIT_PCT = 999.0;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HistoryBrowserController.class);
 
@@ -122,12 +127,15 @@ public final class HistoryBrowserController implements Controller {
         boolean beyondRecords = window.fromDaysAgo() > held;
         publishText(ITEM_EMS_BROWSE_LABEL, beyondRecords ? window.label() + " — before records began" : window.label());
 
+        Window previous = previousEquivalentOf(window, scale, back, today);
         for (String[] figure : FIGURES) {
             DailyRollup rollup = stats.rollupOf(figure[0]);
             if (rollup == null) {
                 continue;
             }
-            publishNumber(figure[1], window.amountFrom(rollup), "kWh".equals(figure[2]));
+            double amount = window.amountFrom(rollup);
+            publishNumber(figure[1], amount, "kWh".equals(figure[2]));
+            publishDelta(figure[3], amount, previous.amountFrom(rollup), previous.toDaysAgo() <= held);
         }
         return List.of();
     }
@@ -145,6 +153,43 @@ public final class HistoryBrowserController implements Controller {
         double amountFrom(DailyRollup rollup) {
             double total = rollup.sumRange(fromDaysAgo, toDaysAgo);
             return includesToday ? total + rollup.dayAmount() : total;
+        }
+    }
+
+    /**
+     * The same span one period earlier, aligned to the calendar and trimmed to the same number of
+     * days. The trimming is the point: a month two days old compared against a whole previous month
+     * reads as a 90% saving, which is arithmetic rather than information.
+     */
+    private Window previousEquivalentOf(Window current, String scale, int back, LocalDate today) {
+        int days = current.toDaysAgo() - current.fromDaysAgo() + 1 + (current.includesToday() ? 1 : 0);
+        Window whole = windowFor(scale, back + 1, today);
+        int from = Math.max(current.toDaysAgo() + 1, whole.toDaysAgo() - days + 1);
+        return new Window(whole.label(), from, whole.toDaysAgo(), false);
+    }
+
+    /**
+     * Percent change, or nothing at all when there is no honest comparison to make: a previous
+     * period of zero has no percentage, and one outside the ring is missing rather than empty.
+     * <p>
+     * The result saturates because a near-zero baseline produces arithmetic rather than meaning -
+     * a day with 0.013 kWh of feed-in against one with 7.6 gives "+59627%", which is true and
+     * useless. Past this bound the only readable statement is "far more than before".
+     */
+    private void publishDelta(String itemName, double now, double before, boolean comparable) {
+        if (!comparable || Math.abs(before) < 1e-6) {
+            publishUndef(itemName);
+            return;
+        }
+        double percent = (now - before) / Math.abs(before) * 100.0;
+        publishNumber(itemName, Math.max(-DELTA_LIMIT_PCT, Math.min(DELTA_LIMIT_PCT, percent)), false);
+    }
+
+    private void publishUndef(String itemName) {
+        try {
+            eventPublisher.post(ItemEventFactory.createStateEvent(itemName, UnDefType.UNDEF, null));
+        } catch (Throwable t) {
+            LOGGER.debug("publish {} failed: {}", itemName, t.getMessage());
         }
     }
 
@@ -237,6 +282,11 @@ public final class HistoryBrowserController implements Controller {
         return Map.of("day0", bounds(windowFor("day", 0, today)), "day1", bounds(windowFor("day", 1, today)), "month0",
                 bounds(windowFor("month", 0, today)), "month1", bounds(windowFor("month", 1, today)), "year1",
                 bounds(windowFor("year", 1, today)));
+    }
+
+    /** Visible for testing: the comparison span chosen for a given selection. */
+    int[] comparisonForTest(String scale, int back, LocalDate today) {
+        return bounds(previousEquivalentOf(windowFor(scale, back, today), scale, back, today));
     }
 
     private int[] bounds(Window window) {

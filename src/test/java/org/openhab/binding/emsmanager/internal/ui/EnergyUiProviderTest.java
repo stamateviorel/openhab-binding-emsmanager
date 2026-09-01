@@ -378,4 +378,41 @@ class EnergyUiProviderTest {
         assertTrue(source.contains("Math.min(1,"), "a progress bar fed more than 1 renders as overflowing");
         assertTrue(source.contains(">0?Math.min"), "dividing by a zero target would render NaN");
     }
+
+    @Test
+    void aComparedFigureKeepsItsValueAndCaption() {
+        EnergyUiProvider provider = providerWith(Set.of("EMS_Browse_Scale", "EMS_Browse_Back", "EMS_Browse_Label",
+                "EMS_Browse_Cost_EUR", "EMS_Browse_Cost_Delta_Pct"));
+
+        List<UIComponent> figures = new ArrayList<>();
+        for (RootUIComponent page : provider.getAll()) {
+            collectWithItem(page, "EMS_Browse_Cost_EUR", figures);
+        }
+
+        assertFalse(figures.isEmpty(), "the browsed cost figure should be on the page");
+    }
+
+    @Test
+    void appendingToASlotDoesNotWipeIt() {
+        UIComponent parent = new UIComponent("div");
+        parent.addSlot("default").add(new UIComponent("Label"));
+
+        parent.addComponent("default", new UIComponent("Label"));
+
+        assertEquals(2, parent.getSlot("default").size(),
+                "addSlot allocates a new list - appending must use addComponent or content is silently lost");
+    }
+
+    private void collectWithItem(@Nullable UIComponent component, String item, List<UIComponent> found) {
+        if (component == null) {
+            return;
+        }
+        Object configured = component.getConfig() != null ? component.getConfig().get("item") : null;
+        if (item.equals(configured)) {
+            found.add(component);
+        }
+        if (component.getSlots() != null) {
+            component.getSlots().values().forEach(list -> list.forEach(c -> collectWithItem(c, item, found)));
+        }
+    }
 }
