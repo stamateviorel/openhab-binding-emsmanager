@@ -64,7 +64,12 @@ class DailyRollupTest {
         assertEquals(8.0, r.sumLast(2), 1e-9, "sum of daily amounts = 3 + 5");
     }
 
-    /** Last day of a month records its delta; month reset can't produce a negative amount. */
+    /**
+     * Last day of a month records its delta, and the first day of the next one starts from zero. The
+     * reset of the month counter and this rollover land on the same tick, and the reset is applied to
+     * the item asynchronously - so the first reading of the new month is still the OLD month's total.
+     * Taking that as the day-1 baseline read every first-of-month as 0 until the following midnight.
+     */
     @Test
     void monthBoundaryRecordsDeltaAndClamps() {
         DailyRollup r = new DailyRollup(365, false);
@@ -72,12 +77,23 @@ class DailyRollupTest {
         r.observe(25.0);
         r.observe(28.0);
         assertEquals(3.0, r.dayAmount(), 1e-9);
-        double yend = r.rollover(0.0); // midnight = month boundary, counter reset to 0
+        double yend = r.rollover(28.0); // midnight: the reset to 0 has not reached the item yet
         assertEquals(3.0, yend, 1e-9, "last day of month recorded its own delta");
-        // New month, day 1.
+        // New month, day 1: the reset is visible from the next tick on.
         r.observe(0.0);
         r.observe(2.0);
-        assertEquals(2.0, r.dayAmount(), 1e-9);
+        assertEquals(2.0, r.dayAmount(), 1e-9, "the stale baseline must not swallow the whole first day");
+    }
+
+    /** A cost counter can dip a little on negative spot-price hours; that is not a reset. */
+    @Test
+    void aSmallDipIsNotMistakenForAReset() {
+        DailyRollup r = new DailyRollup(365, false);
+        r.observe(10.0);
+        r.observe(9.8);
+        assertEquals(0.0, r.dayAmount(), 1e-9, "a dip below the baseline clamps to 0, it does not re-anchor");
+        r.observe(11.0);
+        assertEquals(1.0, r.dayAmount(), 1e-9);
     }
 
     /** A mid-day counter reset (period boundary) clamps the running amount to 0, never negative. */
