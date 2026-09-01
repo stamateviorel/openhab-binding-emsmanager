@@ -89,7 +89,10 @@ public final class DynamicSpotTariff implements TariffProvider {
     public TariffSnapshot snapshot(Instant now) {
         long nowMs = clock.getAsLong();
         HourlyPrices prices = cachedPrices;
-        if (prices == null || prices.prices().isEmpty() || (nowMs - lastFetchMs) > refreshIntervalMs) {
+        // A cache fresh by the clock may still not price this hour (loaded from disk a day later,
+        // or fetched before the feed published tomorrow); that is a reason to ask now.
+        if (prices == null || prices.prices().isEmpty() || (nowMs - lastFetchMs) > refreshIntervalMs
+                || !prices.covers(now)) {
             if (lastAttemptMs != 0L && (nowMs - lastAttemptMs) < RETRY_SPACING_MS) {
                 // Too soon to ask again: report the last outcome instead of re-fetching.
                 if (prices != null && !prices.prices().isEmpty()) {

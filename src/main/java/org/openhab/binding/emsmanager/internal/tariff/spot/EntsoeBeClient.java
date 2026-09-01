@@ -112,7 +112,7 @@ public final class EntsoeBeClient implements SpotPriceClient {
     }
 
     /** Parse the Publication_MarketDocument XML and return hourly prices in €/kWh (post-markup). */
-    private HourlyPrices parse(byte[] xmlBytes) {
+    HourlyPrices parse(byte[] xmlBytes) {
         try {
             DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
             dbf.setNamespaceAware(false);
@@ -131,7 +131,12 @@ public final class EntsoeBeClient implements SpotPriceClient {
                     if (startIso == null) {
                         continue;
                     }
-                    Instant periodStart = Instant.parse(startIso);
+                    // Documents write 2026-08-31T22:00Z, without seconds, which Instant.parse rejects.
+                    Instant periodStart = ZonedDateTime.parse(startIso, DateTimeFormatter.ISO_DATE_TIME).toInstant();
+                    // BE day-ahead moved to 15-minute market time units in October 2025; a Period
+                    // then carries 96 positions, and reading them as hours smears a day over four.
+                    long slotSeconds = slotSeconds(textOf(period, "resolution"));
+                    TreeMap<Long, double[]> perHour = new TreeMap<>();
                     NodeList points = period.getElementsByTagName("Point");
                     for (int i = 0; i < points.getLength(); i++) {
                         Element pt = (Element) points.item(i);
@@ -140,10 +145,16 @@ public final class EntsoeBeClient implements SpotPriceClient {
                         if (posStr == null || priceStr == null) {
                             continue;
                         }
-                        int posHour = Integer.parseInt(posStr) - 1; // 1-based positions
-                        double eurPerMWh = Double.parseDouble(priceStr);
-                        double eurPerKwhWithMarkup = eurPerMWh / 1000.0 + markupEurPerKWh;
-                        out.put(periodStart.plusSeconds(posHour * 3600L), eurPerKwhWithMarkup);
+                        int pos = Integer.parseInt(posStr) - 1; // 1-based positions
+                        long slotStart = periodStart.getEpochSecond() + pos * slotSeconds;
+                        long hourStart = slotStart - Math.floorMod(slotStart, 3600L);
+                        double[] acc = perHour.computeIfAbsent(hourStart, k -> new double[2]);
+                        acc[0] += Double.parseDouble(priceStr);
+                        acc[1] += 1;
+                    }
+                    for (var e : perHour.entrySet()) {
+                        double eurPerMWh = e.getValue()[0] / e.getValue()[1];
+                        out.put(Instant.ofEpochSecond(e.getKey()), eurPerMWh / 1000.0 + markupEurPerKWh);
                     }
                 }
             }
@@ -153,6 +164,19 @@ public final class EntsoeBeClient implements SpotPriceClient {
             return new HourlyPrices(out, Instant.now(), null);
         } catch (Throwable t) {
             return HourlyPrices.empty("ENTSO-E parse: " + t.getMessage());
+        }
+    }
+
+    /** {@code PT15M} or {@code PT60M} on the Period; anything unreadable is taken as hourly. */
+    static long slotSeconds(@Nullable String resolution) {
+        if (resolution == null || resolution.isBlank()) {
+            return 3600L;
+        }
+        try {
+            long s = java.time.Duration.parse(resolution.trim()).getSeconds();
+            return s > 0 ? s : 3600L;
+        } catch (RuntimeException e) {
+            return 3600L;
         }
     }
 

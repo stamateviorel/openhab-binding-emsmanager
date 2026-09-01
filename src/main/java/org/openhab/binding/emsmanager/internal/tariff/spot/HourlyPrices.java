@@ -32,11 +32,26 @@ public record HourlyPrices(TreeMap<Instant, Double> prices, Instant fetchedAt, @
         return new HourlyPrices(new TreeMap<>(), Instant.now(), error);
     }
 
-    /** Find the price for the hour containing {@code at}, or NaN if not present. */
+    /** Each entry prices exactly one hour. */
+    static final long HOUR_SECONDS = 3600L;
+
+    /** Find the price for the hour containing {@code at}, or NaN if that hour was never published. */
     public double priceAt(Instant at) {
-        // floorEntry finds the highest key ≤ at — i.e. the hour-bucket containing at.
         var entry = prices.floorEntry(at);
-        return entry == null ? Double.NaN : entry.getValue();
+        if (entry == null) {
+            return Double.NaN;
+        }
+        // floorEntry also answers for any instant past the LAST published hour, which would price
+        // every hour after 23:00 (and every day of a feed outage) at that one stale value.
+        if (at.getEpochSecond() - entry.getKey().getEpochSecond() >= HOUR_SECONDS) {
+            return Double.NaN;
+        }
+        return entry.getValue();
+    }
+
+    /** Whether a price was published for the hour containing {@code at}. */
+    public boolean covers(Instant at) {
+        return !Double.isNaN(priceAt(at));
     }
 
     /** Return today's 24 prices starting from start-of-today local. */

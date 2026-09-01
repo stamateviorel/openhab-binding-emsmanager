@@ -102,4 +102,13 @@ class EnergyChartsClientTest {
     void theSubProviderKeyMatchesTheConfigOption() {
         assertEquals("energy-charts", client(0.0).subProvider());
     }
+
+    @Test
+    void theRequestAsksForTodayAndTomorrow() {
+        // Without a range the API answers with today only, and tomorrow's prices never arrive.
+        String url = client(0.0).url(java.time.LocalDate.of(2026, 9, 1));
+        assertTrue(url.contains("start=2026-09-01"), url);
+        assertTrue(url.contains("end=2026-09-03"), url);
+        assertTrue(url.contains("bzn=BE"), url);
+    }
 }

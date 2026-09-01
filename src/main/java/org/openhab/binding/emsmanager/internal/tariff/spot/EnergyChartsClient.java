@@ -69,7 +69,7 @@ public final class EnergyChartsClient implements SpotPriceClient {
 
     @Override
     public HourlyPrices fetch() {
-        String url = API_BASE + "?bzn=" + biddingZone;
+        String url = url(java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
         try {
             ContentResponse resp = http.newRequest(url).timeout(HTTP_TIMEOUT_MS, TimeUnit.MILLISECONDS).send();
             if (resp.getStatus() != HttpStatus.OK_200) {
@@ -81,6 +81,14 @@ public final class EnergyChartsClient implements SpotPriceClient {
             String msg = t.getMessage();
             return HourlyPrices.empty(msg == null ? t.getClass().getSimpleName() : msg);
         }
+    }
+
+    /**
+     * Today and tomorrow. Without an explicit range the API answers with today only, and tomorrow's
+     * prices - published around 13:00 CET - never reach the planners.
+     */
+    String url(java.time.LocalDate today) {
+        return API_BASE + "?bzn=" + biddingZone + "&start=" + today + "&end=" + today.plusDays(2);
     }
 
     /** Parse the {unix_seconds, price} arrays into hourly EUR/kWh, markup included. */
