@@ -27,6 +27,8 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Boiler force-on schedule controller.
@@ -54,6 +56,8 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
  */
 @NonNullByDefault
 public final class BoilerScheduleController implements Controller {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BoilerScheduleController.class);
 
     public static final String NAME = "boiler-schedule";
 
@@ -113,7 +117,13 @@ public final class BoilerScheduleController implements Controller {
         return rawSchedule;
     }
 
+    /** Visible for testing: schedules are hand-typed, so the forgiving path needs covering. */
+    static Map<DayOfWeek, List<TimeWindow>> parseForTest(String csv) {
+        return parse(csv);
+    }
+
     private static Map<DayOfWeek, List<TimeWindow>> parse(String csv) {
+        int malformed = 0;
         Map<DayOfWeek, List<TimeWindow>> out = new EnumMap<>(DayOfWeek.class);
         if (csv == null || csv.isBlank()) {
             return out;
@@ -151,8 +161,13 @@ public final class BoilerScheduleController implements Controller {
                 LocalTime end = LocalTime.parse(range.substring(dash + 1).trim());
                 out.computeIfAbsent(day, k -> new ArrayList<>()).add(new TimeWindow(start, end));
             } catch (Throwable t) {
-                // Skip malformed entries silently — the schedule is best-effort.
+                // Best-effort, but a typo that quietly drops half a schedule is worth one line.
+                malformed++;
             }
+        }
+        if (malformed > 0) {
+            LOGGER.warn("Boiler schedule: {} entr{} could not be read and {} ignored", malformed,
+                    malformed == 1 ? "y" : "ies", malformed == 1 ? "was" : "were");
         }
         return out;
     }

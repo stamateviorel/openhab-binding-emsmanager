@@ -40,6 +40,8 @@ import org.openhab.core.library.types.QuantityType;
 import org.openhab.core.library.types.StringType;
 import org.openhab.core.types.State;
 import org.openhab.core.types.UnDefType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * EV charging plan controller (observer).
@@ -70,6 +72,11 @@ import org.openhab.core.types.UnDefType;
  */
 @NonNullByDefault
 public final class EvChargingPlanController implements Controller {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EvChargingPlanController.class);
+    private static final long FAILURE_LOG_INTERVAL_MS = 60 * 60 * 1000L;
+
+    private final Map<String, Long> lastFailureLogMs = new java.util.concurrent.ConcurrentHashMap<>();
 
     public static final String NAME = "ev-charging-plan";
 
@@ -116,6 +123,16 @@ public final class EvChargingPlanController implements Controller {
         return false; // observer — always safe to run
     }
 
+    /** At most one line per car per hour, so a persistent failure is visible but not a flood. */
+    private void reportCarFailure(String carKey, Throwable t, long nowMs) {
+        Long last = lastFailureLogMs.get(carKey);
+        if (last != null && (nowMs - last) < FAILURE_LOG_INTERVAL_MS) {
+            return;
+        }
+        lastFailureLogMs.put(carKey, nowMs);
+        LOGGER.warn("EvChargingPlan[{}]: planning failed, skipping this car: {}", carKey, t.toString());
+    }
+
     @Override
     public List<SetpointRequest> evaluate(EnergyContext ctx) {
         long nowMs = System.currentTimeMillis();
@@ -123,7 +140,10 @@ public final class EvChargingPlanController implements Controller {
             try {
                 evaluateCar(car, ctx, nowMs);
             } catch (Throwable t) {
-                // never let one car break the whole controller
+                // One car must not break the others, but swallowing this outright meant a car that
+                // failed on every tick failed invisibly for as long as it lasted. Rate-limited
+                // because this runs every few seconds.
+                reportCarFailure(car.carKey(), t, nowMs);
             }
         }
         return List.of();
