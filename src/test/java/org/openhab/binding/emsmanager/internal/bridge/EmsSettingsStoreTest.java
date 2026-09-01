@@ -78,7 +78,7 @@ class EmsSettingsStoreTest {
     @Test
     void anOverrideWinsOverTheThingFile() {
         EmsSettingsStore store = new EmsSettingsStore();
-        store.put("gridSafetyMarginW", 600);
+        store.put("gridSafetyMarginW", 600, 500);
 
         EmsBridgeConfig cfg = new EmsBridgeConfig();
         cfg.gridSafetyMarginW = 500;
@@ -90,9 +90,9 @@ class EmsSettingsStoreTest {
     @Test
     void aChangeSurvivesARestart() {
         EmsSettingsStore first = new EmsSettingsStore();
-        first.put("boilerDailyTargetKwh", 6.5);
-        first.put("boilerReadyByHour", 9);
-        first.put("shadowMode", true);
+        first.put("boilerDailyTargetKwh", 6.5, 4.0);
+        first.put("boilerReadyByHour", 9, 7);
+        first.put("shadowMode", true, false);
 
         EmsBridgeConfig cfg = new EmsBridgeConfig();
         cfg.boilerDailyTargetKwh = 4.0;
@@ -107,7 +107,7 @@ class EmsSettingsStoreTest {
 
     @Test
     void halfKilowattHoursSurviveTheRoundTrip() {
-        new EmsSettingsStore().put("boilerDailyTargetKwh", 4.5);
+        new EmsSettingsStore().put("boilerDailyTargetKwh", 4.5, 0.0);
 
         EmsBridgeConfig cfg = new EmsBridgeConfig();
         new EmsSettingsStore().applyTo(cfg);
@@ -124,5 +124,49 @@ class EmsSettingsStoreTest {
         new EmsSettingsStore().applyTo(cfg);
 
         assertEquals(500, cfg.gridSafetyMarginW, "a corrupt override file must not take the EMS down with it");
+    }
+
+    @Test
+    void editingTheThingFileRetiresTheOverride() {
+        EmsSettingsStore store = new EmsSettingsStore();
+        store.put("shadowMode", false, false);
+
+        EmsBridgeConfig cfg = new EmsBridgeConfig();
+        cfg.shadowMode = true; // the owner reached for the kill switch in the file
+        store.applyTo(cfg);
+
+        assertTrue(cfg.shadowMode, "a value set in the file after the override must win, or the file is dead");
+        EmsBridgeConfig again = new EmsBridgeConfig();
+        again.shadowMode = true;
+        new EmsSettingsStore().applyTo(again);
+        assertTrue(again.shadowMode, "and the retired override must stay retired");
+    }
+
+    @Test
+    void anOverrideStandsWhileTheFileStillSaysWhatItSaid() {
+        EmsSettingsStore store = new EmsSettingsStore();
+        store.put("gridSafetyMarginW", 600, 500);
+
+        EmsBridgeConfig cfg = new EmsBridgeConfig();
+        cfg.gridSafetyMarginW = 500;
+        new EmsSettingsStore().applyTo(cfg);
+
+        assertEquals(600, cfg.gridSafetyMarginW);
+    }
+
+    @Test
+    void aLegacyFlatStoreIsStillReadAndAdoptsTheFileAsItsBaseline() throws IOException {
+        Files.writeString(userdata.resolve("cache").resolve("emsmanager-settings.json"),
+                "{\"gridSafetyMarginW\":500.0}");
+
+        EmsBridgeConfig cfg = new EmsBridgeConfig();
+        cfg.gridSafetyMarginW = 300;
+        new EmsSettingsStore().applyTo(cfg);
+        assertEquals(500, cfg.gridSafetyMarginW, "the pre-existing override still applies once");
+
+        EmsBridgeConfig edited = new EmsBridgeConfig();
+        edited.gridSafetyMarginW = 800;
+        new EmsSettingsStore().applyTo(edited);
+        assertEquals(800, edited.gridSafetyMarginW, "but a later file edit retires it like any other");
     }
 }
