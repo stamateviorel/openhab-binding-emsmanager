@@ -237,6 +237,90 @@
 				<label>Car amps L3 item pattern</label>
 				<default>EVSE%d_Amps_L3</default>
 			</parameter>
+			<parameter name="carPlanItemPrefixPattern" type="text" required="false">
+				<label>Charging-plan item prefix pattern</label>
+				<description>Head of the per-car charging-plan Items; %d is the car number. "EVSE%d" reads
+					EVSE1_Plan_Target_kWh,
+					EVSE1_Plan_Departure_At, EVSE1_Plan_Strategy, EVSE1_Plan_Enabled and writes
+					EVSE1_Plan_Status, _Feasible,
+					_Required_kWh, _Hours_Remaining, _Projected_Cost_EUR.</description>
+				<default>EVSE%d</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="mainBreakerAmpsPerPhase" type="integer" required="false" min="6" max="400" unit="A">
+				<label>Main breaker per phase</label>
+				<description>Rating of the main breaker per phase. The EV controllers keep a 10 A headroom under it.</description>
+				<default>63</default>
+			</parameter>
+			<parameter name="latitude" type="decimal" required="false" min="-90" max="90">
+				<label>Latitude</label>
+				<description>Site latitude, used for sunrise/sunset in the boiler and heat-pump planners.</description>
+				<default>50.7834</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="longitude" type="decimal" required="false" min="-180" max="180">
+				<label>Longitude</label>
+				<description>Site longitude.</description>
+				<default>4.7736</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="gridCo2GramsPerKWh" type="decimal" required="false" min="0">
+				<label>Grid CO₂ intensity</label>
+				<description>Grams of CO₂ per kWh imported, for the fixed emissions provider.</description>
+				<default>140</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="injectionCo2OffsetGramsPerKWh" type="decimal" required="false" min="0">
+				<label>Injection CO₂ offset</label>
+				<description>Grams of CO₂ avoided per kWh exported.</description>
+				<default>350</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="emissionsProvider" type="text" required="false">
+				<label>Emissions provider</label>
+				<description>Where the grid CO₂ intensity comes from.</description>
+				<options>
+					<option value="fixed">Fixed factors</option>
+					<option value="electricitymaps">Electricity Maps (live, needs an API key)</option>
+				</options>
+				<default>fixed</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="electricityMapsApiKey" type="text" required="false">
+				<label>Electricity Maps API key</label>
+				<context>password</context>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="electricityMapsZone" type="text" required="false">
+				<label>Electricity Maps zone</label>
+				<default>BE</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="batteryCostEurPerKWhInstalled" type="decimal" required="false" min="0">
+				<label>Battery cost per kWh installed</label>
+				<description>Used by the battery-sizing service to compute payback.</description>
+				<default>350</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="batteryPaybackYearsHorizon" type="integer" required="false" min="1" max="30">
+				<label>Battery payback horizon</label>
+				<default>10</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="batterySizingLookbackDays" type="integer" required="false" min="7" max="365">
+				<label>Battery sizing look-back</label>
+				<description>Days of history the battery-sizing service simulates.</description>
+				<default>30</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="anomalyAbsoluteFloorKwh" type="decimal" required="false" min="0">
+				<label>Anomaly absolute floor</label>
+				<description>A device's daily energy has to differ from its baseline by at least this many kWh before it
+					counts as
+					odd.</description>
+				<default>0.3</default>
+				<advanced>true</advanced>
+			</parameter>
 			<parameter name="statisticsRollupEnabled" type="boolean" required="false">
 				<label>Statistics rollup</label>
 				<description>Snapshot finalized daily totals into clean EMS_Stat_* items at 23:58 each day, so
@@ -1256,6 +1340,31 @@
 			<parameter name="modeItem" type="text" required="false">
 				<label>Mode item (read-only echo)</label>
 				<description>Item the pump's current mode can be read from. Optional; informational only.</description>
+			</parameter>
+			<parameter name="outdoorTempItem" type="text" required="false">
+				<label>Outdoor temperature item</label>
+				<description>Number item with the outdoor temperature; enables the thermal model and predictive
+					pre-heating.</description>
+				<context>item</context>
+			</parameter>
+			<parameter name="heatPowerW" type="decimal" required="false" min="0">
+				<label>Heating power</label>
+				<description>Thermal power the unit delivers when heating, in W.</description>
+				<default>3000</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="enablePredictive" type="boolean" required="false">
+				<label>Predictive pre-heating</label>
+				<description>Plan pre-heating against the price schedule and outdoor forecast once the thermal model has
+					converged.</description>
+				<default>true</default>
+				<advanced>true</advanced>
+			</parameter>
+			<parameter name="scopCurveCsv" type="text" required="false">
+				<label>COP curve</label>
+				<description>Outdoor temperature to COP pairs, "t:cop,t:cop,...".</description>
+				<default>-15:1.8,-10:2.4,-5:3.1,0:3.5,5:3.9,10:4.3,15:4.7,20:5.0</default>
+				<advanced>true</advanced>
 			</parameter>
 			<parameter name="scopCop" type="decimal" required="false">
 				<label>SCOP (Seasonal CoP)</label>

@@ -180,7 +180,9 @@ public final class DeviceMeterHandler extends BaseThingHandler {
             LocalDate today = ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMs), ZoneId.systemDefault())
                     .toLocalDate();
             if (!today.equals(lastSeenDay)) {
-                if (lastSeenDay != LocalDate.MIN) {
+                // LocalDate.MIN parsed back from the cache is equal, not identical; an identity
+                // check here once padded the ring with a year of zero days.
+                if (!LocalDate.MIN.equals(lastSeenDay)) {
                     ring.addLast(kwhToday);
                     // One entry has to mean one day: the anomaly baselines and the last-7/30
                     // channels read this ring by position, so an absence across several midnights

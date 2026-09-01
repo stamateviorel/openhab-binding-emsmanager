@@ -81,6 +81,8 @@ public class EmsBridgeConfig {
     public String carAmpsL1ItemPattern = "EVSE%d_Amps_L1";
     public String carAmpsL2ItemPattern = "EVSE%d_Amps_L2";
     public String carAmpsL3ItemPattern = "EVSE%d_Amps_L3";
+    /** Head of the per-car charging-plan Items, e.g. {@code EVSE%d} for {@code EVSE1_Plan_Target_kWh}. */
+    public String carPlanItemPrefixPattern = "EVSE%d";
 
     // Number of cars to scan (1–4).
     public int carCount = 4;

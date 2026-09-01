@@ -31,6 +31,8 @@ import org.openhab.core.config.discovery.DiscoveryResultBuilder;
 import org.openhab.core.config.discovery.DiscoveryService;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
+import org.openhab.core.thing.Thing;
+import org.openhab.core.thing.ThingRegistry;
 import org.openhab.core.thing.ThingUID;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -87,9 +89,59 @@ public final class EmsAutoDiscoveryService extends AbstractDiscoveryService {
     private @Nullable ItemRegistry itemRegistry;
     private @Nullable ScheduledFuture<?> backgroundJob;
 
+    private @Nullable ThingRegistry thingRegistry;
+
     @Activate
     public EmsAutoDiscoveryService() throws IllegalArgumentException {
-        super(SUPPORTED, DISCOVER_TIMEOUT_SEC, true);
+        // Manual scans only. A background scan every five minutes turned every *_Power Item on the
+        // site - audio zones included - into a permanent inbox entry.
+        super(SUPPORTED, DISCOVER_TIMEOUT_SEC, false);
+    }
+
+    @Reference
+    public void setThingRegistry(ThingRegistry thingRegistry) {
+        this.thingRegistry = thingRegistry;
+    }
+
+    public void unsetThingRegistry(ThingRegistry thingRegistry) {
+        this.thingRegistry = null;
+    }
+
+    /** The one bridge on this site, if there is exactly one, so discovered children attach to it. */
+    private @Nullable ThingUID existingBridge() {
+        ThingRegistry tr = thingRegistry;
+        if (tr == null) {
+            return null;
+        }
+        ThingUID found = null;
+        for (Thing t : tr.getAll()) {
+            if (THING_TYPE_BRIDGE.equals(t.getThingTypeUID())) {
+                if (found != null) {
+                    return null;
+                }
+                found = t.getUID();
+            }
+        }
+        return found;
+    }
+
+    /** Power Items already metered by a device-meter or heat-pump Thing. */
+    private Set<String> itemsAlreadyUsed() {
+        Set<String> used = new HashSet<>();
+        ThingRegistry tr = thingRegistry;
+        if (tr == null) {
+            return used;
+        }
+        for (Thing t : tr.getAll()) {
+            if (THING_TYPE_DEVICE_METER.equals(t.getThingTypeUID())
+                    || THING_TYPE_HEATPUMP.equals(t.getThingTypeUID())) {
+                Object item = t.getConfiguration().get("powerItem");
+                if (item != null) {
+                    used.add(item.toString());
+                }
+            }
+        }
+        return used;
     }
 
     @Reference
@@ -154,6 +206,14 @@ public final class EmsAutoDiscoveryService extends AbstractDiscoveryService {
         if (!hasGrid && !hasSolarOrHouse) {
             return;
         }
+        ThingRegistry tr = thingRegistry;
+        if (tr != null) {
+            for (Thing t : tr.getAll()) {
+                if (THING_TYPE_BRIDGE.equals(t.getThingTypeUID())) {
+                    return; // a site with a bridge does not need a second one suggested forever
+                }
+            }
+        }
         ThingUID uid = new ThingUID(THING_TYPE_BRIDGE, "auto");
         Map<String, Object> props = new HashMap<>();
         props.put("tickIntervalSeconds", 5);
@@ -169,9 +229,11 @@ public final class EmsAutoDiscoveryService extends AbstractDiscoveryService {
 
     /** For every <id>_Power item, suggest a device-meter. */
     private void scanForDeviceMeters(Set<String> names) {
+        ThingUID bridge = existingBridge();
+        Set<String> used = itemsAlreadyUsed();
         for (String name : names) {
             Matcher m = ENERGY_ITEM.matcher(name);
-            if (!m.matches()) {
+            if (!m.matches() || used.contains(name) || HEATPUMP_POWER.matcher(name).matches()) {
                 continue;
             }
             String id = m.group("id");
@@ -186,38 +248,49 @@ public final class EmsAutoDiscoveryService extends AbstractDiscoveryService {
                 continue;
             }
             String label = humanize(id);
-            ThingUID uid = new ThingUID(THING_TYPE_DEVICE_METER, id);
+            ThingUID uid = bridge == null ? new ThingUID(THING_TYPE_DEVICE_METER, id)
+                    : new ThingUID(THING_TYPE_DEVICE_METER, bridge, id);
             Map<String, Object> props = new HashMap<>();
             props.put("name", label);
             props.put("powerItem", name);
             props.put("powerInKw", false);
             props.put("category", guessCategory(id));
             props.put("color", guessColor(id));
-            DiscoveryResult result = DiscoveryResultBuilder.create(uid).withLabel("Device — " + label)
+            DiscoveryResultBuilder builder = DiscoveryResultBuilder.create(uid).withLabel("Device — " + label)
                     .withProperties(props).withRepresentationProperty("powerItem")
-                    .withThingType(THING_TYPE_DEVICE_METER).build();
+                    .withThingType(THING_TYPE_DEVICE_METER);
+            if (bridge != null) {
+                builder.withBridge(bridge);
+            }
+            DiscoveryResult result = builder.build();
             thingDiscovered(result);
         }
     }
 
     /** For HeatPump_*_Power_W items, suggest a heatpump Thing. */
     private void scanForHeatPumps(Set<String> names) {
+        ThingUID bridge = existingBridge();
+        Set<String> used = itemsAlreadyUsed();
         for (String name : names) {
             Matcher m = HEATPUMP_POWER.matcher(name);
-            if (!m.matches()) {
+            if (!m.matches() || used.contains(name)) {
                 continue;
             }
             String id = m.group("id");
             if (id == null || id.isBlank()) {
                 id = "main";
             }
-            ThingUID uid = new ThingUID(THING_TYPE_HEATPUMP, id);
+            ThingUID uid = bridge == null ? new ThingUID(THING_TYPE_HEATPUMP, id)
+                    : new ThingUID(THING_TYPE_HEATPUMP, bridge, id);
             Map<String, Object> props = new HashMap<>();
             props.put("name", "Heat pump " + id);
             props.put("powerItem", name);
-            DiscoveryResult result = DiscoveryResultBuilder.create(uid).withLabel("Heat pump — " + id)
-                    .withProperties(props).withRepresentationProperty("powerItem").withThingType(THING_TYPE_HEATPUMP)
-                    .build();
+            DiscoveryResultBuilder builder = DiscoveryResultBuilder.create(uid).withLabel("Heat pump — " + id)
+                    .withProperties(props).withRepresentationProperty("powerItem").withThingType(THING_TYPE_HEATPUMP);
+            if (bridge != null) {
+                builder.withBridge(bridge);
+            }
+            DiscoveryResult result = builder.build();
             thingDiscovered(result);
         }
     }
