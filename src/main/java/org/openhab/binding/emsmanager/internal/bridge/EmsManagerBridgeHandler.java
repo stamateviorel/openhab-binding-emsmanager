@@ -140,6 +140,11 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private final PriorityScheduler controllerScheduler = new PriorityScheduler();
     private final Map<String, AssetHandler> assets = new HashMap<>();
     private static final long SETTINGS_DEBOUNCE_MS = 1500;
+    /** Long enough that a permanent failure does not retry on every 5 s tick. */
+    private static final long ANALYTICS_RETRY_MS = 10 * 60 * 1000L;
+
+    private final java.util.concurrent.atomic.AtomicBoolean analyticsRunning = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile long analyticsRetryAfterMs = 0L;
 
     private final EmsSettingsStore settingsStore = new EmsSettingsStore();
     private final Map<String, Object> pendingSettings = new java.util.concurrent.ConcurrentHashMap<>();
@@ -661,7 +666,9 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         if (!analyticsInputsReady(config)) {
             return;
         }
-        lastAnalyticsDate = today;
+        if (System.currentTimeMillis() < analyticsRetryAfterMs || !analyticsRunning.compareAndSet(false, true)) {
+            return;
+        }
         BatterySizingService sizing = sizingService;
         TariffComparisonService tariff = tariffComparisonService;
         scheduler.execute(() -> {
@@ -677,9 +684,17 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                             nameOr(config.solarLoadItem, ITEM_SOLAR_LOAD),
                             nameOr(config.houseLoadSumItem, ITEM_HOUSE_LOAD_SUM));
                 }
+                // Claimed on success only. Claiming it before the work meant one failure lost the
+                // day's battery sizing and tariff comparison entirely, with nothing to retry it -
+                // exactly the trap the inputs-not-ready check above already avoids.
+                lastAnalyticsDate = today;
                 logger.info("Daily analytics auto-run complete ({})", today);
             } catch (Throwable t) {
-                logger.warn("Daily analytics auto-run failed: {}", t.toString());
+                analyticsRetryAfterMs = System.currentTimeMillis() + ANALYTICS_RETRY_MS;
+                logger.warn("Daily analytics auto-run failed, retrying after {} min: {}", ANALYTICS_RETRY_MS / 60_000L,
+                        t.toString());
+            } finally {
+                analyticsRunning.set(false);
             }
         });
     }

@@ -111,4 +111,18 @@ class BridgeSetpointsTest {
         assertTrue(initialize.contains("publishSettings();"),
                 "a control that never publishes its value opens blank and reads as zero");
     }
+
+    @Test
+    void aFailedDailyAnalyticsRunIsRetriedRatherThanLosingTheDay() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path
+                .of("src/main/java/org/openhab/binding/" + "emsmanager/internal/bridge/EmsManagerBridgeHandler.java"));
+        int runStart = source.indexOf("scheduler.execute(() -> {", source.indexOf("Daily analytics") - 4000);
+        String beforeRun = source.substring(0, runStart);
+        String insideRun = source.substring(runStart);
+
+        assertFalse(beforeRun.endsWith("lastAnalyticsDate = today;\n        "),
+                "claiming the day before the work means one failure loses it silently");
+        assertTrue(insideRun.contains("lastAnalyticsDate = today;"), "the day is claimed by the run that succeeded");
+        assertTrue(insideRun.contains("analyticsRetryAfterMs"), "a failure has to leave a way back");
+    }
 }
