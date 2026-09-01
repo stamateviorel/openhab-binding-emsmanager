@@ -37,6 +37,9 @@ class EmsSettingsStoreTest {
 
     private static Path userdata = Path.of("");
 
+    private static final @org.eclipse.jdt.annotation.Nullable String PREVIOUS_USERDATA = System
+            .getProperty("openhab.userdata");
+
     @BeforeAll
     static void redirectCacheAwayFromTheLiveInstall() throws IOException {
         userdata = Files.createTempDirectory("ems-settings-test");
@@ -47,7 +50,14 @@ class EmsSettingsStoreTest {
 
     @AfterAll
     static void restoreCacheLocation() {
-        System.clearProperty("openhab.userdata");
+        // Restoring rather than clearing: the build sets this property for the whole JVM, and a
+        // test class that wipes it silently un-sandboxes every class that runs after it.
+        String previous = PREVIOUS_USERDATA;
+        if (previous == null) {
+            System.clearProperty("openhab.userdata");
+        } else {
+            System.setProperty("openhab.userdata", previous);
+        }
     }
 
     @BeforeEach

@@ -14,7 +14,6 @@ package org.openhab.binding.emsmanager.internal.controller.analytics;
 
 import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.*;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -58,9 +57,6 @@ public final class AnomalyDetectionController implements Controller {
     public static final String NAME = "anomaly-detection";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AnomalyDetectionController.class);
-    /** Before this hour, "used less than usual today" is the calendar talking, not the device. */
-    private static final int LOW_SIDE_FROM_HOUR = 21;
-
     private static final long COOLDOWN_MS = 12 * 60 * 60 * 1000L;
 
     private final EventPublisher eventPublisher;
@@ -128,39 +124,22 @@ public final class AnomalyDetectionController implements Controller {
         return List.of();
     }
 
-    /**
-     * Whether an "unusually low" reading is only low because the day has barely started.
-     * <p>
-     * Today's running total is compared against a whole day's median, so before the day is out every
-     * device is far below its own baseline: at one minute past midnight each one sits at zero
-     * against a median of tens of kWh, which scores as a wild outlier. Four devices were flagged
-     * this way on 2026-09-01. Using much MORE than a whole day's usual is a real signal at any
-     * hour, so only the low side waits.
-     */
-    private static boolean suppressedAsTooEarly(AnomalyDetector.Result r, int hour) {
-        return r.delta() < 0 && hour < LOW_SIDE_FROM_HOUR;
+    /** Visible for testing: only a finished day can be called unusually low. */
+    static boolean reportableFromRunningTotal(AnomalyDetector.Result r) {
+        return r.anomaly() && r.delta() > 0;
     }
 
-    /** Visible for testing: the two decisions that made this feature cry wolf every midnight. */
-    static boolean suppressedForTest(AnomalyDetector.Result r, int hour) {
-        return suppressedAsTooEarly(r, hour);
+    static String describeForTest(double todayKwh, AnomalyDetector.Result r, boolean reportable) {
+        return describe(todayKwh, r, reportable);
     }
 
-    static String describeForTest(double todayKwh, AnomalyDetector.Result r, boolean reportable, int hour) {
-        return describe(todayKwh, r, reportable, hour);
-    }
-
-    private static String describe(double todayKwh, AnomalyDetector.Result r, boolean reportable, int hour) {
+    private static String describe(double todayKwh, AnomalyDetector.Result r, boolean reportable) {
         if (reportable) {
             return String.format(java.util.Locale.ROOT,
                     "Vandaag %.2f kWh; mediaan deze weekdag %.2f kWh (z=%.1f, MAD=%.2f)", todayKwh, r.median(),
                     r.zScore(), r.mad());
         }
-        if (r.anomaly() && suppressedAsTooEarly(r, hour)) {
-            return String.format(java.util.Locale.ROOT, "Vandaag %.2f kWh; nog vroeg op de dag (mediaan %.2f kWh)",
-                    todayKwh, r.median());
-        }
-        return String.format(java.util.Locale.ROOT, "Vandaag %.2f kWh; mediaan deze weekdag %.2f kWh (normaal)",
+        return String.format(java.util.Locale.ROOT, "Vandaag %.2f kWh; mediaan deze weekdag %.2f kWh (tot nu toe)",
                 todayKwh, r.median());
     }
 
@@ -174,25 +153,36 @@ public final class AnomalyDetectionController implements Controller {
 
         AnomalyDetector.Result r = AnomalyDetector.detect(history, todayKwh, absoluteFloorKwh, 3.5);
 
-        int hour = ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMs), ZoneId.systemDefault()).getHour();
-        boolean reportable = r.anomaly() && !suppressedAsTooEarly(r, hour);
+        // Only the high side can be judged from a part-finished day. A running total is always
+        // below a distribution of finished ones, so "unusually low" is not a statement this
+        // comparison can make until the day is over; it is answered once, at the rollover below.
+        boolean reportable = reportableFromRunningTotal(r);
 
         // Publish per-device channels (best-effort).
         String activeItem = "EMS_Anomaly_" + id + "_Active";
         String detailItem = "EMS_Anomaly_" + id + "_Detail";
 
+        // A device found short yesterday stays flagged for the day, so the finding survives long
+        // enough to be seen; it is the reason to go and look at the thing.
+        String latched = today.equals(state.lowDay) ? state.lowDetail : null;
+
         // Always current. Publishing this only while an alert fires left every device carrying the
         // text of its last one indefinitely - car1 read "Vandaag 25.00 kWh" on a day it used none,
         // which is a false statement rather than an out-of-date one.
-        publish(detailItem, new StringType(describe(todayKwh, r, reportable, hour)));
+        publish(detailItem, new StringType(latched != null ? latched : describe(todayKwh, r, reportable)));
 
         if (reportable && (nowMs - state.lastAlertMs) > COOLDOWN_MS) {
             publish(activeItem, OnOffType.ON);
             state.lastAlertMs = nowMs;
             state.save();
-            LOGGER.info("Anomaly[{}]: {}", id, describe(todayKwh, r, true, hour));
+            LOGGER.info("Anomaly[{}]: {}", id, describe(todayKwh, r, true));
             return true;
-        } else if (!reportable) {
+        }
+        if (latched != null) {
+            publish(activeItem, OnOffType.ON);
+            return true;
+        }
+        if (!reportable) {
             publish(activeItem, OnOffType.OFF);
         }
 
@@ -207,6 +197,19 @@ public final class AnomalyDetectionController implements Controller {
             double yesterdayTotal = dm.yesterdayKwh();
             if (!Double.isNaN(yesterdayTotal)) {
                 int yesterdayDow = last.getDayOfWeek().getValue();
+                // Judged against the baseline as it stood BEFORE yesterday joins it, otherwise the
+                // day being tested is part of what it is tested against.
+                AnomalyDetector.Result done = AnomalyDetector.detect(state.historyFor(yesterdayDow), yesterdayTotal,
+                        absoluteFloorKwh, 3.5);
+                state.lowDay = null;
+                state.lowDetail = null;
+                if (done.anomaly() && done.delta() < 0) {
+                    state.lowDay = today;
+                    state.lowDetail = String.format(java.util.Locale.ROOT,
+                            "Gisteren %.2f kWh; mediaan deze weekdag %.2f kWh (ongewoon laag)", yesterdayTotal,
+                            done.median());
+                    LOGGER.info("Anomaly[{}]: {}", id, state.lowDetail);
+                }
                 state.recordEndOfDay(yesterdayDow, yesterdayTotal);
                 state.save();
                 LOGGER.debug("Anomaly[{}]: appended {} kWh to {}-baseline (now {} samples)", id,

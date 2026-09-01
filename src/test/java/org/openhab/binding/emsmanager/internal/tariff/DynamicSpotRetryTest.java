@@ -42,6 +42,9 @@ class DynamicSpotRetryTest {
      * The provider persists successful fetches, so without this the suite would write synthetic
      * prices into the running installation's cache and the live system would plan against them.
      */
+    private static final @org.eclipse.jdt.annotation.Nullable String PREVIOUS_USERDATA = System
+            .getProperty("openhab.userdata");
+
     @BeforeAll
     static void redirectCacheAwayFromTheLiveInstall() throws java.io.IOException {
         java.nio.file.Path tmp = java.nio.file.Files.createTempDirectory("ems-tariff-test");
@@ -52,7 +55,14 @@ class DynamicSpotRetryTest {
 
     @AfterAll
     static void restoreCacheLocation() {
-        System.clearProperty("openhab.userdata");
+        // Restoring rather than clearing: the build sets this property for the whole JVM, and a
+        // test class that wipes it silently un-sandboxes every class that runs after it.
+        String previous = PREVIOUS_USERDATA;
+        if (previous == null) {
+            System.clearProperty("openhab.userdata");
+        } else {
+            System.setProperty("openhab.userdata", previous);
+        }
     }
 
     /** Counts calls, and fails until told otherwise - like a platform in maintenance. */

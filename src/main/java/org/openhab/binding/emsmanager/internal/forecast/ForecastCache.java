@@ -14,12 +14,12 @@ package org.openhab.binding.emsmanager.internal.forecast;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +42,7 @@ import com.google.gson.JsonObject;
 public final class ForecastCache {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ForecastCache.class);
-    private static final Path CACHE_PATH = Path.of("/var/lib/openhab/cache/emsmanager-forecast-cache.json");
+    private static final String CACHE_FILE = "emsmanager-forecast-cache.json";
     private static final Gson GSON = new Gson();
 
     private ForecastCache() {
@@ -51,10 +51,10 @@ public final class ForecastCache {
     /** @return cached snapshot, or {@code null} if missing/unreadable/unparseable. */
     public static @Nullable ForecastSnapshot load() {
         try {
-            if (!Files.exists(CACHE_PATH)) {
+            if (!Files.exists(CachePaths.cacheFile(CACHE_FILE))) {
                 return null;
             }
-            String raw = Files.readString(CACHE_PATH);
+            String raw = Files.readString(CachePaths.cacheFile(CACHE_FILE));
             JsonObject obj = GSON.fromJson(raw, JsonObject.class);
             if (obj == null) {
                 return null;
@@ -110,7 +110,7 @@ public final class ForecastCache {
                 obj.addProperty("hourlyTodayCsv", snap.hourlyTodayCsv());
                 obj.addProperty("hourlySeriesCsv", snap.hourlySeriesCsv());
             }
-            Files.writeString(CACHE_PATH, GSON.toJson(obj), StandardOpenOption.CREATE,
+            Files.writeString(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj), StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         } catch (IOException e) {
             LOGGER.debug("ForecastCache.save: {}", e.getMessage());

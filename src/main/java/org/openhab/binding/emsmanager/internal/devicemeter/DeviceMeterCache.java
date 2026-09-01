@@ -21,6 +21,7 @@ import java.util.Deque;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +49,7 @@ import com.google.gson.JsonObject;
 public final class DeviceMeterCache {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DeviceMeterCache.class);
-    private static final Path CACHE_DIR = Path.of("/var/lib/openhab/cache");
+
     private static final Gson GSON = new Gson();
     private static final int RING_DAYS = 365;
 
@@ -91,7 +92,7 @@ public final class DeviceMeterCache {
 
     public static void save(String deviceId, State s) {
         try {
-            Files.createDirectories(CACHE_DIR);
+            Files.createDirectories(CachePaths.cacheDir());
             JsonObject obj = new JsonObject();
             obj.addProperty("lastSeenDay", s.lastSeenDay().toString());
             obj.addProperty("kwhToday", s.kwhToday());
@@ -112,7 +113,7 @@ public final class DeviceMeterCache {
     }
 
     private static Path pathFor(String deviceId) {
-        return CACHE_DIR.resolve("emsmanager-device-meter-" + sanitize(deviceId) + ".json");
+        return CachePaths.cacheDir().resolve("emsmanager-device-meter-" + sanitize(deviceId) + ".json");
     }
 
     private static String sanitize(String id) {

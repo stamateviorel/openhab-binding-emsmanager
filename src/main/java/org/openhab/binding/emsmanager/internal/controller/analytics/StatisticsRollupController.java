@@ -16,7 +16,6 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -28,6 +27,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemNotFoundException;
@@ -78,7 +78,7 @@ public final class StatisticsRollupController implements Controller {
 
     /** Snapshot just before midnight so the value lands inside the right calendar day. */
     private static final LocalTime SNAPSHOT_TIME = LocalTime.of(23, 58);
-    private static final Path CACHE_PATH = Path.of("/var/lib/openhab/cache/emsmanager-rollup-cache.json");
+    private static final String CACHE_FILE = "emsmanager-rollup-cache.json";
     private static final Gson GSON = new Gson();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StatisticsRollupController.class);
@@ -183,10 +183,10 @@ public final class StatisticsRollupController implements Controller {
 
     private void loadFromDisk() {
         try {
-            if (!Files.exists(CACHE_PATH)) {
+            if (!Files.exists(CachePaths.cacheFile(CACHE_FILE))) {
                 return;
             }
-            JsonObject obj = GSON.fromJson(Files.readString(CACHE_PATH), JsonObject.class);
+            JsonObject obj = GSON.fromJson(Files.readString(CachePaths.cacheFile(CACHE_FILE)), JsonObject.class);
             if (obj != null && obj.has("lastSnapshotDay")) {
                 lastSnapshotDay = LocalDate.parse(obj.get("lastSnapshotDay").getAsString());
             }
@@ -199,7 +199,7 @@ public final class StatisticsRollupController implements Controller {
         try {
             JsonObject obj = new JsonObject();
             obj.addProperty("lastSnapshotDay", lastSnapshotDay.toString());
-            Files.writeString(CACHE_PATH, GSON.toJson(obj), StandardOpenOption.CREATE,
+            Files.writeString(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj), StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         } catch (IOException e) {
             LOGGER.debug("StatisticsRollup.save: {}", e.getMessage());

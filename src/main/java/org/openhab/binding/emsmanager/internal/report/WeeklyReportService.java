@@ -22,6 +22,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemNotFoundException;
 import org.openhab.core.items.ItemRegistry;
@@ -49,7 +50,7 @@ import org.slf4j.LoggerFactory;
 public final class WeeklyReportService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WeeklyReportService.class);
-    private static final Path REPORTS_DIR = Path.of("/var/lib/openhab/reports");
+
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final ItemRegistry itemRegistry;
@@ -124,8 +125,8 @@ public final class WeeklyReportService {
         String content = html.toString();
         // Write to disk
         try {
-            Files.createDirectories(REPORTS_DIR);
-            Path p = REPORTS_DIR.resolve("weekly-" + endDate.format(DATE_FMT) + ".html");
+            Files.createDirectories(CachePaths.userDataDir("reports"));
+            Path p = CachePaths.userDataDir("reports").resolve("weekly-" + endDate.format(DATE_FMT) + ".html");
             Files.writeString(p, content, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE);
             LOGGER.info("Weekly report written: {}", p);

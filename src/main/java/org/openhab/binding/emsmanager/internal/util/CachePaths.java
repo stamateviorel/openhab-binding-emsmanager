@@ -32,6 +32,16 @@ public final class CachePaths {
      * pinned to a Debian-style install.
      */
     public static Path cacheFile(String fileName) {
-        return Path.of(System.getProperty("openhab.userdata", "/var/lib/openhab"), "cache", fileName);
+        return cacheDir().resolve(fileName);
+    }
+
+    /** The directory itself, for state that is one file per device rather than one file. */
+    public static Path cacheDir() {
+        return Path.of(System.getProperty("openhab.userdata", "/var/lib/openhab"), "cache");
+    }
+
+    /** A sibling of the cache directory, such as where reports are written. */
+    public static Path userDataDir(String name) {
+        return Path.of(System.getProperty("openhab.userdata", "/var/lib/openhab"), name);
     }
 }
