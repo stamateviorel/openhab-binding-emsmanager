@@ -23,6 +23,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.junit.jupiter.api.Test;
 import org.openhab.binding.emsmanager.internal.controller.peak.HardPeakShavingController;
 import org.openhab.binding.emsmanager.internal.controller.peak.SoftPeakShavingController;
+import org.openhab.binding.emsmanager.internal.core.CapabilityCheck;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
@@ -49,9 +50,20 @@ class EvCoordinatorControllerTest {
     }
 
     private EnergyContext ctxWith(CarSnapshot car) {
+        return ctxWith(car, 0);
+    }
+
+    /** {@code otherLoadA} is what everyone else draws on every phase; the car itself draws nothing. */
+    private EnergyContext ctxWith(CarSnapshot car, double otherLoadA) {
         return new EnergyContext(Instant.now(), -13000, -13000, 0, 13000, -20, 40, 30, false, 0,
-                EnergyContext.Mode.GRID_IMPORT, Map.of(car.carKey(), car), 0, 0, 0, true, false, false, true, -13000, 0,
-                false, -13000, -2000, 60_000L, 0.30, new double[0], Double.NaN, Double.NaN, false);
+                EnergyContext.Mode.GRID_IMPORT, Map.of(car.carKey(), car), otherLoadA, otherLoadA, otherLoadA, true,
+                false, false, true, -13000, 0, false, -13000, -2000, 60_000L, 0.30, new double[0], Double.NaN,
+                Double.NaN, false);
+    }
+
+    private Optional<SetpointRequest> pauseFor(List<SetpointRequest> out) {
+        return out.stream().filter(r -> r.assetId().equals("car1") && r.kind() == SetpointRequest.Kind.PAUSE)
+                .findFirst();
     }
 
     @Test
@@ -76,6 +88,56 @@ class EvCoordinatorControllerTest {
 
         assertTrue(out.stream().noneMatch(r -> r.assetId().equals("car1")),
                 "ECO must not fight a pause it did not set — no setpoints expected for a paused ECO car");
+    }
+
+    /**
+     * The pause the coordinator sets for breaker headroom is its own and must be released when the
+     * headroom comes back - otherwise an ECO car paused for a busy phase looks "externally paused"
+     * forever and never charges again.
+     */
+    @Test
+    void ecoPausedForBreakerHeadroomIsResumedOnceHeadroomRecovers() {
+        EvCoordinatorController controller = newController();
+        int limit = CapabilityCheck.EFFECTIVE_LIMIT_A;
+
+        List<SetpointRequest> paused = controller
+                .evaluate(ctxWith(car("car1", CarSnapshot.Mode.ECO, false, "Charging"), limit - 3));
+        assertEquals(1.0, pauseFor(paused).orElseThrow().value(), 1e-9, "3 A of headroom must pause the car");
+
+        List<SetpointRequest> resumed = controller
+                .evaluate(ctxWith(car("car1", CarSnapshot.Mode.ECO, true, "SuspendedEVSE"), limit - 20));
+        assertEquals(0.0, pauseFor(resumed).orElseThrow().value(), 1e-9,
+                "the coordinator must release the pause it set once headroom is back");
+        assertTrue(resumed.stream().anyMatch(r -> r.assetId().equals("car1") && r.kind() == SetpointRequest.Kind.AMPS),
+                "and start charging again");
+    }
+
+    /** Between 6 A and 8 A of headroom the car stays paused, so it does not flap at the boundary. */
+    @Test
+    void breakerPauseIsHeldInTheHysteresisBand() {
+        EvCoordinatorController controller = newController();
+        int limit = CapabilityCheck.EFFECTIVE_LIMIT_A;
+        controller.evaluate(ctxWith(car("car1", CarSnapshot.Mode.ECO, false, "Charging"), limit - 3));
+
+        List<SetpointRequest> held = controller
+                .evaluate(ctxWith(car("car1", CarSnapshot.Mode.ECO, true, "SuspendedEVSE"), limit - 7));
+
+        assertTrue(held.stream().noneMatch(r -> r.assetId().equals("car1")),
+                "7 A of headroom is not enough to release a breaker pause");
+    }
+
+    /** A pause that was already there when the phase filled up is somebody else's, and stays theirs. */
+    @Test
+    void aPauseThatPredatesTheBreakerEventIsNotReleased() {
+        EvCoordinatorController controller = newController();
+        int limit = CapabilityCheck.EFFECTIVE_LIMIT_A;
+        controller.evaluate(ctxWith(car("car1", CarSnapshot.Mode.ECO, true, "SuspendedEVSE"), limit - 3));
+
+        List<SetpointRequest> out = controller
+                .evaluate(ctxWith(car("car1", CarSnapshot.Mode.ECO, true, "SuspendedEVSE"), limit - 20));
+
+        assertTrue(out.stream().noneMatch(r -> r.assetId().equals("car1")),
+                "ECO must not resume a pause it did not set");
     }
 
     @Test

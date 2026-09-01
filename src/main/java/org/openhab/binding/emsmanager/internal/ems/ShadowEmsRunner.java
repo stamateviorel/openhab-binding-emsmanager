@@ -19,6 +19,7 @@ import java.util.Locale;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants;
+import org.openhab.binding.emsmanager.internal.controller.safety.SafetyBreakerController;
 import org.openhab.binding.emsmanager.internal.core.CapabilityCheck;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
@@ -84,6 +85,9 @@ public class ShadowEmsRunner {
     // Per-car consecutive auto-RemoteStart attempts, held across ticks (legacy chargeStartAttempts) —
     // drives the wedged-charger backoff.
     private final java.util.Map<String, Integer> evChargeStartAttempts = new java.util.HashMap<>();
+    // Cars whose pause the engine set for breaker headroom; cleared once the car is seen unpaused. A
+    // pause already present when headroom dropped is someone else's and stays respected.
+    private final java.util.Set<String> evPausedByEngine = new java.util.HashSet<>();
     // One start per calendar day per batch item (reference simplification of FINISHED-state
     // tracking): latched on an emitted start OR on observing the program running.
     private final java.util.Map<String, java.time.LocalDate> batchStartedOn = new java.util.HashMap<>();
@@ -471,11 +475,12 @@ public class ShadowEmsRunner {
      * The ported {@code EvCoordinatorController} per-car decision: shared ECO budget across the
      * active cable-connected non-SNEL cars, per-car breaker headroom, SNEL/ECO target amps (ECO
      * floored at the minimum — the "never auto-pauses" invariant), ramp + hysteresis with per-car
-     * last-sent amps held across ticks, modbus-stale → MIN, low headroom → pause, hard peak-shave →
-     * defer, ECO external-pause respect, and the auto-RemoteStart wedged-charger backoff. The sticky
-     * soft-ECO-cap band is updated here from the smoothed grid.
+     * last-sent amps held across ticks, modbus-stale → MIN, low headroom → pause (released again at
+     * {@link SafetyBreakerController#RESUME_HEADROOM_A}), hard peak-shave → defer, ECO external-pause
+     * respect, and the auto-RemoteStart wedged-charger backoff. The sticky soft-ECO-cap band is
+     * updated here from the smoothed grid. Visible for testing.
      */
-    private List<EvDecision> decideEvs(EnergyContext ctx) {
+    List<EvDecision> decideEvs(EnergyContext ctx) {
         List<EvDecision> out = new ArrayList<>();
         java.util.Collection<CarSnapshot> cars = ctx.cars().values();
         if (cars.isEmpty()) {
@@ -502,11 +507,15 @@ public class ShadowEmsRunner {
             Double enginePause = null;
             boolean engineStart = false;
             String why;
+            if (!car.paused()) {
+                evPausedByEngine.remove(key);
+            }
             if (!car.cableConnected() || car.mode() == CarSnapshot.Mode.OFF) {
                 engineAmps = null;
                 why = "no cable / OFF";
                 evLastSentAmps.remove(key);
                 evChargeStartAttempts.remove(key); // cable-unplug clears the backoff counter (legacy)
+                evPausedByEngine.remove(key);
             } else if (!ctx.modbusFresh()) {
                 engineAmps = CapabilityCheck.MIN_CHARGING_CURRENT_A;
                 why = "modbus stale → MIN";
@@ -515,17 +524,25 @@ public class ShadowEmsRunner {
                 int headroom = CapabilityCheck.breakerHeadroomA(car.ampsL1(), car.ampsL2(), car.ampsL3(),
                         ctx.totalAmpsL1(), ctx.totalAmpsL2(), ctx.totalAmpsL3(),
                         breakerLimitAperPhase - CapabilityCheck.BREAKER_HEADROOM_A, evElectrical.maxChargeCurrentA());
+                boolean ownPause = evPausedByEngine.contains(key);
                 if (headroom < CapabilityCheck.MIN_CHARGING_CURRENT_A) {
+                    if (!car.paused()) {
+                        evPausedByEngine.add(key);
+                    }
                     engineAmps = null; // legacy emits PAUSE here, not an AMPS setpoint
                     enginePause = 1.0;
                     why = "breaker headroom " + headroom + "A < MIN → pause (no amps)";
                     evLastSentAmps.remove(key);
+                } else if (ownPause && headroom < SafetyBreakerController.RESUME_HEADROOM_A) {
+                    engineAmps = null;
+                    why = "breaker headroom " + headroom + "A still < " + SafetyBreakerController.RESUME_HEADROOM_A
+                            + "A → hold pause";
                 } else if (peakShaveActive) {
                     engineAmps = null; // hard peak-shave: defer entirely
                     why = "peak-shaving active → defer";
-                } else if (car.mode() != CarSnapshot.Mode.SNEL && car.paused()) {
-                    // External-pause respect (ECO only; SNEL is exempt). The engine never sets a pause,
-                    // so a pause it sees is always external → leave the car alone (legacy returns).
+                } else if (car.mode() != CarSnapshot.Mode.SNEL && car.paused() && !ownPause) {
+                    // External-pause respect (ECO only; SNEL is exempt): a pause the engine did not
+                    // set is someone else's decision → leave the car alone (legacy returns).
                     engineAmps = null;
                     why = "ECO external-pause respected (no amps)";
                 } else {
@@ -561,7 +578,8 @@ public class ShadowEmsRunner {
                         boolean eco = car.mode() != CarSnapshot.Mode.SNEL;
                         why = (eco ? "ECO" : "SNEL")
                                 + (eco && !Double.isNaN(ecoBudgetW) ? " budget=" + Math.round(ecoBudgetW) + "W" : "")
-                                + " (headroom=" + headroom + "A)" + (engineStart ? " · +RemoteStart" : "");
+                                + " (headroom=" + headroom + "A)" + (ownPause ? " · breaker pause released" : "")
+                                + (engineStart ? " · +RemoteStart" : "");
                     }
                 }
             }

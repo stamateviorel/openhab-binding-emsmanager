@@ -15,7 +15,9 @@ package org.openhab.binding.emsmanager.internal.controller.safety;
 import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.*;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.binding.emsmanager.internal.core.CapabilityCheck;
@@ -28,7 +30,9 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
  * Per-car breaker-headroom check: for each cable-connected car, compute
  * the headroom on its worst phase (effective 53 A limit minus the other
  * cars' draw on that phase). If headroom &lt; MIN (6 A), emit a PAUSE
- * request.
+ * request; once headroom is back to {@link #RESUME_HEADROOM_A} the pause this
+ * controller set is released again. A pause that was already there when
+ * headroom dropped belongs to someone else and is left alone.
  *
  * <p>
  * Priority 10 — runs before everything else. Always-on, can't be
@@ -41,8 +45,14 @@ public final class SafetyBreakerController implements Controller {
 
     public static final String NAME = "safety-breaker";
 
+    /** Headroom needed before a breaker pause is released — 2 A above MIN so the car does not flap at the edge. */
+    public static final int RESUME_HEADROOM_A = CapabilityCheck.MIN_CHARGING_CURRENT_A + 2;
+
     private final boolean shadowMode;
     private final int effectiveLimitA;
+
+    /** Cars whose pause this controller set; cleared once the car is seen unpaused. */
+    private final Set<String> pausedByMe = new HashSet<>();
 
     public SafetyBreakerController(boolean shadowMode) {
         this(shadowMode, CapabilityCheck.EFFECTIVE_LIMIT_A);
@@ -92,14 +102,26 @@ public final class SafetyBreakerController implements Controller {
         }
 
         for (CarSnapshot car : ctx.cars().values()) {
+            String key = car.carKey();
             if (!car.cableConnected()) {
+                pausedByMe.remove(key);
                 continue;
+            }
+            if (!car.paused()) {
+                pausedByMe.remove(key);
             }
             int headroom = CapabilityCheck.breakerHeadroomA(car.ampsL1(), car.ampsL2(), car.ampsL3(), ctx.totalAmpsL1(),
                     ctx.totalAmpsL2(), ctx.totalAmpsL3(), effectiveLimitA);
             if (headroom < CapabilityCheck.MIN_CHARGING_CURRENT_A) {
-                out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.PAUSE, 1.0, priority(), NAME,
+                // A pause already present when headroom dropped is not ours to release.
+                if (!car.paused()) {
+                    pausedByMe.add(key);
+                }
+                out.add(new SetpointRequest(key, SetpointRequest.Kind.PAUSE, 1.0, priority(), NAME,
                         "Breaker headroom " + headroom + " A < " + CapabilityCheck.MIN_CHARGING_CURRENT_A + " A"));
+            } else if (pausedByMe.contains(key) && headroom >= RESUME_HEADROOM_A) {
+                out.add(new SetpointRequest(key, SetpointRequest.Kind.PAUSE, 0.0, priority(), NAME,
+                        "Breaker headroom back to " + headroom + " A ≥ " + RESUME_HEADROOM_A + " A — resuming"));
             }
         }
         return out;
