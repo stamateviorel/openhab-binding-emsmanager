@@ -14,6 +14,7 @@ package org.openhab.binding.emsmanager.internal.controller.analytics;
 
 import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.*;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -57,6 +58,9 @@ public final class AnomalyDetectionController implements Controller {
     public static final String NAME = "anomaly-detection";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AnomalyDetectionController.class);
+    /** Before this hour, "used less than usual today" is the calendar talking, not the device. */
+    private static final int LOW_SIDE_FROM_HOUR = 21;
+
     private static final long COOLDOWN_MS = 12 * 60 * 60 * 1000L;
 
     private final EventPublisher eventPublisher;
@@ -124,7 +128,44 @@ public final class AnomalyDetectionController implements Controller {
         return List.of();
     }
 
-    private boolean evaluateOne(DeviceMeterHandler dm, LocalDate today, int dow, long nowMs) {
+    /**
+     * Whether an "unusually low" reading is only low because the day has barely started.
+     * <p>
+     * Today's running total is compared against a whole day's median, so before the day is out every
+     * device is far below its own baseline: at one minute past midnight each one sits at zero
+     * against a median of tens of kWh, which scores as a wild outlier. Four devices were flagged
+     * this way on 2026-09-01. Using much MORE than a whole day's usual is a real signal at any
+     * hour, so only the low side waits.
+     */
+    private static boolean suppressedAsTooEarly(AnomalyDetector.Result r, int hour) {
+        return r.delta() < 0 && hour < LOW_SIDE_FROM_HOUR;
+    }
+
+    /** Visible for testing: the two decisions that made this feature cry wolf every midnight. */
+    static boolean suppressedForTest(AnomalyDetector.Result r, int hour) {
+        return suppressedAsTooEarly(r, hour);
+    }
+
+    static String describeForTest(double todayKwh, AnomalyDetector.Result r, boolean reportable, int hour) {
+        return describe(todayKwh, r, reportable, hour);
+    }
+
+    private static String describe(double todayKwh, AnomalyDetector.Result r, boolean reportable, int hour) {
+        if (reportable) {
+            return String.format(java.util.Locale.ROOT,
+                    "Vandaag %.2f kWh; mediaan deze weekdag %.2f kWh (z=%.1f, MAD=%.2f)", todayKwh, r.median(),
+                    r.zScore(), r.mad());
+        }
+        if (r.anomaly() && suppressedAsTooEarly(r, hour)) {
+            return String.format(java.util.Locale.ROOT, "Vandaag %.2f kWh; nog vroeg op de dag (mediaan %.2f kWh)",
+                    todayKwh, r.median());
+        }
+        return String.format(java.util.Locale.ROOT, "Vandaag %.2f kWh; mediaan deze weekdag %.2f kWh (normaal)",
+                todayKwh, r.median());
+    }
+
+    /** Package-private so a test can drive one device without standing up a Thing registry. */
+    boolean evaluateOne(DeviceMeterHandler dm, LocalDate today, int dow, long nowMs) {
         String id = dm.deviceId();
         AnomalyState state = states.computeIfAbsent(id, AnomalyState::load);
 
@@ -133,21 +174,25 @@ public final class AnomalyDetectionController implements Controller {
 
         AnomalyDetector.Result r = AnomalyDetector.detect(history, todayKwh, absoluteFloorKwh, 3.5);
 
+        int hour = ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMs), ZoneId.systemDefault()).getHour();
+        boolean reportable = r.anomaly() && !suppressedAsTooEarly(r, hour);
+
         // Publish per-device channels (best-effort).
         String activeItem = "EMS_Anomaly_" + id + "_Active";
         String detailItem = "EMS_Anomaly_" + id + "_Detail";
 
-        if (r.anomaly() && (nowMs - state.lastAlertMs) > COOLDOWN_MS) {
+        // Always current. Publishing this only while an alert fires left every device carrying the
+        // text of its last one indefinitely - car1 read "Vandaag 25.00 kWh" on a day it used none,
+        // which is a false statement rather than an out-of-date one.
+        publish(detailItem, new StringType(describe(todayKwh, r, reportable, hour)));
+
+        if (reportable && (nowMs - state.lastAlertMs) > COOLDOWN_MS) {
             publish(activeItem, OnOffType.ON);
-            String detail = String.format(java.util.Locale.ROOT,
-                    "Vandaag %.2f kWh; mediaan deze weekdag %.2f kWh (z=%.1f, MAD=%.2f)", todayKwh, r.median(),
-                    r.zScore(), r.mad());
-            publish(detailItem, new StringType(detail));
             state.lastAlertMs = nowMs;
             state.save();
-            LOGGER.info("Anomaly[{}]: {}", id, detail);
+            LOGGER.info("Anomaly[{}]: {}", id, describe(todayKwh, r, true, hour));
             return true;
-        } else if (!r.anomaly()) {
+        } else if (!reportable) {
             publish(activeItem, OnOffType.OFF);
         }
 
