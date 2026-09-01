@@ -130,7 +130,8 @@ public final class LongTermStatsController implements Controller {
                 if (r == null) {
                     continue;
                 }
-                double yesterday = r.rollover(readNumber(m[0]));
+                double yesterday = r.rollover(readNumber(m[0]),
+                        (int) java.time.temporal.ChronoUnit.DAYS.between(lastSeenDay, today));
                 publish(m[1] + "_Yesterday", yesterday, isEnergy(m));
             }
             lastSeenDay = today; // update BEFORE persisting so a restart won't re-roll this day

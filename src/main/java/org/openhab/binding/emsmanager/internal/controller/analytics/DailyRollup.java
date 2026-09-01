@@ -82,8 +82,26 @@ public final class DailyRollup {
      * @return the amount attributed to the day that just ended
      */
     public double rollover(double firstReadingOfNewDay) {
+        return rollover(firstReadingOfNewDay, 1);
+    }
+
+    /**
+     * Close the day that just ended and open a new one.
+     * <p>
+     * Every reader indexes this ring by position and calls that "days ago", so one entry has to mean
+     * one calendar day. A binding that was down across two or more midnights would otherwise append
+     * a single entry for the whole absence and shift every figure behind it by the length of the
+     * gap - permanently, and with nothing to show that it had happened. Days with no data are
+     * recorded as the zero they are.
+     *
+     * @param daysElapsed calendar days between the last day seen and today; 1 in normal operation
+     */
+    public double rollover(double firstReadingOfNewDay, int daysElapsed) {
         double amount = dayAmount();
         ring.addLast(amount);
+        for (int missed = 1; missed < Math.min(daysElapsed, ringDays); missed++) {
+            ring.addLast(0.0);
+        }
         while (ring.size() > ringDays) {
             ring.removeFirst();
         }

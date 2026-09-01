@@ -126,4 +126,62 @@ class DailyRollupTest {
         assertEquals(5.0, r.dayAmount(), 1e-9); // 105 - 100
         assertEquals(30.0, r.sumLast(2), 1e-9);
     }
+
+    @Test
+    void aDayWithNoDataStillOccupiesItsPlaceInTheRing() {
+        DailyRollup rollup = new DailyRollup(365, true);
+        rollup.observe(10.0);
+        rollup.rollover(0.0, 1); // a normal day: 10 kWh
+
+        rollup.observe(4.0);
+        rollup.rollover(0.0, 3); // that day was 4 kWh, then two days with the binding down
+
+        assertEquals(0.0, rollup.amountAgo(1), 1e-9, "yesterday had no data and must read as none");
+        assertEquals(0.0, rollup.amountAgo(2), 1e-9);
+        assertEquals(4.0, rollup.amountAgo(3), 1e-9, "the last day that did run is three days back, not one");
+        assertEquals(10.0, rollup.amountAgo(4), 1e-9);
+    }
+
+    @Test
+    void aGapDoesNotShiftEverythingBehindIt() {
+        DailyRollup padded = new DailyRollup(365, true);
+        DailyRollup uninterrupted = new DailyRollup(365, true);
+
+        padded.observe(7.0);
+        padded.rollover(0.0, 1);
+        padded.observe(0.0);
+        padded.rollover(0.0, 3); // down for two days
+
+        for (double day : new double[] { 7.0, 0.0, 0.0, 0.0 }) {
+            uninterrupted.observe(day);
+            uninterrupted.rollover(0.0, 1);
+        }
+
+        assertEquals(uninterrupted.amountAgo(4), padded.amountAgo(4), 1e-9,
+                "an outage must land in the same place as four ordinary days would");
+    }
+
+    @Test
+    void anAbsenceLongerThanTheRingDoesNotRunAway() {
+        DailyRollup rollup = new DailyRollup(7, true);
+        rollup.observe(5.0);
+
+        rollup.rollover(0.0, 10_000);
+
+        assertEquals(7, rollup.daysHeld(), "padding is bounded by the ring, not by how long the power was off");
+    }
+
+    @Test
+    void theOneArgumentFormStillMeansASingleDay() {
+        DailyRollup padded = new DailyRollup(365, true);
+        DailyRollup plain = new DailyRollup(365, true);
+        padded.observe(3.0);
+        plain.observe(3.0);
+
+        padded.rollover(0.0, 1);
+        plain.rollover(0.0);
+
+        assertEquals(padded.amountAgo(1), plain.amountAgo(1), 1e-9);
+        assertEquals(padded.daysHeld(), plain.daysHeld());
+    }
 }

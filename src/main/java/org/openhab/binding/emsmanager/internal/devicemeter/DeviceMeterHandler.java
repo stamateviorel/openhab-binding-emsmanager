@@ -182,6 +182,13 @@ public final class DeviceMeterHandler extends BaseThingHandler {
             if (!today.equals(lastSeenDay)) {
                 if (lastSeenDay != LocalDate.MIN) {
                     ring.addLast(kwhToday);
+                    // One entry has to mean one day: the anomaly baselines and the last-7/30
+                    // channels read this ring by position, so an absence across several midnights
+                    // must occupy the days it actually spanned rather than collapsing into one.
+                    long missed = java.time.temporal.ChronoUnit.DAYS.between(lastSeenDay, today);
+                    for (long day = 1; day < Math.min(missed, DeviceMeterCache.maxRingDays()); day++) {
+                        ring.addLast(0.0);
+                    }
                     while (ring.size() > DeviceMeterCache.maxRingDays()) {
                         ring.removeFirst();
                     }
