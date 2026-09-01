@@ -77,11 +77,8 @@ import org.openhab.binding.emsmanager.internal.report.WeeklyReportService;
 import org.openhab.binding.emsmanager.internal.sizing.BatterySizingService;
 import org.openhab.binding.emsmanager.internal.tariff.compare.TariffComparisonService;
 import org.openhab.core.events.EventPublisher;
-import org.openhab.core.items.GenericItem;
-import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
-import org.openhab.core.items.StateChangeListener;
 import org.openhab.core.items.events.ItemEventFactory;
 import org.openhab.core.library.types.DateTimeType;
 import org.openhab.core.library.types.DecimalType;
@@ -123,7 +120,8 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private @Nullable BatterySizingService sizingService;
     private @Nullable TariffComparisonService tariffComparisonService;
     private final WeeklyReportService weeklyReportService;
-    private @Nullable LocalDate lastWeeklyReportDate;
+    private volatile @Nullable LocalDate lastWeeklyReportDate;
+    private final java.util.concurrent.atomic.AtomicBoolean weeklyReportRunning = new java.util.concurrent.atomic.AtomicBoolean();
     private @Nullable LocalDate lastAnalyticsDate;
     private @Nullable ScheduledFuture<?> tickJob;
     private final AtomicLong tickCounter = new AtomicLong(0);
@@ -132,11 +130,13 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     // periodic tick. The periodic tick stays as the fallback.
     private static final long DEBOUNCE_MS = 500L;
     private @Nullable ScheduledFuture<?> debouncedTickFuture;
-    private final List<GenericItem> watchedItems = new ArrayList<>();
-    private @Nullable StateChangeListener kickListener;
+    private @Nullable ItemWatch itemWatch;
+    private volatile CapacityTariffTracker.@Nullable Persisted savedPeak;
     // Guards tick() against the periodic and debounced invocations overlapping —
     // controller state (EWMA, capacity tracker, dedupe) is not re-entrant.
     private final Object tickLock = new Object();
+    private boolean manualEngageSeen;
+    private boolean manualResetSeen;
     private final PriorityScheduler controllerScheduler = new PriorityScheduler();
     private final Map<String, AssetHandler> assets = new HashMap<>();
     private static final long SETTINGS_DEBOUNCE_MS = 1500;
@@ -200,6 +200,13 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
     @Override
     public void initialize() {
+        // A re-initialise that did not go through dispose() would otherwise leave two tick loops
+        // writing setpoints against each other.
+        ScheduledFuture<?> stale = tickJob;
+        if (stale != null) {
+            stale.cancel(true);
+            tickJob = null;
+        }
         EmsBridgeConfig config = settingsStore.applyTo(getConfigAs(EmsBridgeConfig.class));
         shadowMode = config.shadowMode;
         publishLegacyMirrorItems = config.publishLegacyMirrorItems;
@@ -229,6 +236,8 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         RollingAverage rolling5min = new RollingAverage(GRID_5MIN_WINDOW_MS);
         this.grid5minAvg = rolling5min;
         CapacityTariffTracker capTracker = new CapacityTariffTracker(java.time.ZoneId.systemDefault());
+        capTracker.restore(CapacityPeakStore.load(), System.currentTimeMillis());
+        this.savedPeak = capTracker.persisted();
         this.capacityTracker = capTracker;
         this.contextBuilder = new ContextBuilder(itemRegistry, ewma, rolling5min, capTracker, config.gridSafetyMarginW,
                 config, thingRegistry);
@@ -331,14 +340,13 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             // EmsManagerHandlerFactory's reference. For now build a minimal pass-through
             // — the controller falls back to fixed when provider returns NaN, so this
             // is safe even if we can't bind an HTTP client right here.
-            try {
-                org.eclipse.jetty.client.HttpClient hc = new org.eclipse.jetty.client.HttpClient();
-                hc.start();
+            HttpClient hc = httpClient;
+            if (hc != null) {
                 emissionsTracker = new org.openhab.binding.emsmanager.internal.emissions.ElectricityMapsProvider(hc,
                         config.electricityMapsApiKey, config.electricityMapsZone, config.injectionCo2OffsetGramsPerKWh);
                 logger.info("CO₂ tracking: using ElectricityMaps live provider (zone={})", config.electricityMapsZone);
-            } catch (Throwable t) {
-                logger.warn("Failed to start ElectricityMaps client, falling back to fixed factors: {}", t.toString());
+            } else {
+                logger.warn("No HTTP client available for ElectricityMaps, falling back to fixed factors");
             }
         }
         if (emissionsTracker == null) {
@@ -440,36 +448,33 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
      * watched — the periodic tick still covers them.
      */
     private void registerKickListeners(EmsBridgeConfig config) {
-        StateChangeListener listener = new StateChangeListener() {
-            @Override
-            public void stateChanged(Item item, State oldState, State newState) {
-                onWatchedItemChanged(item.getName(), newState);
-            }
-
-            @Override
-            public void stateUpdated(Item item, State state) {
-                // Only react to actual changes, not same-value re-updates.
-            }
-        };
-        this.kickListener = listener;
-        Set<String> names = new LinkedHashSet<>();
-        for (int n = 1; n <= 4; n++) {
-            names.add(String.format(nameOr(config.carModeItemPattern, ITEM_CAR_MODE_FMT), n));
-            names.add(String.format(nameOr(config.carCableItemPattern, ITEM_CAR_CABLE_FMT), n));
-            names.add(String.format(nameOr(config.carPauseItemPattern, ITEM_CAR_PAUSE_FMT), n));
+        Set<String> kicks = new LinkedHashSet<>();
+        List<String> metering = new ArrayList<>();
+        for (int n = 1; n <= Math.max(0, config.carCount); n++) {
+            kicks.add(String.format(nameOr(config.carModeItemPattern, ITEM_CAR_MODE_FMT), n));
+            kicks.add(String.format(nameOr(config.carCableItemPattern, ITEM_CAR_CABLE_FMT), n));
+            kicks.add(String.format(nameOr(config.carPauseItemPattern, ITEM_CAR_PAUSE_FMT), n));
+            metering.add(String.format(nameOr(config.carAmpsL1ItemPattern, ITEM_CAR_AMPS_L1_FMT), n));
+            metering.add(String.format(nameOr(config.carAmpsL2ItemPattern, ITEM_CAR_AMPS_L2_FMT), n));
+            metering.add(String.format(nameOr(config.carAmpsL3ItemPattern, ITEM_CAR_AMPS_L3_FMT), n));
+            metering.add(String.format(nameOr(config.carPowerKwItemPattern, ITEM_CAR_POWER_KW_FMT), n));
         }
-        for (String name : names) {
-            try {
-                Item item = itemRegistry.getItem(name);
-                if (item instanceof GenericItem gi) {
-                    gi.addStateChangeListener(listener);
-                    watchedItems.add(gi);
-                }
-            } catch (Exception e) {
-                // Item not present yet — fine; the periodic tick still re-evaluates it.
+        Set<String> all = new LinkedHashSet<>(kicks);
+        all.addAll(metering);
+        ItemWatch watch = new ItemWatch(itemRegistry, all, (name, state) -> {
+            if (kicks.contains(name)) {
+                onWatchedItemChanged(name, state);
             }
+        });
+        watch.start();
+        this.itemWatch = watch;
+        ContextBuilder cb = contextBuilder;
+        if (cb != null) {
+            // -1 = this site has no metering Items to judge; 0 = they exist but have not spoken yet
+            cb.setMeteringLiveness(() -> watch.watchesAnyOf(metering) ? watch.newestUpdateMs(metering) : -1L);
         }
-        logger.info("Fast-tick: watching {} car input items for instant re-evaluation", watchedItems.size());
+        logger.info("Fast-tick: watching {} car input items, {} metering items for liveness", kicks.size(),
+                metering.size());
     }
 
     /** Schedule a single coalesced tick shortly after a watched car input changes. */
@@ -499,18 +504,20 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             debounced.cancel(false);
             debouncedTickFuture = null;
         }
-        StateChangeListener kl = kickListener;
-        if (kl != null) {
-            for (GenericItem gi : watchedItems) {
-                try {
-                    gi.removeStateChangeListener(kl);
-                } catch (Exception e) {
-                    // best-effort cleanup
-                }
-            }
+        ItemWatch watch = itemWatch;
+        if (watch != null) {
+            watch.stop();
+            itemWatch = null;
         }
-        watchedItems.clear();
-        kickListener = null;
+        ScheduledFuture<?> pendingSettings = settingsApply;
+        if (pendingSettings != null) {
+            pendingSettings.cancel(false);
+            settingsApply = null;
+        }
+        CapacityTariffTracker tracker = capacityTracker;
+        if (tracker != null) {
+            CapacityPeakStore.save(tracker.persisted());
+        }
         for (var c : controllerScheduler.controllers()) {
             controllerScheduler.unregister(c);
         }
@@ -563,19 +570,40 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         if (pendingSettings.isEmpty()) {
             return;
         }
-        pendingSettings.forEach(settingsStore::put);
+        if (getThing().getHandler() != this) {
+            // the framework disposed this handler while the debounce was pending; rebuilding it
+            // now would start a second, orphaned tick loop
+            pendingSettings.clear();
+            return;
+        }
+        EmsBridgeConfig file = getConfigAs(EmsBridgeConfig.class);
+        pendingSettings.forEach((key, value) -> settingsStore.put(key, value, fileValue(file, key)));
         logger.info("EMS settings changed from the UI: {} - rebuilding controllers", pendingSettings);
         pendingSettings.clear();
         // Controllers take these values in their constructors, so the stack is torn down and rebuilt.
         // updateConfiguration() would be the idiomatic route and does not work here: a Thing defined
         // in a .things file is owned by that file, so the change is silently dropped and the control
         // appears to work while changing nothing.
-        try {
-            dispose();
-            initialize();
-        } catch (RuntimeException e) {
-            logger.warn("Rebuilding after a settings change failed", e);
+        synchronized (tickLock) {
+            try {
+                dispose();
+                initialize();
+            } catch (RuntimeException e) {
+                logger.warn("Rebuilding after a settings change failed", e);
+            }
         }
+    }
+
+    /** What the Thing configuration itself says for a dashboard-settable key. */
+    private static @Nullable Object fileValue(EmsBridgeConfig file, String key) {
+        return switch (key) {
+            case "shadowMode" -> file.shadowMode;
+            case "boilerDailyTargetKwh" -> file.boilerDailyTargetKwh;
+            case "boilerReadyByHour" -> file.boilerReadyByHour;
+            case "gridSafetyMarginW" -> file.gridSafetyMarginW;
+            case "capacityMinBillableW" -> file.capacityMinBillableW;
+            default -> null;
+        };
     }
 
     /** Mirror the live settings onto their channels so a control shows where it actually stands. */
@@ -754,13 +782,14 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             return;
         }
         LocalDate today = now.toLocalDate();
-        if (today.equals(lastWeeklyReportDate)) {
-            return; // already generated this Sunday
+        if (today.equals(lastWeeklyReportDate) || !weeklyReportRunning.compareAndSet(false, true)) {
+            return; // already generated, or generating, this Sunday
         }
-        lastWeeklyReportDate = today;
         scheduler.execute(() -> {
             try {
                 weeklyReportService.generate(today);
+                // claimed only now: a failed run must get another try on the next tick
+                lastWeeklyReportDate = today;
                 logger.info("Weekly report generated for week ending {}", today);
             } catch (Throwable t) {
                 logger.warn("Weekly report generation failed: {}", t.toString());
@@ -799,19 +828,26 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         }
         try {
             var engage = itemRegistry.getItem("PeakShaving_Manual_Engage");
-            if (engage.getState() instanceof OnOffType o && o == OnOffType.ON) {
+            boolean on = engage.getState() instanceof OnOffType o && o == OnOffType.ON;
+            // The item expires by itself after a few seconds, longer than one tick: acting on every
+            // tick that sees it ON turned one tap into two tiers.
+            if (on && !manualEngageSeen) {
                 hard.requestManualEngage();
                 logger.info("PeakShaving_Manual_Engage observed ON → forwarded to the peak-shaving controller");
             }
+            manualEngageSeen = on;
         } catch (Throwable t) {
             // item missing — fine
         }
         try {
             var reset = itemRegistry.getItem("PeakShaving_Manual_Reset");
-            if (reset.getState() instanceof OnOffType o && o == OnOffType.ON) {
+            boolean on = reset.getState() instanceof OnOffType o && o == OnOffType.ON;
+            if (on && !manualResetSeen) {
                 hard.requestManualReset();
                 logger.info("PeakShaving_Manual_Reset observed ON → forwarded to the peak-shaving controller");
             }
+            manualResetSeen = on;
+
         } catch (Throwable t) {
             // item missing — fine
         }
@@ -1046,10 +1082,15 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
         // Capacity-tariff diagnostics. For display, report imports as positive kW
         // (peakKW). Negate the signed monthlyPeakW / projected.
-        double monthlyPeakAbsW = -ctx.monthlyPeakW();
-        if (monthlyPeakAbsW < 0) {
-            monthlyPeakAbsW = 0; // never show negative peak
-            updateState(CHANNEL_CAPACITY_MONTHLY_PEAK_W, new QuantityType<>(monthlyPeakAbsW, Units.WATT));
+        double monthlyPeakAbsW = Math.max(0, -ctx.monthlyPeakW());
+        updateState(CHANNEL_CAPACITY_MONTHLY_PEAK_W, new QuantityType<>(monthlyPeakAbsW, Units.WATT));
+        CapacityTariffTracker tracker = capacityTracker;
+        if (tracker != null) {
+            CapacityTariffTracker.Persisted now = tracker.persisted();
+            if (!now.equals(savedPeak)) {
+                savedPeak = now;
+                CapacityPeakStore.save(now);
+            }
         }
         publishPower(CHANNEL_CAPACITY_CURRENT_QUARTER_W, ctx.currentQuarterAvgW());
         publishPower(CHANNEL_CAPACITY_PROJECTED_QUARTER_W, CapacityTariffShavingController.projectedQuarterW(ctx));

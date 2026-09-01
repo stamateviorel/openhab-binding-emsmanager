@@ -18,6 +18,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 
 /**
  * Capacity-tariff tracker (e.g. the Belgian capaciteitstarief). Maintains the
@@ -79,6 +80,33 @@ public final class CapacityTariffTracker {
     /** Returns the most-negative-Watt peak (import as positive kW friendly value). */
     public double monthlyPeakW() {
         return monthlyPeakW;
+    }
+
+    /** The peak together with the month it belongs to, for storing across restarts. */
+    public record Persisted(int year, int month, double monthlyPeakW) {
+    }
+
+    public Persisted persisted() {
+        return new Persisted(currentYear, currentMonthNumber, monthlyPeakW);
+    }
+
+    /**
+     * Take a stored peak back, but only for the month it was recorded in - last month's peak
+     * says nothing about this month's bill.
+     */
+    public void restore(@Nullable Persisted p, long nowMs) {
+        if (p == null) {
+            return;
+        }
+        ZonedDateTime zdt = Instant.ofEpochMilli(nowMs).atZone(zone);
+        if (p.year() != zdt.getYear() || p.month() != zdt.getMonthValue()) {
+            return;
+        }
+        currentYear = p.year();
+        currentMonthNumber = p.month();
+        if (p.monthlyPeakW() < monthlyPeakW) {
+            monthlyPeakW = p.monthlyPeakW();
+        }
     }
 
     /**

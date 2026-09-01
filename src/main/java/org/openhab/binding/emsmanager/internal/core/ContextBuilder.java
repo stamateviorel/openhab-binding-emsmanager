@@ -57,6 +57,40 @@ public final class ContextBuilder {
         this(itemRegistry, gridEwma, grid5minAvg, capacityTracker, gridSafetyMarginW, cfg, null);
     }
 
+    /** A metering source that has not updated any of its Items for this long is taken as dead. */
+    public static final long METERING_STALE_MS = 30_000L;
+
+    private volatile java.util.function.@Nullable LongSupplier meteringNewestUpdateMs;
+
+    /**
+     * Hook up the clock that says when a metering Item last updated. Without it, freshness falls
+     * back to "the values look plausible", which a frozen source passes forever.
+     */
+    public void setMeteringLiveness(java.util.function.LongSupplier newestUpdateMs) {
+        this.meteringNewestUpdateMs = newestUpdateMs;
+    }
+
+    private boolean meteringFresh(long nowMs, boolean plausible) {
+        java.util.function.LongSupplier liveness = meteringNewestUpdateMs;
+        if (liveness == null) {
+            return plausible;
+        }
+        return freshFrom(nowMs, liveness.getAsLong(), plausible);
+    }
+
+    /**
+     * @param newestUpdateMs when a metering Item last updated; -1 when the site has none to watch,
+     *            0 when they exist but have not updated since the watch started
+     */
+    static boolean freshFrom(long nowMs, long newestUpdateMs, boolean plausible) {
+        if (newestUpdateMs < 0) {
+            return plausible;
+        }
+        // A dead metering bridge leaves every Item at its last value rather than NULL, so the
+        // values stay plausible while the amps behind them are stale.
+        return newestUpdateMs > 0 && (nowMs - newestUpdateMs) < METERING_STALE_MS;
+    }
+
     public ContextBuilder(ItemRegistry itemRegistry, EwmaFilter gridEwma, RollingAverage grid5minAvg,
             CapacityTariffTracker capacityTracker, int gridSafetyMarginW, EmsBridgeConfig cfg,
             @Nullable ThingRegistry thingRegistry) {
@@ -145,7 +179,7 @@ public final class ContextBuilder {
         // Measurement-freshness fallback: any non-zero per-car amps proves the
         // metering bridge is alive. Without that signal we trust by default (the
         // hardware breaker is the last-resort safety net).
-        boolean modbusFresh = anyCarAmpsNonZero || !Double.isNaN(gridRaw);
+        boolean modbusFresh = meteringFresh(nowMs, anyCarAmpsNonZero || !Double.isNaN(gridRaw));
 
         // Peak-shaving inputs.
         boolean boilerOn = site.boiler().on();
