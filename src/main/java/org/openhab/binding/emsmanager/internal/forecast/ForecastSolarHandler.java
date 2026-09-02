@@ -93,7 +93,7 @@ public final class ForecastSolarHandler extends BaseThingHandler {
         long initialDelaySec;
         if (cached != null && !cached.refreshedAt().equals(Instant.EPOCH)) {
             lastSnapshot = cached;
-            publish(cached);
+            publish(cached.presentableAt(Instant.now()));
             long ageMs = System.currentTimeMillis() - cached.refreshedAt().toEpochMilli();
             long intervalMs = refreshIntervalMin * 60L * 1000L;
             long remainingMs = intervalMs - ageMs;
@@ -133,7 +133,7 @@ public final class ForecastSolarHandler extends BaseThingHandler {
 
     @Override
     public void handleCommand(ChannelUID channelUID, Command command) {
-        publish(lastSnapshot);
+        publish(lastSnapshot.presentableAt(Instant.now()));
     }
 
     public ForecastSnapshot snapshot() {
@@ -178,11 +178,13 @@ public final class ForecastSolarHandler extends BaseThingHandler {
                 updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR,
                         "rate limited — retry in 60 min");
                 logger.warn("Forecast fetch hit rate limit (429) — backing off 60 min");
+                retireStaleFigures(now);
                 updateState(FC_CHANNEL_LAST_ERROR, new StringType(err));
             } else {
                 // Transient failure: keep the last good snapshot on the channels and
                 // only drop OFFLINE after several consecutive misses (no flapping).
                 consecutiveFailures++;
+                retireStaleFigures(now);
                 if (consecutiveFailures >= OFFLINE_AFTER_FAILS) {
                     updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, err);
                     logger.warn("Forecast fetch failed {}x in a row: {}", consecutiveFailures, err);
@@ -194,6 +196,14 @@ public final class ForecastSolarHandler extends BaseThingHandler {
             }
         } catch (Throwable t) {
             logger.warn("ForecastSolar poll threw", t);
+        }
+    }
+
+    /** The last good snapshot stays on the channels through an outage, but not as "today" forever. */
+    private void retireStaleFigures(long nowMs) {
+        ForecastSnapshot aged = lastSnapshot.presentableAt(Instant.ofEpochMilli(nowMs));
+        if (aged != lastSnapshot) {
+            publish(aged);
         }
     }
 

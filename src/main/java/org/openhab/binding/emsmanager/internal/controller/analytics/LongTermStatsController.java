@@ -16,7 +16,6 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -252,7 +251,8 @@ public final class LongTermStatsController implements Controller {
             LOGGER.info("LongTermStats: restored from disk, lastSeenDay={}, ringSizes={}", lastSeenDay,
                     rollups.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue().size()).toList());
         } catch (Throwable t) {
-            LOGGER.debug("LongTermStats.load: {}", t.getMessage());
+            LOGGER.warn("LongTermStats: cache unreadable, starting with an empty {}-day history: {}", RING_DAYS,
+                    t.getMessage());
         }
     }
 
@@ -278,10 +278,9 @@ public final class LongTermStatsController implements Controller {
                 rj.add(e.getKey(), mo);
             }
             obj.add("rollups", rj);
-            Files.writeString(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj), StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            CachePaths.writeAtomic(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(obj));
         } catch (IOException e) {
-            LOGGER.debug("LongTermStats.save: {}", e.getMessage());
+            LOGGER.warn("LongTermStats.save: {}", e.getMessage());
         }
     }
 

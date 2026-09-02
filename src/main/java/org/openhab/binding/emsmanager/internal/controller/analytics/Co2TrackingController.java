@@ -14,6 +14,8 @@ package org.openhab.binding.emsmanager.internal.controller.analytics;
 
 import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -25,11 +27,17 @@ import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 import org.openhab.binding.emsmanager.internal.emissions.EmissionsTracker;
+import org.openhab.binding.emsmanager.internal.util.CachePaths;
 import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.events.ItemEventFactory;
 import org.openhab.core.library.types.DecimalType;
 import org.openhab.core.types.UnDefType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 
 /**
  * CO₂ tracking. Pure observer at priority 117 (after
@@ -55,12 +63,29 @@ import org.openhab.core.types.UnDefType;
  * <li>{@code EMS_CO2_Year_kg} — running yearly total</li>
  * </ul>
  *
+ * <p>
+ * The accumulators are snapshotted to the binding's own cache and restored from it first; item
+ * state is a fallback that can only raise a counter, never lower it, and nothing is published until
+ * one of the two has yielded a real value. Same discipline as {@link CostAnalyticsController}, for
+ * the same reason.
+ *
  * @author Stamate Viorel - Initial contribution
  */
 @NonNullByDefault
 public final class Co2TrackingController implements Controller {
 
     public static final String NAME = "co2-tracking";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(Co2TrackingController.class);
+    private static final String CACHE_FILE = "emsmanager-co2-cache.json";
+    private static final int SAVE_EVERY_TICKS = 60;
+    /**
+     * A fresh install has items that are NULL and stay NULL until this controller publishes, so
+     * waiting for them forever would be a deadlock; ~5 minutes at a 5 s tick is far past any
+     * restore-on-startup.
+     */
+    private static final int MAX_DEFERRED_TICKS = 60;
+    private static final Gson GSON = new Gson();
 
     private final @Nullable EventPublisher eventPublisher;
     private final @Nullable ItemRegistry itemRegistry;
@@ -74,7 +99,11 @@ public final class Co2TrackingController implements Controller {
     private double yearKgEmitted = 0.0;
     private double yearSavedKg = 0.0;
     private long lastTickMs = 0L;
-    private boolean restoreApplied = false;
+    private boolean restored = false;
+    private int deferredTicks = 0;
+    private int ticksSinceSave = 0;
+    private @Nullable LocalDate snapshotDay;
+    private int snapshotYear = -1;
 
     public Co2TrackingController(@Nullable EventPublisher eventPublisher, @Nullable ItemRegistry itemRegistry,
             double gridCo2GramsPerKWh, double injectionCo2OffsetGramsPerKWh, @Nullable EmissionsTracker emissions) {
@@ -83,11 +112,6 @@ public final class Co2TrackingController implements Controller {
         this.gridCo2GramsPerKWh = gridCo2GramsPerKWh;
         this.injectionCo2OffsetGramsPerKWh = injectionCo2OffsetGramsPerKWh;
         this.emissions = emissions;
-        // NB: the restore is deferred to the first evaluate() tick (see restoreApplied), NOT done
-        // here. On a cold start the binding can initialise before mapdb has restored the item
-        // states; reading them in the constructor then yields NULL→0 and the first publish would
-        // overwrite the persisted yearly totals with 0. Restoring on the first tick (~5 s later,
-        // once items are back) avoids that startup race.
     }
 
     @Override
@@ -120,6 +144,14 @@ public final class Co2TrackingController implements Controller {
         return todayKgEmitted;
     }
 
+    double yearEmittedKg() {
+        return yearKgEmitted;
+    }
+
+    boolean isRestored() {
+        return restored;
+    }
+
     @Override
     public List<SetpointRequest> evaluate(EnergyContext ctx) {
         long nowMs = ctx.tickAt().toEpochMilli();
@@ -128,29 +160,23 @@ public final class Co2TrackingController implements Controller {
             return List.of();
         }
 
-        // Deferred restore (first tick, after mapdb has restored item states) — avoids the cold-
-        // start race where a constructor-time read would see NULL→0 and zero out the year totals.
-        if (!restoreApplied) {
-            restoreApplied = true;
-            todayKgEmitted = readSafe("EMS_CO2_Today_kg");
-            todaySavedKg = readSafe("EMS_CO2_Saved_Today_kg");
-            yearKgEmitted = readSafe("EMS_CO2_Year_kg");
-            yearSavedKg = readSafe("EMS_CO2_Saved_Year_kg");
+        LocalDate today = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).toLocalDate();
+        if (!restored) {
+            restored = restore(today);
+            if (!restored) {
+                return List.of();
+            }
         }
 
-        LocalDate today = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).toLocalDate();
         if (!today.equals(lastSeenDay)) {
-            if (lastSeenDay != LocalDate.MIN) {
-                // Day rollover — year totals already accumulated; reset today.
-                todayKgEmitted = 0.0;
-                todaySavedKg = 0.0;
-            }
-            // Year rollover — when Jan 1 of a new year.
-            if (lastSeenDay != LocalDate.MIN && today.getYear() != lastSeenDay.getYear()) {
+            todayKgEmitted = 0.0;
+            todaySavedKg = 0.0;
+            if (today.getYear() != lastSeenDay.getYear()) {
                 yearKgEmitted = 0.0;
                 yearSavedKg = 0.0;
             }
             lastSeenDay = today;
+            saveSnapshot();
         }
 
         if (lastTickMs > 0L) {
@@ -209,32 +235,127 @@ public final class Co2TrackingController implements Controller {
         publish("EMS_CO2_Net_Today_kg", todayKgEmitted - todaySavedKg);
         publish("EMS_CO2_Year_kg", yearKgEmitted);
         publish("EMS_CO2_Saved_Year_kg", yearSavedKg);
+        if (++ticksSinceSave >= SAVE_EVERY_TICKS) {
+            ticksSinceSave = 0;
+            saveSnapshot();
+        }
 
         return List.of();
     }
 
-    private double readSafe(String name) {
+    /**
+     * @return true once the accumulators hold real values; false to try again next tick without
+     *         publishing anything
+     */
+    private boolean restore(LocalDate today) {
+        boolean fromSnapshot = loadSnapshot();
+        double yearFromItem = readNumber("EMS_CO2_Year_kg");
+        if (Double.isNaN(yearFromItem) && !fromSnapshot && itemRegistry != null) {
+            if (++deferredTicks < MAX_DEFERRED_TICKS) {
+                LOGGER.debug("Co2Tracking restore deferred — no snapshot and items not readable yet");
+                return false;
+            }
+            LOGGER.warn("Co2Tracking: no snapshot and items still unreadable after {} ticks, starting from 0",
+                    deferredTicks);
+        }
+        // Within its period each counter only ever rises, so of two readings the higher is the
+        // later one; a half-restored registry can therefore not pull a counter down.
+        todayKgEmitted = highest(readNumber("EMS_CO2_Today_kg"), todayKgEmitted);
+        todaySavedKg = highest(readNumber("EMS_CO2_Saved_Today_kg"), todaySavedKg);
+        yearKgEmitted = highest(yearFromItem, yearKgEmitted);
+        yearSavedKg = highest(readNumber("EMS_CO2_Saved_Year_kg"), yearSavedKg);
+        // Items carry no date, so the snapshot's period decides for both of them.
+        LocalDate savedDay = snapshotDay;
+        if (savedDay != null && !savedDay.equals(today)) {
+            todayKgEmitted = 0.0;
+            todaySavedKg = 0.0;
+        }
+        if (snapshotYear != -1 && snapshotYear != today.getYear()) {
+            yearKgEmitted = 0.0;
+            yearSavedKg = 0.0;
+        }
+        lastSeenDay = today;
+        LOGGER.info("Co2Tracking restored (snapshot={}): today emitted={} saved={}, year emitted={} saved={}",
+                fromSnapshot, fmt(todayKgEmitted), fmt(todaySavedKg), fmt(yearKgEmitted), fmt(yearSavedKg));
+        return true;
+    }
+
+    private static double highest(double fromItem, double current) {
+        return Double.isNaN(fromItem) ? current : Math.max(fromItem, current);
+    }
+
+    private static String fmt(double d) {
+        return String.format(java.util.Locale.ROOT, "%.3f", d);
+    }
+
+    /** @return true if a snapshot was found and applied. */
+    private boolean loadSnapshot() {
+        try {
+            Path path = CachePaths.cacheFile(CACHE_FILE);
+            if (!Files.exists(path)) {
+                return false;
+            }
+            JsonObject o = GSON.fromJson(Files.readString(path), JsonObject.class);
+            if (o == null) {
+                return false;
+            }
+            todayKgEmitted = num(o, "todayKgEmitted");
+            todaySavedKg = num(o, "todaySavedKg");
+            yearKgEmitted = num(o, "yearKgEmitted");
+            yearSavedKg = num(o, "yearSavedKg");
+            snapshotDay = o.has("day") ? LocalDate.parse(o.get("day").getAsString()) : null;
+            snapshotYear = o.has("year") ? o.get("year").getAsInt() : -1;
+            return true;
+        } catch (Throwable t) {
+            LOGGER.warn("Co2Tracking snapshot unreadable, falling back to item state: {}", t.getMessage());
+            return false;
+        }
+    }
+
+    void saveSnapshot() {
+        try {
+            JsonObject o = new JsonObject();
+            o.addProperty("todayKgEmitted", todayKgEmitted);
+            o.addProperty("todaySavedKg", todaySavedKg);
+            o.addProperty("yearKgEmitted", yearKgEmitted);
+            o.addProperty("yearSavedKg", yearSavedKg);
+            if (lastSeenDay != LocalDate.MIN) {
+                o.addProperty("day", lastSeenDay.toString());
+                o.addProperty("year", lastSeenDay.getYear());
+            }
+            CachePaths.writeAtomic(CachePaths.cacheFile(CACHE_FILE), GSON.toJson(o));
+        } catch (Throwable t) {
+            LOGGER.warn("Co2Tracking snapshot save failed: {}", t.getMessage());
+        }
+    }
+
+    private static double num(JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsDouble() : 0.0;
+    }
+
+    /** {@link Double#NaN} for NULL/UNDEF/missing, so "not readable yet" is not mistaken for 0. */
+    private double readNumber(String name) {
         ItemRegistry reg = itemRegistry;
         if (reg == null) {
-            return 0.0;
+            return Double.NaN;
         }
         try {
             var item = reg.getItem(name);
             var state = item.getState();
             if (state instanceof UnDefType) {
-                return 0.0;
+                return Double.NaN;
             }
             if (state instanceof DecimalType d) {
                 return d.doubleValue();
             }
             String s = state.toString();
             if (s == null || s.isEmpty() || "NULL".equals(s) || "UNDEF".equals(s)) {
-                return 0.0;
+                return Double.NaN;
             }
             int sp = s.indexOf(' ');
             return Double.parseDouble(sp > 0 ? s.substring(0, sp) : s);
         } catch (Throwable t) {
-            return 0.0;
+            return Double.NaN;
         }
     }
 

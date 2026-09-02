@@ -82,13 +82,20 @@ class AnomalyReportingTest {
 
     /** A device with a real weekday baseline, so the detector has something to fire against. */
     private static void seedBaseline(String deviceId, int dow, double... days) throws IOException {
+        seedState(deviceId, dow, null, days);
+    }
+
+    /** As above, and the state also remembers which completed day it last judged. */
+    private static void seedState(String deviceId, int dow, @org.eclipse.jdt.annotation.Nullable LocalDate appended,
+            double... days) throws IOException {
         StringBuilder values = new StringBuilder();
         for (int i = 0; i < days.length; i++) {
             values.append(i > 0 ? "," : "").append(days[i]);
         }
+        String appendedField = appended == null ? "" : "\"lastAppendedDay\":\"" + appended + "\",";
         Files.writeString(userdata.resolve("cache").resolve("emsmanager-anomaly-" + deviceId + ".json"),
-                "{\"deviceId\":\"" + deviceId + "\",\"lastAlertMs\":0,\"historyByDow\":{\"" + dow + "\":[" + values
-                        + "]}}");
+                "{\"deviceId\":\"" + deviceId + "\",\"lastAlertMs\":0," + appendedField + "\"historyByDow\":{\"" + dow
+                        + "\":[" + values + "]}}");
     }
 
     private static long millisAt(LocalDate day, int hour) {
@@ -170,6 +177,60 @@ class AnomalyReportingTest {
     }
 
     private static final LocalDate DAY = LocalDate.of(2026, 9, 1);
+
+    /** EMS_Anomaly_Count_Today read 1 on the tick an alert fired and 0 while the device stayed anomalous. */
+    @Test
+    void aDeviceStillAnomalousOnTheNextTickIsStillCounted() throws IOException {
+        seedBaseline("dev4", 2, 5.0, 5.1, 4.9, 5.0, 5.2);
+        AnomalyDetectionController c = controller(new ArrayList<>());
+
+        assertTrue(c.evaluateOne(meterAt("dev4", 40.0), DAY, 2, millisAt(DAY, 12)));
+        assertTrue(c.evaluateOne(meterAt("dev4", 40.0), DAY, 2, millisAt(DAY, 12) + 5_000L),
+                "the device is as anomalous as it was five seconds ago; only the log line is on a cooldown");
+    }
+
+    /**
+     * The binding stopped at 23:55 on Monday and came back on Tuesday. The old in-memory bookkeeping
+     * had never seen Monday, so Monday's total was neither judged nor added to the Monday baseline.
+     */
+    @Test
+    void aCompletedDayIsJudgedAfterARestartAcrossMidnight() throws IOException {
+        LocalDate monday = LocalDate.of(2026, 8, 31);
+        seedState("dev5", 1, monday.minusDays(1), 5.0, 5.1, 4.9);
+        List<String> posted = new ArrayList<>();
+        DeviceMeterHandler meter = meterAt("dev5", 0.0);
+        when(meter.yesterdayKwh()).thenReturn(0.5);
+
+        AnomalyDetectionController c = controller(posted);
+        c.evaluateOne(meter, DAY, 2, millisAt(DAY, 0));
+        c.evaluateOne(meter, DAY, 2, millisAt(DAY, 0) + 5_000L); // the finding is shown from the next tick
+
+        org.openhab.binding.emsmanager.internal.anomaly.AnomalyState state = org.openhab.binding.emsmanager.internal.anomaly.AnomalyState
+                .load("dev5");
+        assertEquals(4, state.historyFor(1).length, "Monday's total belongs in the Monday baseline");
+        assertEquals(0.5, state.historyFor(1)[3], 1e-9);
+        assertEquals(monday, state.lastAppendedDay);
+        assertTrue(posted.stream().anyMatch(e -> e.contains("dev5_Detail") && e.contains("Gisteren")),
+                "half a kWh against a 5 kWh Monday is a finished day worth reporting: " + posted);
+    }
+
+    /** Down from Thursday to Tuesday: the meter's "yesterday" is the zero it pads a missed day with. */
+    @Test
+    void aDayTheBindingDidNotSeeIsNotAddedToTheBaseline() throws IOException {
+        LocalDate thursday = LocalDate.of(2026, 8, 27);
+        seedState("dev6", 1, thursday, 5.0, 5.1, 4.9);
+        List<String> posted = new ArrayList<>();
+        DeviceMeterHandler meter = meterAt("dev6", 0.0);
+        when(meter.yesterdayKwh()).thenReturn(0.0);
+
+        controller(posted).evaluateOne(meter, DAY, 2, millisAt(DAY, 0));
+
+        org.openhab.binding.emsmanager.internal.anomaly.AnomalyState state = org.openhab.binding.emsmanager.internal.anomaly.AnomalyState
+                .load("dev6");
+        assertEquals(3, state.historyFor(1).length, "a zero from an outage would poison the Monday baseline");
+        assertEquals(DAY.minusDays(1), state.lastAppendedDay, "but the gap is closed, not re-examined tomorrow");
+        assertTrue(posted.stream().noneMatch(e -> e.contains("Gisteren")));
+    }
 
     private AnomalyDetectionController controller(List<String> posted) {
         EventPublisher publisher = mock(EventPublisher.class);

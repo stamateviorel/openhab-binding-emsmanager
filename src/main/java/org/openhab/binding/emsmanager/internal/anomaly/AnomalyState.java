@@ -15,7 +15,6 @@ package org.openhab.binding.emsmanager.internal.anomaly;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,6 +56,8 @@ public final class AnomalyState {
     /** day-of-week (1=Monday..7=Sunday) → recent N kWh values. */
     public final Map<Integer, List<Double>> historyByDow = new HashMap<>();
     public long lastAlertMs;
+    /** The most recent completed calendar day whose total went into the baseline (or was skipped). */
+    public @Nullable LocalDate lastAppendedDay;
 
     /**
      * A completed day found unusually low, and the sentence describing it. Held in memory only: a
@@ -80,6 +81,9 @@ public final class AnomalyState {
             if (obj.has("lastAlertMs")) {
                 st.lastAlertMs = obj.get("lastAlertMs").getAsLong();
             }
+            if (obj.has("lastAppendedDay")) {
+                st.lastAppendedDay = LocalDate.parse(obj.get("lastAppendedDay").getAsString());
+            }
             if (obj.has("historyByDow")) {
                 JsonObject map = obj.getAsJsonObject("historyByDow");
                 for (var e : map.entrySet()) {
@@ -92,7 +96,7 @@ public final class AnomalyState {
                 }
             }
         } catch (Throwable t) {
-            LOGGER.debug("AnomalyState.load[{}]: {}", deviceId, t.toString());
+            LOGGER.warn("AnomalyState.load[{}]: cache unreadable, baseline starts empty: {}", deviceId, t.toString());
         }
         return st;
     }
@@ -102,11 +106,14 @@ public final class AnomalyState {
             Files.createDirectories(cacheDir());
             JsonObject obj = new JsonObject();
             obj.addProperty("lastAlertMs", lastAlertMs);
+            LocalDate appended = lastAppendedDay;
+            if (appended != null) {
+                obj.addProperty("lastAppendedDay", appended.toString());
+            }
             obj.add("historyByDow", GSON.toJsonTree(historyByDow));
-            Files.writeString(cacheDir().resolve("emsmanager-anomaly-" + deviceId + ".json"), GSON.toJson(obj),
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            CachePaths.writeAtomic(cacheDir().resolve("emsmanager-anomaly-" + deviceId + ".json"), GSON.toJson(obj));
         } catch (IOException e) {
-            LOGGER.debug("AnomalyState.save[{}]: {}", deviceId, e.toString());
+            LOGGER.warn("AnomalyState.save[{}]: {}", deviceId, e.toString());
         }
     }
 

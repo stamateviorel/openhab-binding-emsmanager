@@ -78,4 +78,26 @@ class AnomalyDetectorTest {
         assertTrue(r.anomaly(), "huge drop should alert too");
         assertTrue(r.zScore() < 0);
     }
+
+    /** An EV that charged on one of the last four same weekdays: median 0, MAD 0, and 25 kWh again. */
+    @Test
+    void aValueTheDeviceHasProducedBeforeIsNotAnAnomaly() {
+        double[] history = { 0.0, 0.0, 0.0, 25.0 };
+        var r = AnomalyDetector.detect(history, 25.0);
+        assertFalse(r.anomaly(), "it alarmed on every charging day; z=" + r.zScore());
+    }
+
+    @Test
+    void twoSamplesAreNotABaseline() {
+        var r = AnomalyDetector.detect(new double[] { 1.0, 1.1 }, 50.0);
+        assertFalse(r.anomaly(), "there is no spread to judge against yet");
+    }
+
+    /** A tight history makes the MAD tiny; ordinary day-to-day variation must not score as an outlier. */
+    @Test
+    void ordinaryVariationOnATightHistoryDoesNotAlert() {
+        double[] history = { 20.0, 20.2, 19.8, 20.1 }; // MAD 0.1 kWh
+        var r = AnomalyDetector.detect(history, 22.0);
+        assertFalse(r.anomaly(), "10 % more than usual scored z=13 against a 0.1 kWh MAD");
+    }
 }

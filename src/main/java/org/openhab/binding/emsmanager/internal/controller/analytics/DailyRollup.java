@@ -70,6 +70,14 @@ public final class DailyRollup {
         if (!dailyReset && Double.isNaN(dayStartBaseline)) {
             dayStartBaseline = current; // monthly counter: first reading anchors the (partial) day
         }
+        // A monthly counter that has fallen far below its baseline was reset behind our back and
+        // has been counting up from 0 since; measuring the day against the old baseline would
+        // read 0 until tomorrow. The rollover tick itself is where this happens: the counter's
+        // reset and this controller's read of it land on the same tick in either order. Only a
+        // drop past half the baseline counts - negative spot hours make cost legitimately dip.
+        if (!dailyReset && current < 0.5 * dayStartBaseline) {
+            dayStartBaseline = 0.0;
+        }
         lastReading = current;
     }
 

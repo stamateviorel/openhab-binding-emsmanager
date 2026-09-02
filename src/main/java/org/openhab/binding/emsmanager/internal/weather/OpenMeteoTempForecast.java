@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -49,7 +50,10 @@ import com.google.gson.JsonParser;
  *
  * <p>
  * Cached + refreshed at most hourly (forecast doesn't move intraday enough
- * to matter). On fetch failure the last good forecast is kept.
+ * to matter). On fetch failure the last good forecast is kept and the next
+ * attempt waits {@link #RETRY_SPACING_MS} - this runs inside the tick, and
+ * retrying every tick through an outage stalls every controller for the HTTP
+ * timeout each time.
  *
  * @author Stamate Viorel - Initial contribution
  */
@@ -58,20 +62,28 @@ public final class OpenMeteoTempForecast {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenMeteoTempForecast.class);
     private static final long REFRESH_INTERVAL_MS = TimeUnit.MINUTES.toMillis(60);
+    static final long RETRY_SPACING_MS = TimeUnit.MINUTES.toMillis(5);
     private static final int HTTP_TIMEOUT_MS = 10_000;
 
     private final HttpClient httpClient;
     private final double lat;
     private final double lon;
+    private final LongSupplier clock;
     private final AtomicReference<@Nullable Cached> cache = new AtomicReference<>();
+    private volatile long lastAttemptMs = 0L;
 
     private record Cached(TreeMap<Instant, Double> byHour, long fetchedAtMs) {
     }
 
     public OpenMeteoTempForecast(HttpClient httpClient, double lat, double lon) {
+        this(httpClient, lat, lon, System::currentTimeMillis);
+    }
+
+    OpenMeteoTempForecast(HttpClient httpClient, double lat, double lon, LongSupplier clock) {
         this.httpClient = httpClient;
         this.lat = lat;
         this.lon = lon;
+        this.clock = clock;
     }
 
     /**
@@ -107,10 +119,14 @@ public final class OpenMeteoTempForecast {
 
     private void refreshIfStale() {
         Cached c = cache.get();
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         if (c != null && (now - c.fetchedAtMs()) < REFRESH_INTERVAL_MS) {
             return;
         }
+        if (lastAttemptMs != 0L && (now - lastAttemptMs) < RETRY_SPACING_MS) {
+            return;
+        }
+        lastAttemptMs = now;
         String url = String.format(java.util.Locale.ROOT,
                 "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
                         + "&hourly=temperature_2m&forecast_days=2&timeformat=unixtime",
