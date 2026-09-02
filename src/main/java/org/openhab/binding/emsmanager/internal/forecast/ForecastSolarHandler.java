@@ -202,7 +202,7 @@ public final class ForecastSolarHandler extends BaseThingHandler {
     /** The last good snapshot stays on the channels through an outage, but not as "today" forever. */
     private void retireStaleFigures(long nowMs) {
         ForecastSnapshot aged = lastSnapshot.presentableAt(Instant.ofEpochMilli(nowMs));
-        if (aged != lastSnapshot) {
+        if (!aged.equals(lastSnapshot)) {
             publish(aged);
         }
     }

@@ -14,7 +14,6 @@ package org.openhab.binding.emsmanager.internal.tariff;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Map;
 import java.util.TreeMap;
@@ -89,8 +88,7 @@ public final class TariffCache {
                 pricesObj.addProperty(String.valueOf(e.getKey().toEpochMilli()), e.getValue());
             }
             obj.add("prices", pricesObj);
-            Files.writeString(cachePath(), GSON.toJson(obj), StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            org.openhab.binding.emsmanager.internal.util.CachePaths.writeAtomic(cachePath(), GSON.toJson(obj));
         } catch (Throwable t) {
             LOGGER.debug("TariffCache.save: {}", t.getMessage());
         }

@@ -14,7 +14,6 @@ package org.openhab.binding.emsmanager.internal.devicemeter;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -101,8 +100,7 @@ public final class DeviceMeterCache {
                 arr.add(v);
             }
             obj.add("ring", arr);
-            Files.writeString(pathFor(deviceId), GSON.toJson(obj), StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            org.openhab.binding.emsmanager.internal.util.CachePaths.writeAtomic(pathFor(deviceId), GSON.toJson(obj));
         } catch (Throwable t) {
             LOGGER.debug("DeviceMeterCache.save[{}]: {}", deviceId, t.getMessage());
         }

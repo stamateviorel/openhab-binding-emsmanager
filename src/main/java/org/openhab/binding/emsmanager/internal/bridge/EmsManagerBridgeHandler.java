@@ -333,7 +333,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         if (localPersistenceRegistry != null) {
             this.sizingService = new BatterySizingService(eventPublisher, itemRegistry, localPersistenceRegistry);
             this.tariffComparisonService = new TariffComparisonService(eventPublisher, itemRegistry,
-                    localPersistenceRegistry);
+                    localPersistenceRegistry, tariffMarkupEurPerKWh());
         }
         // CO₂ tracking. Pick emissions provider per bridge config.
         org.openhab.binding.emsmanager.internal.emissions.EmissionsTracker emissionsTracker = null;
@@ -573,7 +573,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         if (pendingSettings.isEmpty()) {
             return;
         }
-        if (getThing().getHandler() != this) {
+        if (!java.util.Objects.equals(getThing().getHandler(), this)) {
             // the framework disposed this handler while the debounce was pending; rebuilding it
             // now would start a second, orphaned tick loop
             pendingSettings.clear();
@@ -595,6 +595,20 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                 logger.warn("Rebuilding after a settings change failed", e);
             }
         }
+    }
+
+    /**
+     * The markup the tariff Thing adds to spot prices. The published schedule already contains it,
+     * and the comparison has to strip it once or every other tariff is judged against fees twice.
+     */
+    private double tariffMarkupEurPerKWh() {
+        for (org.openhab.core.thing.Thing t : thingRegistry.getAll()) {
+            if (THING_TYPE_TARIFF.equals(t.getThingTypeUID())) {
+                return t.getConfiguration()
+                        .as(org.openhab.binding.emsmanager.internal.config.TariffConfig.class).markupEurPerKWh;
+            }
+        }
+        return 0.0;
     }
 
     /** What the Thing configuration itself says for a dashboard-settable key. */

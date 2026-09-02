@@ -102,7 +102,7 @@ public final class ItemWatch implements RegistryChangeListener<Item>, StateChang
             return;
         }
         GenericItem previous = attached.put(item.getName(), generic);
-        if (previous != null && previous != generic) {
+        if (previous != null) {
             previous.removeStateChangeListener(this);
         }
         generic.addStateChangeListener(this);
