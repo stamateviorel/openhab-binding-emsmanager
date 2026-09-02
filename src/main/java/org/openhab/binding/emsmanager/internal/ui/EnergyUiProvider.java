@@ -1051,33 +1051,46 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * is about to set a new billing peak.
      */
     private static final String STYLE = """
-            .ems{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;padding:6px 10px 18px 10px}
-            .ems-item{grid-column:span 12;min-width:0}
-            @media(min-width:768px){.ems-item.half{grid-column:span 6}.ems-item.wide{grid-column:span 7}.ems-item.side{grid-column:span 5}}
-            .ems .card{margin:0;border-radius:14px;background:var(--f7-card-bg-color);border:1px solid rgba(127,127,127,.14);box-shadow:0 1px 2px rgba(0,0,0,.04),0 12px 28px -18px rgba(0,0,0,.25)}
-            .ems .card-header{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.6;min-height:0;padding:12px 14px 0 14px}
-            .ems .card-header:after{display:none}
-            .ems .card-content{padding-top:2px}
-            .ems .list ul{background:transparent}
-            .ems .list ul:before,.ems .list ul:after{display:none}
-            .ems .item-title{font-weight:500;font-size:14px}
-            .ems .bar{transition:width .5s ease,height .5s ease}
+            .card{margin:0 0 10px 0;border-radius:14px;background:var(--f7-card-bg-color);border:1px solid rgba(127,127,127,.14);box-shadow:0 1px 2px rgba(0,0,0,.04),0 12px 28px -18px rgba(0,0,0,.25)}
+            .card-header{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.6;min-height:0;padding:12px 14px 0 14px}
+            .card-header:after{display:none}
+            .card-content{padding-top:2px}
+            .list ul{background:transparent}
+            .list ul:before,.list ul:after{display:none}
+            .item-title{font-weight:500;font-size:14px}
+            .bar{transition:width .5s ease,height .5s ease}
             @keyframes ems-attn{0%,100%{box-shadow:0 0 0 0 rgba(239,83,80,0)}50%{box-shadow:0 0 0 7px rgba(239,83,80,.28)}}
             """;
 
-    /** The page's content root: everything a page shows goes into the list this returns. */
+    /**
+     * The page's content root: everything a page shows goes into the list this returns.
+     * <p>
+     * A layout page renders its standard blocks and nothing else, so the root has to be a block
+     * holding one row; the stylesheet rides on the block and is scoped to it. A plain div at page
+     * level - tried once - left every tab blank.
+     */
     private List<UIComponent> shell(RootUIComponent page) {
-        UIComponent root = new UIComponent("div");
-        root.addConfig("class", List.of("ems"));
-        root.addConfig("stylesheet", STYLE);
-        page.addSlot("default").add(root);
-        return root.addSlot("default");
+        UIComponent block = new UIComponent("oh-block");
+        block.addConfig("stylesheet", STYLE);
+        UIComponent row = new UIComponent("oh-grid-row");
+        block.addSlot("default").add(row);
+        page.addSlot("default").add(block);
+        return row.addSlot("default");
     }
 
-    /** A card taking part of the row on a tablet: {@code half}, {@code wide} or {@code side}. */
+    /**
+     * A card taking part of the row on a tablet: {@code half}, {@code wide} or {@code side}; always
+     * the whole width on a phone. The row wraps, so two halves or a wide and a side share a line.
+     */
     private UIComponent item(UIComponent card, String span) {
-        UIComponent cell = new UIComponent("div");
-        cell.addConfig("class", List.of("ems-item", span));
+        UIComponent cell = new UIComponent("oh-grid-col");
+        cell.addConfig("width", "100");
+        cell.addConfig("medium", switch (span) {
+            case "half" -> "50";
+            case "wide" -> "60";
+            case "side" -> "40";
+            default -> "100";
+        });
         cell.addSlot("default").add(card);
         return cell;
     }
