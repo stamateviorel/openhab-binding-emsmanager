@@ -109,13 +109,8 @@ public class ShadowEmsRunner {
     private static final String ENGINE_CONTROLLER_NAME = "kai-ems-engine";
     private static final int ENGINE_PRIORITY = EmsManagerBindingConstants.PRIO_EV_COORDINATOR;
 
-    // Time-of-use battery schedule (legacy BatteryTouDispatcher).
-    private static final int BAT_NIGHT_START_HOUR = 2;
-    private static final int BAT_NIGHT_END_HOUR = 6;
-    private static final int BAT_EVE_START_HOUR = 17;
-    private static final int BAT_EVE_END_HOUR = 21;
-    private static final double BAT_CHARGE_RATE_W = -2000.0;
-    private static final double BAT_DISCHARGE_RATE_W = 2000.0;
+    // Time-of-use battery schedule, shared with the legacy BatteryTouDispatcher (own state instance).
+    private final BatteryTouSchedule batteryTou = new BatteryTouSchedule();
 
     /**
      * One car's engine decision this tick: the AMPS target ({@code null} = no amps request), the
@@ -451,16 +446,17 @@ public class ShadowEmsRunner {
         parity.compareEv(evDecisions, legacyDecisions, mode, verbose);
 
         // Battery time-of-use dispatch (ported BatteryTouDispatcher): decide, emit, compare.
-        int hour = java.time.ZonedDateTime.ofInstant(ctx.tickAt(), java.time.ZoneId.systemDefault()).getHour();
-        Double batteryW = EnergyManagementService.batteryTouSetpointW(hour, ctx.batteryBelowReserve(),
-                BAT_NIGHT_START_HOUR, BAT_NIGHT_END_HOUR, BAT_EVE_START_HOUR, BAT_EVE_END_HOUR, BAT_CHARGE_RATE_W,
-                BAT_DISCHARGE_RATE_W);
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.ofInstant(ctx.tickAt(), java.time.ZoneId.systemDefault());
+        int hour = now.getHour();
+        Double batteryW = batteryTou.setpointW(now, ctx.batteryBelowReserve(), ctx.batterySoC(),
+                ctx.forecastTomorrowKwh());
         if (batteryW != null) {
-            engineRequests.add(new SetpointRequest(EmsManagerBindingConstants.ASSET_BATTERY,
-                    SetpointRequest.Kind.WATTS_BATTERY, batteryW, ENGINE_PRIORITY, ENGINE_CONTROLLER_NAME,
-                    batteryW < 0 ? "engine: night charge" : "engine: evening-peak discharge"));
+            engineRequests.add(
+                    new SetpointRequest(EmsManagerBindingConstants.ASSET_BATTERY, SetpointRequest.Kind.WATTS_BATTERY,
+                            batteryW, ENGINE_PRIORITY, ENGINE_CONTROLLER_NAME, "engine: " + batteryTou.lastReason()));
         }
-        boolean belowReserveInEve = ctx.batteryBelowReserve() && hour >= BAT_EVE_START_HOUR && hour < BAT_EVE_END_HOUR;
+        boolean belowReserveInEve = ctx.batteryBelowReserve() && hour >= BatteryTouSchedule.EVENING_DISCHARGE_START_HOUR
+                && hour < BatteryTouSchedule.EVENING_DISCHARGE_END_HOUR;
         parity.compareBattery(batteryW, belowReserveInEve, legacyDecisions, mode, verbose);
 
         if (verbose) {
