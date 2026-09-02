@@ -90,6 +90,9 @@ public final class CostAnalyticsController implements Controller {
 
     private int ticksSinceSave = 0;
     private boolean restored = false;
+    /** Five minutes of 5-second ticks: long enough for a slow restore, short enough to notice. */
+    static final int MAX_DEFERRED_TICKS = 60;
+    private int deferredTicks = 0;
     private @Nullable ItemRegistry itemRegistry;
     /** The period the loaded snapshot's accumulators belong to; null for a snapshot that predates the field. */
     private @Nullable LocalDate snapshotDay;
@@ -140,8 +143,14 @@ public final class CostAnalyticsController implements Controller {
 
         double scDay = readNumber(items, ITEM_EMS_SELFCONSUMPTION_KWH_DAY);
         if (Double.isNaN(scDay) && !fromSnapshot) {
-            LOGGER.info("CostAnalytics restore deferred — no snapshot and source items not ready (UNDEF)");
-            return false;
+            // On a fresh install the items stay NULL until this controller publishes, which it
+            // never does while deferring: without a cap that is a deadlock, not caution.
+            if (++deferredTicks < MAX_DEFERRED_TICKS) {
+                LOGGER.info("CostAnalytics restore deferred — no snapshot and source items not ready (UNDEF)");
+                return false;
+            }
+            LOGGER.warn("CostAnalytics: no snapshot and items still unreadable after {} ticks, starting from 0",
+                    deferredTicks);
         }
 
         selfConsumptionKwhDay = pick(scDay, selfConsumptionKwhDay);

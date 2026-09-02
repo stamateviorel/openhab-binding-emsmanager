@@ -233,4 +233,19 @@ class CostAnalyticsRestoreTest {
 
         assertFalse(c.isRestored(), "starting from nothing must stay deferred, not publish zeros as fact");
     }
+
+    @Test
+    void aFreshInstallStopsDeferringBeforeItBecomesADeadlock() throws Exception {
+        // No snapshot and NULL items: the items only get a value once this controller publishes,
+        // and it never publishes while deferring - so without a cap it would defer forever.
+        CostAnalyticsController fresh = controller();
+        ItemRegistry nothing = registryWith(new HashMap<>());
+        for (int tick = 1; tick < CostAnalyticsController.MAX_DEFERRED_TICKS; tick++) {
+            fresh.initFromItems(nothing);
+            assertFalse(fresh.isRestored(), "still waiting for a restore at tick " + tick);
+        }
+        fresh.initFromItems(nothing);
+        assertTrue(fresh.isRestored(), "after the cap it starts from zero rather than never starting");
+        assertEquals(0.0, fresh.savingsEurTotal(), 1e-9);
+    }
 }
