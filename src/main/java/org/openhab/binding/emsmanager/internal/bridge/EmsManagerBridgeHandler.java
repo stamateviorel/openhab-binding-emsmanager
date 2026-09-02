@@ -375,9 +375,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // Asset handlers — populated regardless of shadow; the handlers themselves
         // honour the shadow flag passed to apply().
         assets.clear();
-        assets.put(ASSET_BOILER,
-                new BoilerAssetHandler(eventPublisher, nameOr(config.boilerStateItem, ITEM_BOILER_REAL)));
-        assets.put(ASSET_AIRCO, new AircoAssetHandler(eventPublisher, nameOr(config.aircoGroupItem, ITEM_AIRCO_GROUP)));
+        assets.put(ASSET_BOILER, new BoilerAssetHandler(eventPublisher,
+                nameOr(config.boilerStateItem, ITEM_BOILER_REAL), Math.max(0, config.switchMinDwellSeconds) * 1000L));
+        assets.put(ASSET_AIRCO, new AircoAssetHandler(eventPublisher, nameOr(config.aircoGroupItem, ITEM_AIRCO_GROUP),
+                Math.max(0, config.switchMinDwellSeconds) * 1000L));
         for (int n = 1; n <= 4; n++) {
             String key = "car" + n;
             String pause = String.format(nameOr(config.carPauseItemPattern, ITEM_CAR_PAUSE_FMT), n);

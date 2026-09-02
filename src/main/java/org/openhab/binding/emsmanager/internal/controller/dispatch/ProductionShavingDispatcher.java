@@ -31,6 +31,7 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
  * <li>SoC ≥ {@value #SOC_FULL_THRESHOLD_PCT} %</li>
  * <li>Solar production ≥ {@value #HIGH_SOLAR_W} W</li>
  * <li>Boiler is currently OFF</li>
+ * <li>The house is exporting on the 5-minute average</li>
  * <li>No user override on the boiler</li>
  * </ul>
  *
@@ -47,6 +48,8 @@ public final class ProductionShavingDispatcher implements Controller {
     public static final String NAME = "production-shaving";
     public static final double SOC_FULL_THRESHOLD_PCT = 95.0;
     public static final double HIGH_SOLAR_W = 5000.0;
+    /** Exporting at least this much, averaged over five minutes, before the boiler is a dump load. */
+    public static final double MIN_EXPORT_W = 500.0;
 
     @Override
     public String name() {
@@ -80,6 +83,12 @@ public final class ProductionShavingDispatcher implements Controller {
             return List.of();
         }
         if (Double.isNaN(ctx.solarLoadW()) || ctx.solarLoadW() < HIGH_SOLAR_W) {
+            return List.of();
+        }
+        // Curtailment is an export problem. A full battery under a bright roof while the house is
+        // still importing (a car at 22 kW, say) has nothing to dump; turning the boiler on then only
+        // fights the surplus dispatcher, which switches it off again on the next tick.
+        if (Double.isNaN(ctx.gridLoad5minAvgW()) || ctx.gridLoad5minAvgW() < MIN_EXPORT_W) {
             return List.of();
         }
         return List.of(new SetpointRequest(ASSET_BOILER, SetpointRequest.Kind.ONOFF, 1.0, priority(), NAME,

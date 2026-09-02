@@ -262,6 +262,14 @@
 				<description>Rating of the main breaker per phase. The EV controllers keep a 10 A headroom under it.</description>
 				<default>63</default>
 			</parameter>
+			<parameter name="switchMinDwellSeconds" type="integer" required="false" min="0" max="3600" unit="s">
+				<label>Minimum switch dwell</label>
+				<description>A switched load (boiler, air conditioning) stays ON or OFF at least this long before the EMS
+					may switch
+					it again, whatever the controllers ask. Protects contactors and compressors from
+					short-cycling.</description>
+				<default>300</default>
+			</parameter>
 			<parameter name="latitude" type="decimal" required="false" min="-90" max="90">
 				<label>Latitude</label>
 				<description>Site latitude, used for sunrise/sunset in the boiler and heat-pump planners.</description>

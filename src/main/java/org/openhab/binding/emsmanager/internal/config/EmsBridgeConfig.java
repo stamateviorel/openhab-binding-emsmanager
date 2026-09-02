@@ -134,6 +134,8 @@ public class EmsBridgeConfig {
 
     // Main breaker per phase (example default: 63 A).
     public int mainBreakerAmpsPerPhase = 63;
+    /** Minimum seconds a switched load (boiler, aircon) stays ON or OFF before it may be switched again. */
+    public int switchMinDwellSeconds = 300;
 
     // Capacity-tariff minimum billable demand. Some markets bill a minimum
     // demand (e.g. the Belgian capaciteitstarief floors at 2.5 kW) even if the

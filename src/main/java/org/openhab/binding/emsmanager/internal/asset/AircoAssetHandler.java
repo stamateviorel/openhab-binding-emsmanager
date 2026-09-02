@@ -39,9 +39,20 @@ public final class AircoAssetHandler implements AssetHandler {
     private final String aircoItemName;
     private final SetpointDedupe dedupe = new SetpointDedupe();
 
+    /** Five minutes either way unless the bridge says otherwise. */
+    public static final long DEFAULT_MIN_DWELL_MS = 5L * 60L * 1000L;
+
+    private final OnOffDwell dwell;
+    private boolean holdLogged;
+
     public AircoAssetHandler(EventPublisher eventPublisher, String aircoItemName) {
+        this(eventPublisher, aircoItemName, DEFAULT_MIN_DWELL_MS);
+    }
+
+    public AircoAssetHandler(EventPublisher eventPublisher, String aircoItemName, long minDwellMs) {
         this.eventPublisher = eventPublisher;
         this.aircoItemName = aircoItemName;
+        this.dwell = new OnOffDwell(minDwellMs, minDwellMs);
     }
 
     @Override
@@ -63,6 +74,16 @@ public final class AircoAssetHandler implements AssetHandler {
         if (!dedupe.shouldSend(aircoItemName, desired, current, now)) {
             return false;
         }
+        if (!dwell.mayLeave(current, now)) {
+            if (!holdLogged) {
+                // said once per hold, not once per tick: a controller that keeps asking is the norm
+                LOGGER.info("AircoAssetHandler: holding {} {} for another {}s before {} ({}: {})", aircoItemName,
+                        current, dwell.remainingSeconds(current, now), desired, req.controllerName(), req.reason());
+                holdLogged = true;
+            }
+            return false;
+        }
+        holdLogged = false;
         if (shadow) {
             LOGGER.info("[SHADOW] would write {} ← {} ({}: {})", aircoItemName, desired, req.controllerName(),
                     req.reason());
@@ -70,6 +91,7 @@ public final class AircoAssetHandler implements AssetHandler {
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(aircoItemName, OnOffType.from(wantOn)));
         dedupe.markSent(aircoItemName, desired, now);
+        dwell.switched(desired, now);
         LOGGER.info("AircoAssetHandler: sent {} ← {} ({}: {})", aircoItemName, desired, req.controllerName(),
                 req.reason());
         return true;

@@ -38,9 +38,20 @@ public final class BoilerAssetHandler implements AssetHandler {
     private final String boilerItemName;
     private final SetpointDedupe dedupe = new SetpointDedupe();
 
+    /** Five minutes either way unless the bridge says otherwise. */
+    public static final long DEFAULT_MIN_DWELL_MS = 5L * 60L * 1000L;
+
+    private final OnOffDwell dwell;
+    private boolean holdLogged;
+
     public BoilerAssetHandler(EventPublisher eventPublisher, String boilerItemName) {
+        this(eventPublisher, boilerItemName, DEFAULT_MIN_DWELL_MS);
+    }
+
+    public BoilerAssetHandler(EventPublisher eventPublisher, String boilerItemName, long minDwellMs) {
         this.eventPublisher = eventPublisher;
         this.boilerItemName = boilerItemName;
+        this.dwell = new OnOffDwell(minDwellMs, minDwellMs);
     }
 
     @Override
@@ -62,6 +73,16 @@ public final class BoilerAssetHandler implements AssetHandler {
         if (!dedupe.shouldSend(boilerItemName, desired, current, now)) {
             return false;
         }
+        if (!dwell.mayLeave(current, now)) {
+            if (!holdLogged) {
+                // said once per hold, not once per tick: a controller that keeps asking is the norm
+                LOGGER.info("BoilerAssetHandler: holding {} {} for another {}s before {} ({}: {})", boilerItemName,
+                        current, dwell.remainingSeconds(current, now), desired, req.controllerName(), req.reason());
+                holdLogged = true;
+            }
+            return false;
+        }
+        holdLogged = false;
         if (shadow) {
             LOGGER.info("[SHADOW] would write {} ← {} ({}: {})", boilerItemName, desired, req.controllerName(),
                     req.reason());
@@ -69,6 +90,7 @@ public final class BoilerAssetHandler implements AssetHandler {
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(boilerItemName, OnOffType.from(wantOn)));
         dedupe.markSent(boilerItemName, desired, now);
+        dwell.switched(desired, now);
         LOGGER.info("BoilerAssetHandler: sent {} ← {} ({}: {})", boilerItemName, desired, req.controllerName(),
                 req.reason());
         return true;
