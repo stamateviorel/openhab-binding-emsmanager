@@ -21,8 +21,12 @@ import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointDedupe;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 import org.openhab.core.events.EventPublisher;
+import org.openhab.core.items.Item;
+import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.events.ItemEventFactory;
 import org.openhab.core.library.types.DecimalType;
+import org.openhab.core.library.types.QuantityType;
+import org.openhab.core.types.State;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,10 +35,16 @@ import org.slf4j.LoggerFactory;
  * {@link BatteryConfig#controlMode}:
  * <ul>
  * <li><b>auto</b>: clamp the request to [minSetpointW, maxSetpointW] and
- * send it as a command to {@code setpointItemName}. Dedupe by value.</li>
- * <li><b>fixed</b>: log + reject — EMS isn't allowed to drive in fixed mode.</li>
+ * send it as a command to {@code setpointItemName}.</li>
+ * <li><b>fixed</b>: ignore the request's value and hold the item at
+ * {@code fixedSetpointW} (clamped the same way).</li>
  * <li><b>readonly</b>: log + reject — the inverter doesn't accept writes.</li>
  * </ul>
+ *
+ * <p>
+ * A value is sent once; it is only re-sent when the item's state (read
+ * through the registry when one is wired) disagrees with it after the ACK
+ * window. Without a registry the last value sent stands in for the state.
  *
  * <p>
  * Defaults to {@code readonly} for sites without a writable inverter item.
@@ -52,11 +62,26 @@ public final class BatteryAssetHandler implements AssetHandler {
 
     private final EventPublisher eventPublisher;
     private final BatteryConfig config;
-    private final SetpointDedupe dedupe = new SetpointDedupe();
+    private final @Nullable ItemRegistry itemRegistry;
+    private final SetpointDedupe dedupe;
+    private @Nullable String lastSent = null;
 
     public BatteryAssetHandler(EventPublisher eventPublisher, BatteryConfig config) {
+        this(eventPublisher, config, null);
+    }
+
+    public BatteryAssetHandler(EventPublisher eventPublisher, BatteryConfig config,
+            @Nullable ItemRegistry itemRegistry) {
+        this(eventPublisher, config, itemRegistry, new SetpointDedupe());
+    }
+
+    /** Visible for testing: lets a test shrink the ACK window. */
+    BatteryAssetHandler(EventPublisher eventPublisher, BatteryConfig config, @Nullable ItemRegistry itemRegistry,
+            SetpointDedupe dedupe) {
         this.eventPublisher = eventPublisher;
         this.config = config;
+        this.itemRegistry = itemRegistry;
+        this.dedupe = dedupe;
     }
 
     @Override
@@ -77,8 +102,9 @@ public final class BatteryAssetHandler implements AssetHandler {
 
         switch (config.controlMode) {
             case "auto":
-                return applyAuto(req, shadow);
+                return write((int) Math.round(req.value()), req, shadow);
             case "fixed":
+                return write((int) Math.round(config.fixedSetpointW), req, shadow);
             case "readonly":
             default:
                 if (shadow) {
@@ -92,36 +118,53 @@ public final class BatteryAssetHandler implements AssetHandler {
         }
     }
 
-    private boolean applyAuto(SetpointRequest req, boolean shadow) {
+    private boolean write(int requestedW, SetpointRequest req, boolean shadow) {
         @Nullable
         String item = config.setpointItemName;
         if (item == null || item.isBlank()) {
-            LOGGER.warn("BatteryAssetHandler: controlMode=auto but setpointItemName not configured — rejecting write");
+            LOGGER.warn("BatteryAssetHandler: controlMode={} but setpointItemName not configured — rejecting write",
+                    config.controlMode);
             return false;
         }
-        int target = (int) Math.round(req.value());
-        if (target < config.minSetpointW) {
-            target = config.minSetpointW;
-        }
-        if (target > config.maxSetpointW) {
-            target = config.maxSetpointW;
-        }
+        int target = Math.max(config.minSetpointW, Math.min(config.maxSetpointW, requestedW));
         String desired = String.valueOf(target);
-        // We can't easily read the current item state here (would need ItemRegistry — small future improvement);
-        // rely on the dedupe ACK-window memo only.
-        String current = "UNKNOWN";
+        String previous = lastSent;
+        String fromItem = itemStateW(item);
+        String current = fromItem != null ? fromItem : (previous != null ? previous : "UNKNOWN");
         long now = System.currentTimeMillis();
         if (!dedupe.shouldSend(item, desired, current, now)) {
             return false;
         }
+        String why = "fixed".equals(config.controlMode) ? "fixed setpoint" : req.reason();
         if (shadow) {
-            LOGGER.info("[SHADOW][battery:auto] would write {} ← {} W ({}: {})", item, target, req.controllerName(),
-                    req.reason());
+            LOGGER.info("[SHADOW][battery:{}] would write {} ← {} W ({}: {})", config.controlMode, item, target,
+                    req.controllerName(), why);
             return false;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(item, new DecimalType(target)));
         dedupe.markSent(item, desired, now);
-        LOGGER.info("BatteryAssetHandler: sent {} ← {} W ({}: {})", item, target, req.controllerName(), req.reason());
+        lastSent = desired;
+        LOGGER.info("BatteryAssetHandler: sent {} ← {} W ({}: {})", item, target, req.controllerName(), why);
         return true;
+    }
+
+    /** The setpoint item's numeric state as an integer string, or null when there is no registry / no number. */
+    private @Nullable String itemStateW(String itemName) {
+        ItemRegistry registry = itemRegistry;
+        if (registry == null) {
+            return null;
+        }
+        Item item = registry.get(itemName);
+        if (item == null) {
+            return null;
+        }
+        State state = item.getState();
+        if (state instanceof QuantityType<?> q) {
+            return String.valueOf(q.intValue());
+        }
+        if (state instanceof DecimalType d) {
+            return String.valueOf(d.intValue());
+        }
+        return null;
     }
 }

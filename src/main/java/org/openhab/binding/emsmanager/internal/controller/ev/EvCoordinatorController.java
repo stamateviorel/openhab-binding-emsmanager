@@ -16,12 +16,15 @@ import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.binding.emsmanager.internal.controller.peak.HardPeakShavingController;
 import org.openhab.binding.emsmanager.internal.controller.peak.SoftPeakShavingController;
+import org.openhab.binding.emsmanager.internal.controller.safety.SafetyBreakerController;
 import org.openhab.binding.emsmanager.internal.core.CapabilityCheck;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.Controller;
@@ -41,6 +44,9 @@ import org.slf4j.LoggerFactory;
  * duration). The SafetyBreakerController separately emits PAUSE on
  * breaker-headroom violation; the asset-handler dedupe naturally absorbs
  * the duplicate if both controllers target the same car at the same time.
+ * A breaker pause this controller set is released again once headroom is
+ * back to {@link SafetyBreakerController#RESUME_HEADROOM_A}; a pause that
+ * was already there when headroom dropped belongs to someone else.
  *
  * <p>
  * Per-car state: {@code lastSentAmps[carKey]} — drives hysteresis +
@@ -76,6 +82,9 @@ public final class EvCoordinatorController implements Controller {
 
     /** Last AMPS we emitted, per car key. NaN = never emitted. */
     private final Map<String, Double> lastSentAmps = new HashMap<>();
+
+    /** Cars whose pause this controller set for breaker headroom; cleared once the car is seen unpaused. */
+    private final Set<String> pausedByMe = new HashSet<>();
 
     /**
      * Consecutive auto-RemoteStart attempts since the car last left a
@@ -142,10 +151,15 @@ public final class EvCoordinatorController implements Controller {
 
     private void handleCar(EnergyContext ctx, CarSnapshot car,
             @org.eclipse.jdt.annotation.Nullable Double ecoBudgetPerCarW, List<SetpointRequest> out) {
+        String key = car.carKey();
         if (!car.cableConnected()) {
             // Cable out — clear any backoff so a fresh plug-in earns a full burst.
-            chargeStartAttempts.remove(car.carKey());
+            chargeStartAttempts.remove(key);
+            pausedByMe.remove(key);
             return;
+        }
+        if (!car.paused()) {
+            pausedByMe.remove(key);
         }
 
         // Modbus fail-safe — cap at MIN. SafetyBreakerController also handles
@@ -161,8 +175,16 @@ public final class EvCoordinatorController implements Controller {
         int headroom = CapabilityCheck.breakerHeadroomA(car.ampsL1(), car.ampsL2(), car.ampsL3(), ctx.totalAmpsL1(),
                 ctx.totalAmpsL2(), ctx.totalAmpsL3(), effectiveLimitA, elec.maxChargeCurrentA());
         if (headroom < CapabilityCheck.MIN_CHARGING_CURRENT_A) {
-            out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.PAUSE, 1.0, priority(), NAME,
+            // A pause already present when headroom dropped is not ours to release.
+            if (!car.paused()) {
+                pausedByMe.add(key);
+            }
+            out.add(new SetpointRequest(key, SetpointRequest.Kind.PAUSE, 1.0, priority(), NAME,
                     "breaker headroom " + headroom + "A < " + CapabilityCheck.MIN_CHARGING_CURRENT_A + "A"));
+            return;
+        }
+        boolean releasingBreakerPause = pausedByMe.contains(key);
+        if (releasingBreakerPause && headroom < SafetyBreakerController.RESUME_HEADROOM_A) {
             return;
         }
 
@@ -188,11 +210,8 @@ public final class EvCoordinatorController implements Controller {
         // the deferral above, so a paused SNEL car here only carries a stale pause
         // and MUST be resumed — otherwise flipping ECO→SNEL leaves the wallbox stuck
         // paused with no controller ever waking it.
-        if (mode != CarSnapshot.Mode.SNEL && car.paused()) {
-            Double ours = lastSentAmps.get(car.carKey() + ".pause");
-            if (ours == null || ours < 0.5) {
-                return;
-            }
+        if (mode != CarSnapshot.Mode.SNEL && car.paused() && !releasingBreakerPause) {
+            return;
         }
 
         // Auto-RemoteStart when no transaction is open. Behaviour varies by
@@ -267,7 +286,8 @@ public final class EvCoordinatorController implements Controller {
         int target = applyHysteresis(car.carKey(), ramped);
         emitAmps(car, target, "ECO " + budgetNote + " (cap=" + ecoCap + "A, headroom=" + headroom + "A)", out);
         // Resume any prior pause we set.
-        out.add(new SetpointRequest(car.carKey(), SetpointRequest.Kind.PAUSE, 0.0, priority(), NAME, "ECO — resume"));
+        out.add(new SetpointRequest(key, SetpointRequest.Kind.PAUSE, 0.0, priority(), NAME,
+                releasingBreakerPause ? "ECO — breaker headroom back to " + headroom + "A, resuming" : "ECO — resume"));
     }
 
     private void emitAmps(CarSnapshot car, int amps, String reason, List<SetpointRequest> out) {

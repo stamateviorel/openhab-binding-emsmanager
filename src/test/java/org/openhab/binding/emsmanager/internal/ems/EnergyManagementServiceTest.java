@@ -312,6 +312,22 @@ class EnergyManagementServiceTest {
     }
 
     @Test
+    void nightChargeIsGatedOnSocAndTomorrowsForecast() {
+        assertEquals(-2000.0,
+                EnergyManagementService.batteryTouSetpointW(3, false, 40, 8.0, 2, 6, 17, 21, -2000, 2000, 90, 20), 1e-9,
+                "half full, dull tomorrow → charge");
+        assertNull(EnergyManagementService.batteryTouSetpointW(3, false, 90, 8.0, 2, 6, 17, 21, -2000, 2000, 90, 20),
+                "at 90 % → nothing to gain");
+        assertNull(EnergyManagementService.batteryTouSetpointW(3, false, 40, 20.0, 2, 6, 17, 21, -2000, 2000, 90, 20),
+                "20 kWh forecast → the roof will do it");
+        assertEquals(-2000.0, EnergyManagementService.batteryTouSetpointW(3, false, Double.NaN, Double.NaN, 2, 6, 17,
+                21, -2000, 2000, 90, 20), 1e-9, "unknown SoC and forecast → charge rather than guess");
+        assertEquals(2000.0,
+                EnergyManagementService.batteryTouSetpointW(18, false, 95, 30.0, 2, 6, 17, 21, -2000, 2000, 90, 20),
+                1e-9, "the gate is on the night charge only");
+    }
+
+    @Test
     void capacityTariffWouldExceedMonthlyPeak() {
         // month peak -7000 W import, floor 2500, margin 300.
         assertTrue(EnergyManagementService.wouldExceedCapacityPeak(-7500, -7000, 2500, 300), "projected new peak");

@@ -315,10 +315,29 @@ public final class EnergyManagementService {
      */
     public static @Nullable Double batteryTouSetpointW(int hour, boolean batteryBelowReserve, int nightStartHour,
             int nightEndHour, int eveStartHour, int eveEndHour, double chargeRateW, double dischargeRateW) {
+        return batteryTouSetpointW(hour, batteryBelowReserve, Double.NaN, Double.NaN, nightStartHour, nightEndHour,
+                eveStartHour, eveEndHour, chargeRateW, dischargeRateW, Double.POSITIVE_INFINITY,
+                Double.POSITIVE_INFINITY);
+    }
+
+    /**
+     * As above, with the night charge gated: skipped when the SoC is already at {@code fullSocPct}
+     * or when tomorrow's PV forecast is known and reaches {@code sunnyTomorrowKwh}. A NaN SoC or
+     * forecast does not gate — better to charge than to guess.
+     */
+    public static @Nullable Double batteryTouSetpointW(int hour, boolean batteryBelowReserve, double batterySoC,
+            double forecastTomorrowKwh, int nightStartHour, int nightEndHour, int eveStartHour, int eveEndHour,
+            double chargeRateW, double dischargeRateW, double fullSocPct, double sunnyTomorrowKwh) {
         if (hour >= eveStartHour && hour < eveEndHour) {
             return batteryBelowReserve ? null : dischargeRateW;
         }
         if (hour >= nightStartHour && hour < nightEndHour) {
+            if (!Double.isNaN(batterySoC) && batterySoC >= fullSocPct) {
+                return null;
+            }
+            if (!Double.isNaN(forecastTomorrowKwh) && forecastTomorrowKwh >= sunnyTomorrowKwh) {
+                return null;
+            }
             return chargeRateW;
         }
         return null;

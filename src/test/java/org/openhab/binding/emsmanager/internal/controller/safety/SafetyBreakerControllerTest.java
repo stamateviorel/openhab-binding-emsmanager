@@ -43,7 +43,11 @@ class SafetyBreakerControllerTest {
     private static final int LIMIT_A = CapabilityCheck.EFFECTIVE_LIMIT_A;
 
     private CarSnapshot car(String key, boolean cableConnected, double l1, double l2, double l3) {
-        return new CarSnapshot(key, CarSnapshot.Mode.ECO, cableConnected, "Charging", l1, l2, l3, 0.0, 16.0, false);
+        return car(key, cableConnected, l1, l2, l3, false);
+    }
+
+    private CarSnapshot car(String key, boolean cableConnected, double l1, double l2, double l3, boolean paused) {
+        return new CarSnapshot(key, CarSnapshot.Mode.ECO, cableConnected, "Charging", l1, l2, l3, 0.0, 16.0, paused);
     }
 
     private EnergyContext ctx(boolean modbusFresh, double totalL1, double totalL2, double totalL3,
@@ -159,6 +163,44 @@ class SafetyBreakerControllerTest {
                 .evaluate(ctx(false, 0, 0, 0, car("car1", false, 0, 0, 0)));
 
         assertTrue(out.isEmpty(), "no cable, nothing to cap");
+    }
+
+    /** A pause is only half a safety net: the car has to come back once the phase has room again. */
+    @Test
+    void aPauseItSetIsReleasedOnceThereIsRoomAgain() {
+        SafetyBreakerController controller = new SafetyBreakerController(false);
+        controller.evaluate(ctx(true, LIMIT_A - 3.0, 5, 5, car("car1", true, 0, 0, 0)));
+
+        List<SetpointRequest> out = controller
+                .evaluate(ctx(true, LIMIT_A - 20.0, 5, 5, car("car1", true, 0, 0, 0, true)));
+
+        Optional<SetpointRequest> resume = requestFor(out, "car1", SetpointRequest.Kind.PAUSE);
+        assertTrue(resume.isPresent(), "the car must be resumed once headroom is back");
+        assertEquals(0.0, resume.get().value(), 1e-9, "a resume, not another pause");
+    }
+
+    /** Right at the minimum the car would flap on and off with every amp, so release waits for a little more. */
+    @Test
+    void thePauseIsHeldUntilHeadroomClearsTheHysteresisBand() {
+        SafetyBreakerController controller = new SafetyBreakerController(false);
+        controller.evaluate(ctx(true, LIMIT_A - 3.0, 5, 5, car("car1", true, 0, 0, 0)));
+
+        List<SetpointRequest> out = controller.evaluate(ctx(true,
+                LIMIT_A - (SafetyBreakerController.RESUME_HEADROOM_A - 1.0), 5, 5, car("car1", true, 0, 0, 0, true)));
+
+        assertTrue(out.isEmpty(), "just under the resume threshold the car stays paused");
+    }
+
+    /** Someone else's pause - a manual one, a capacity-tariff one - is not this controller's to lift. */
+    @Test
+    void aPauseThatWasAlreadyThereIsNotReleased() {
+        SafetyBreakerController controller = new SafetyBreakerController(false);
+        controller.evaluate(ctx(true, LIMIT_A - 3.0, 5, 5, car("car1", true, 0, 0, 0, true)));
+
+        List<SetpointRequest> out = controller
+                .evaluate(ctx(true, LIMIT_A - 20.0, 5, 5, car("car1", true, 0, 0, 0, true)));
+
+        assertTrue(out.isEmpty(), "a pause that predates the breaker event belongs to whoever set it");
     }
 
     @Test

@@ -21,6 +21,7 @@ import java.util.Map;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.junit.jupiter.api.Test;
+import org.openhab.binding.emsmanager.internal.controller.peak.HardPeakShavingController;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 
@@ -50,6 +51,33 @@ class BoilerScheduleControllerTest {
         assertEquals("boiler", req.assetId());
         assertEquals(SetpointRequest.Kind.ONOFF, req.kind());
         assertEquals(1.0, req.value());
+    }
+
+    /**
+     * Hard peak shaving writes its boiler-off once, at engage; a schedule that keeps saying ON every
+     * five seconds would switch the boiler straight back on in the middle of a grid peak.
+     */
+    @Test
+    void staysSilentWhileHardPeakShavingIsEngaged() {
+        HardPeakShavingController hard = new HardPeakShavingController(false, false);
+        EnergyContext peak = peakCtx("2026-05-26T07:30:00");
+        hard.requestManualEngage();
+        hard.evaluate(peak);
+        assertTrue(hard.level() > 0, "precondition: shaving engaged");
+        BoilerScheduleController c = new BoilerScheduleController("TUE:07:00-09:00", hard);
+
+        assertEquals(0, c.evaluate(peak).size(), "no boiler ON while a shaving tier is engaged");
+
+        hard.requestManualReset();
+        hard.evaluate(peak);
+        assertEquals(1, c.evaluate(peak).size(), "the window fires again once shaving has released");
+    }
+
+    private EnergyContext peakCtx(String localDateTime) {
+        Instant t = LocalDateTime.parse(localDateTime).atZone(ZoneId.systemDefault()).toInstant();
+        return new EnergyContext(t, -20000, -20000, 0, 20000, 0, 50, 30, false, 0, EnergyContext.Mode.GRID_IMPORT,
+                Map.of(), 0, 0, 0, true, true, false, true, -20000, 0, false, -20000, 0, 60_000L, 0.30, new double[0],
+                Double.NaN, Double.NaN, false);
     }
 
     @Test
