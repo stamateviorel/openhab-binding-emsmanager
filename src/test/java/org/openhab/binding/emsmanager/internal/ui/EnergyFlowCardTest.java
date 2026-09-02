@@ -177,12 +177,13 @@ class EnergyFlowCardTest {
                 Set.of("Grid_load", "Solar_load", "Car1_Mode", "Car1_Plan_Enabled", "Car1_Plan_Target_kWh",
                         "Car1_Plan_Departure_At", "Car1_Plan_Strategy", "Car1_Plan_Status"),
                 bridgeAndMeters(), links());
-        UIComponent control = page(with, "emsmanager_energy_control");
+        UIComponent control = page(with, "emsmanager_energy_cars");
         assertNotNull(find(control, "oh-input-item"), "the departure time is an input");
         assertEquals(2, count(control, "f7-segmented"), "charging mode and plan strategy for car 1; car 2 has nothing");
 
         EnergyUiProvider without = siteWith(Set.of("Grid_load", "Solar_load"), bridgeAndMeters(), links());
-        assertEquals(0, count(page(without, "emsmanager_energy_control"), "f7-segmented"));
+        assertEquals(0, count(page(without, "emsmanager_energy_cars"), "f7-segmented"));
+        assertEquals(0, count(page(with, "emsmanager_energy_control"), "oh-input-item"), "the chargers left Control");
     }
 
     @Test

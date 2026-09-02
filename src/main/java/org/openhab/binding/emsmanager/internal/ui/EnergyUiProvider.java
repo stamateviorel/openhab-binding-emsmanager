@@ -144,6 +144,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String P_CONTROL = "emsmanager_energy_control";
 
     private static final String P_CIRCUITS = "emsmanager_energy_circuits";
+    private static final String P_CARS = "emsmanager_energy_cars";
 
     /** Binding-published switches the control page offers. */
     private static final String I_BOILER_OVERRIDE = "EMS_Boiler_User_Override";
@@ -257,6 +258,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         out.add(buildFuturePage(site));
         out.add(buildNowPage(providers, site));
         out.add(buildControlPage(consumers, site));
+        out.add(buildCarsPage(site));
         out.add(buildChartsPage(providers, consumers));
         out.add(buildCircuitsChartPage());
         return out;
@@ -326,6 +328,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         tabs.add(tab("Past", "f7:clock_fill", P_PAST));
         tabs.add(tab("Future", "f7:arrow_right_circle_fill", P_FUTURE));
         tabs.add(tab("Now", "f7:gauge", P_NOW));
+        tabs.add(tab("Cars", "f7:car_fill", P_CARS));
         tabs.add(tab("Control", "f7:slider_horizontal_3", P_CONTROL));
         tabs.add(tab("Power", "f7:chart_bar_alt_fill", P_CHARTS));
         tabs.add(tab("By circuit", "f7:chart_pie_fill", P_CIRCUITS));
@@ -431,24 +434,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(dayStrip()));
         } else if (has(I_OPT_PLAN_24H)) {
             root.add(cardRow(planCard()));
-        }
-
-        for (SiteModel.Car car : site.cars()) {
-            String enabled = car.planPrefix() + "_Plan_Enabled";
-            if (!has(enabled) || !has(car.planPrefix() + "_Plan_Status")) {
-                continue;
-            }
-            UIComponent plan = figureCard(carTitle(car) + " - the plan",
-                    figureIfPresent(car.planPrefix() + "_Plan_Required_kWh", "still needed", "battery_25", "orange"),
-                    figureIfPresent(car.planPrefix() + "_Plan_Hours_Remaining", "hours left", "clock", "blue"),
-                    figureIfPresent(car.planPrefix() + "_Plan_Projected_Cost_EUR", "will cost", "money_euro", "red"),
-                    figureIfPresent(car.planPrefix() + "_Plan_Departure_At", "leaving", "car_fill", "purple"));
-            if (plan != null) {
-                // only while a plan is on: a card of zeros for a car nobody planned says nothing
-                plan.addConfig("style",
-                        java.util.Map.of("display", "=items." + enabled + ".state==='ON'?'block':'none'"));
-                root.add(cardRow(plan));
-            }
         }
 
         UIComponent sun = figureCard("Sun expected",
@@ -955,13 +940,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(settings));
         }
 
-        for (SiteModel.Car car : site.cars()) {
-            UIComponent plan = carCard(car);
-            if (plan != null) {
-                root.add(cardRow(plan));
-            }
-        }
-
         List<UIComponent> switches = new ArrayList<>();
         if (has(I_BOILER_OVERRIDE)) {
             switches.add(switchRow(I_BOILER_OVERRIDE, "Heat the water now"));
@@ -1026,6 +1004,43 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /**
+     * The chargers on their own tab: one card per car, nothing else, because a person setting up a
+     * departure wants the four cars side by side and not under the boiler.
+     */
+    private RootUIComponent buildCarsPage(SiteModel site) {
+        RootUIComponent page = layoutPage(P_CARS, "Cars");
+        List<UIComponent> root = page.addSlot("default");
+        List<UIComponent> cards = new ArrayList<>();
+        for (SiteModel.Car car : site.cars()) {
+            UIComponent card = carCard(car);
+            if (card != null) {
+                cards.add(card);
+            }
+        }
+        if (cards.isEmpty()) {
+            UIComponent note = new UIComponent("oh-label-item");
+            note.addConfig("title", "No chargers");
+            note.addConfig("subtitle",
+                    "Set carCount and the per-car item patterns on the EMS bridge to get a card per car here.");
+            root.add(cardRow(listCard("Cars", List.of(note))));
+            return page;
+        }
+        // two cars per row on a tablet, one per row on a phone
+        for (int i = 0; i < cards.size(); i += 2) {
+            UIComponent left = col("100", cards.get(i));
+            left.addConfig("medium", "50");
+            if (i + 1 < cards.size()) {
+                UIComponent right = col("100", cards.get(i + 1));
+                right.addConfig("medium", "50");
+                root.add(block(null, row(left, right)));
+            } else {
+                root.add(block(null, row(left)));
+            }
+        }
+        return page;
+    }
+
+    /**
      * One car: how it is charging now, and the plan for when it has to be ready.
      * <p>
      * The plan Items are the engine's own contract (target, departure, strategy, on/off in; status,
@@ -1051,9 +1066,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         }
         if (has(car.currentLimitItem())) {
             now.add(figure(car.currentLimitItem(), "allowed", "gauge", "purple"));
-        }
-        if (has(car.planPrefix() + "_Plan_Projected_Cost_EUR")) {
-            now.add(figure(car.planPrefix() + "_Plan_Projected_Cost_EUR", "plan will cost", "money_euro", "red"));
         }
         if (!now.isEmpty()) {
             UIComponent row = new UIComponent("f7-row");
@@ -1094,6 +1106,22 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 status.addConfig("style", java.util.Map.of("font-size", "12px", "opacity", "0.8", "display",
                         "=items." + enabled + ".state==='ON'?'block':'none'"));
                 slot.add(status);
+            }
+            List<UIComponent> figures = new ArrayList<>();
+            for (String[] f : new String[][] { { "_Plan_Required_kWh", "still needed", "battery_25", "orange" },
+                    { "_Plan_Hours_Remaining", "hours left", "clock", "blue" },
+                    { "_Plan_Projected_Cost_EUR", "will cost", "money_euro", "red" } }) {
+                if (has(car.planPrefix() + f[0])) {
+                    figures.add(figure(car.planPrefix() + f[0], f[1], f[2], f[3]));
+                }
+            }
+            if (!figures.isEmpty()) {
+                UIComponent planRow = new UIComponent("f7-row");
+                planRow.addConfig("class", List.of("padding-vertical-half"));
+                planRow.addConfig("style",
+                        java.util.Map.of("display", "=items." + enabled + ".state==='ON'?'flex':'none'"));
+                planRow.addSlot("default").addAll(figures);
+                slot.add(planRow);
             }
             if (has(car.planPrefix() + "_Plan_Feasible")) {
                 UIComponent warn = chip("will not make it in time", "red", "=items." + enabled + ".state==='ON'&&items."

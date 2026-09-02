@@ -123,10 +123,10 @@ class EnergyUiProviderTest {
         EnergyUiProvider provider = providerWith(Set.of());
         Collection<RootUIComponent> pages = provider.getAll();
 
-        assertEquals(7, pages.size(), "tabs page plus Past, Future, Now, Control, Power and By circuit");
+        assertEquals(8, pages.size(), "tabs page plus Past, Future, Now, Cars, Control, Power and By circuit");
         for (String uid : List.of("emsmanager_energy", "emsmanager_energy_past", "emsmanager_energy_future",
-                "emsmanager_energy_now", "emsmanager_energy_control", "emsmanager_energy_charts",
-                "emsmanager_energy_circuits")) {
+                "emsmanager_energy_now", "emsmanager_energy_cars", "emsmanager_energy_control",
+                "emsmanager_energy_charts", "emsmanager_energy_circuits")) {
             assertNotNull(page(provider, uid), "missing page: " + uid);
         }
     }
