@@ -91,6 +91,64 @@ class ChargerAssetHandlerTest {
         assertTrue(sent.get(0).contains("0"), "a negative current has no meaning at a charger");
     }
 
+    /** Math.round(NaN) is 0, and 0 A at a charger is a pause - a NaN must go nowhere. */
+    @Test
+    void aNaNRequestIsDroppedNotTurnedIntoAPause() {
+        ChargerAssetHandler handler = handler(32);
+
+        assertFalse(handler.apply(amps(Double.NaN), contextWithCarAt(16), false));
+        assertTrue(sent.isEmpty(), "NaN must never reach the charger as 0 A");
+    }
+
+    /** IEC 61851 has no such thing as 3 A: anything above zero is at least the 6 A minimum. */
+    @Test
+    void aRequestBelowTheMinimumIsRaisedToIt() {
+        handler(32).apply(amps(3), contextWithCarAt(16), false);
+
+        assertEquals(1, sent.size());
+        assertTrue(sent.get(0).contains("Car1_Limit"));
+        assertTrue(sent.get(0).endsWith("6") || sent.get(0).contains(" 6") || sent.get(0).contains("\"6\""),
+                "3 A must become 6 A, got " + sent.get(0));
+    }
+
+    @Test
+    void zeroStillMeansPause() {
+        handler(32).apply(amps(0), contextWithCarAt(16), false);
+
+        assertEquals(1, sent.size());
+        assertFalse(sent.get(0).contains("6"), "0 A is a pause, not a minimum, got " + sent.get(0));
+    }
+
+    /** A 63 A breaker does not make a 32 A car a 40 A car. */
+    @Test
+    void theConfiguredEvMaximumCapsBelowTheBreaker() {
+        new ChargerAssetHandler(recordingPublisher(), "car1", "Car1_Pause", "Car1_Limit", "Car1_Charging", 63, 16)
+                .apply(amps(40), contextWithCarAt(6), false);
+
+        assertEquals(1, sent.size());
+        assertTrue(sent.get(0).contains("16"), "40 A must be capped at the 16 A EV maximum, got " + sent.get(0));
+        assertFalse(sent.get(0).contains("40"));
+    }
+
+    @Test
+    void theSixArgConstructorDefaultsTheEvMaximumTo32() {
+        handler(63).apply(amps(40), contextWithCarAt(6), false);
+
+        assertEquals(1, sent.size());
+        assertTrue(sent.get(0).contains("32"), "got " + sent.get(0));
+    }
+
+    @Test
+    void clampArithmetic() {
+        assertEquals(0, ChargerAssetHandler.clampAmps(0, 32));
+        assertEquals(0, ChargerAssetHandler.clampAmps(-5, 32));
+        assertEquals(6, ChargerAssetHandler.clampAmps(1, 32));
+        assertEquals(6, ChargerAssetHandler.clampAmps(6, 32));
+        assertEquals(16, ChargerAssetHandler.clampAmps(16, 32));
+        assertEquals(32, ChargerAssetHandler.clampAmps(200, 32));
+        assertEquals(16, ChargerAssetHandler.clampAmps(200, 16));
+    }
+
     @Test
     void shadowModeDecidesButWritesNothing() {
         assertFalse(handler(32).apply(amps(16), contextWithCarAt(6), true));

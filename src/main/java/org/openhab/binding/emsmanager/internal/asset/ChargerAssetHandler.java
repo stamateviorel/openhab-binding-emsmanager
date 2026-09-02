@@ -13,6 +13,7 @@
 package org.openhab.binding.emsmanager.internal.asset;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.openhab.binding.emsmanager.internal.core.CapabilityCheck;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointDedupe;
@@ -47,7 +48,9 @@ public final class ChargerAssetHandler implements AssetHandler {
     private final String currentLimitItemName;
     private final String chargingItemName;
     private final int breakerLimitA;
+    private final int evMaxChargeCurrentA;
     private final SetpointDedupe dedupe = new SetpointDedupe();
+    private boolean nanWarned = false;
 
     /**
      * Explicit-item-names constructor. The resolved per-car write-item names
@@ -66,12 +69,23 @@ public final class ChargerAssetHandler implements AssetHandler {
             @org.eclipse.jdt.annotation.Nullable String pauseItemName,
             @org.eclipse.jdt.annotation.Nullable String currentLimitItemName,
             @org.eclipse.jdt.annotation.Nullable String chargingItemName, int breakerLimitA) {
+        this(eventPublisher, carKey, pauseItemName, currentLimitItemName, chargingItemName, breakerLimitA,
+                CapabilityCheck.MAX_CHARGING_CURRENT_A);
+    }
+
+    /** @param evMaxChargeCurrentA the site's configured EV maximum; no request may exceed it */
+    public ChargerAssetHandler(EventPublisher eventPublisher, String carKey,
+            @org.eclipse.jdt.annotation.Nullable String pauseItemName,
+            @org.eclipse.jdt.annotation.Nullable String currentLimitItemName,
+            @org.eclipse.jdt.annotation.Nullable String chargingItemName, int breakerLimitA, int evMaxChargeCurrentA) {
         this.eventPublisher = eventPublisher;
         this.carKey = carKey;
         this.pauseItemName = pauseItemName == null ? "" : pauseItemName;
         this.currentLimitItemName = currentLimitItemName == null ? "" : currentLimitItemName;
         this.chargingItemName = chargingItemName == null ? "" : chargingItemName;
         this.breakerLimitA = breakerLimitA > 0 ? breakerLimitA : 63;
+        this.evMaxChargeCurrentA = evMaxChargeCurrentA > 0 ? evMaxChargeCurrentA
+                : CapabilityCheck.MAX_CHARGING_CURRENT_A;
     }
 
     @Override
@@ -125,8 +139,17 @@ public final class ChargerAssetHandler implements AssetHandler {
         if (currentLimitItemName.isBlank()) {
             return false;
         }
+        if (Double.isNaN(req.value())) {
+            // Math.round(NaN) is 0, which would read as "pause" at the charger.
+            if (!nanWarned) {
+                nanWarned = true;
+                LOGGER.warn("ChargerAssetHandler[{}]: {} asked for NaN A — dropped (logged once)", carKey,
+                        req.controllerName());
+            }
+            return false;
+        }
         int requested = (int) Math.round(req.value());
-        int amps = Math.max(0, Math.min(breakerLimitA, requested));
+        int amps = clampAmps(requested, Math.min(breakerLimitA, evMaxChargeCurrentA));
         if (amps != requested) {
             // Controllers are supposed to have done this arithmetic already; this is the last thing
             // between a wrong number and a 63 A breaker, so it clamps and says so rather than
@@ -150,6 +173,14 @@ public final class ChargerAssetHandler implements AssetHandler {
         LOGGER.info("ChargerAssetHandler[{}]: sent {} ← {} A ({}: {})", carKey, currentLimitItemName, amps,
                 req.controllerName(), req.reason());
         return true;
+    }
+
+    /** 0 means pause; anything else is at least the IEC 61851 minimum and at most {@code capA}. */
+    static int clampAmps(int requested, int capA) {
+        if (requested <= 0) {
+            return 0;
+        }
+        return Math.max(CapabilityCheck.MIN_CHARGING_CURRENT_A, Math.min(capA, requested));
     }
 
     private boolean applyChargeStart(SetpointRequest req, @org.eclipse.jdt.annotation.Nullable CarSnapshot car,
