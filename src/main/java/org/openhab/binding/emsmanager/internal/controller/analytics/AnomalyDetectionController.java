@@ -46,8 +46,9 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Runs after LongTermStatsController. Each tick checks every
  * device-meter Thing's today_kWh against its 4-week per-DoW baseline.
- * On a fresh anomaly, publishes per-device items + raises a global
- * counter; one alert per device per 12 hours.
+ * While a device is anomalous its {@code _Active} item is ON and it counts
+ * towards {@code EMS_Anomaly_Count_Today}; the log line is written once per
+ * device per 12 hours.
  *
  * @author Stamate Viorel - Initial contribution
  */
@@ -66,8 +67,6 @@ public final class AnomalyDetectionController implements Controller {
 
     /** Per-device state cache (loaded from disk on first sight). */
     private final Map<String, AnomalyState> states = new HashMap<>();
-    /** Last day we did the per-DoW append for each device — keyed (device, dow). */
-    private final Map<String, LocalDate> lastAppendDay = new HashMap<>();
 
     public AnomalyDetectionController(EventPublisher eventPublisher, ItemRegistry itemRegistry,
             ThingRegistry thingRegistry, double absoluteFloorKwh) {
@@ -171,32 +170,31 @@ public final class AnomalyDetectionController implements Controller {
         // which is a false statement rather than an out-of-date one.
         publish(detailItem, new StringType(latched != null ? latched : describe(todayKwh, r, reportable)));
 
+        boolean anomalous = reportable || latched != null;
         if (reportable && (nowMs - state.lastAlertMs) > COOLDOWN_MS) {
-            publish(activeItem, OnOffType.ON);
             state.lastAlertMs = nowMs;
             state.save();
             LOGGER.info("Anomaly[{}]: {}", id, describe(todayKwh, r, true));
-            return true;
         }
-        if (latched != null) {
-            publish(activeItem, OnOffType.ON);
-            return true;
-        }
-        if (!reportable) {
-            publish(activeItem, OnOffType.OFF);
-        }
+        publish(activeItem, anomalous ? OnOffType.ON : OnOffType.OFF);
 
-        // End-of-day rollover: when the date changes, append yesterday's completed
-        // total into the per-day-of-week baseline. The bridge visits DeviceMeterHandler
-        // (which rolls its ring at its own midnight) BEFORE controllers run, so by the
-        // first new-day tick dm.yesterdayKwh() == yesterday's finished total.
-        LocalDate last = lastAppendDay.get(id);
-        if (last == null) {
-            lastAppendDay.put(id, today);
-        } else if (!last.equals(today)) {
+        // End-of-day bookkeeping goes by calendar date, not by what this process has seen: a
+        // restart across midnight used to lose the completed day, and an in-memory date named the
+        // wrong weekday after a gap. The bridge visits DeviceMeterHandler (which rolls its ring at
+        // its own midnight) BEFORE controllers run, so on the first tick of a new day
+        // dm.yesterdayKwh() is yesterday's finished total.
+        LocalDate yesterday = today.minusDays(1);
+        LocalDate appended = state.lastAppendedDay;
+        if (appended == null) {
+            state.lastAppendedDay = yesterday;
+            state.save();
+        } else if (yesterday.isAfter(appended)) {
             double yesterdayTotal = dm.yesterdayKwh();
-            if (!Double.isNaN(yesterdayTotal)) {
-                int yesterdayDow = last.getDayOfWeek().getValue();
+            // Only a day this binding was running can be judged. After a longer absence the
+            // meter's most recent ring entry is the zero it pads a missed day with, and a zero
+            // in the baseline would call every later normal day unusually high.
+            if (yesterday.equals(appended.plusDays(1)) && !Double.isNaN(yesterdayTotal)) {
+                int yesterdayDow = yesterday.getDayOfWeek().getValue();
                 // Judged against the baseline as it stood BEFORE yesterday joins it, otherwise the
                 // day being tested is part of what it is tested against.
                 AnomalyDetector.Result done = AnomalyDetector.detect(state.historyFor(yesterdayDow), yesterdayTotal,
@@ -211,14 +209,14 @@ public final class AnomalyDetectionController implements Controller {
                     LOGGER.info("Anomaly[{}]: {}", id, state.lowDetail);
                 }
                 state.recordEndOfDay(yesterdayDow, yesterdayTotal);
-                state.save();
                 LOGGER.debug("Anomaly[{}]: appended {} kWh to {}-baseline (now {} samples)", id,
-                        String.format("%.2f", yesterdayTotal), last.getDayOfWeek(),
+                        String.format("%.2f", yesterdayTotal), yesterday.getDayOfWeek(),
                         state.historyFor(yesterdayDow).length);
             }
-            lastAppendDay.put(id, today);
+            state.lastAppendedDay = yesterday;
+            state.save();
         }
-        return false;
+        return anomalous;
     }
 
     private void publish(String name, org.openhab.core.types.State value) {
