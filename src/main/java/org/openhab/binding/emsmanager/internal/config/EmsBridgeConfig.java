@@ -67,6 +67,11 @@ public class EmsBridgeConfig {
     public boolean invertSolar = false;
     public boolean invertHouse = false;
     public boolean invertBattery = false;
+    /**
+     * A hybrid inverter often reports its AC output as "solar", battery in or out included. When
+     * set, the roof's own production is solar plus battery charge minus discharge.
+     */
+    public boolean solarIncludesBattery = false;
 
     // Per-car item naming patterns (use %d for the car number 1..4).
     // The defaults are examples for an EVSE + external-power-item layout.

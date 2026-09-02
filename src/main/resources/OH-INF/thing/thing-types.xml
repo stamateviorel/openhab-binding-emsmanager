@@ -189,6 +189,16 @@
 				<default>false</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="solarIncludesBattery" type="boolean" required="false">
+				<label>Solar item includes the battery</label>
+				<description>A hybrid inverter often reports its AC output as solar, with the battery's charge or
+					discharge already
+					inside the figure. Enable so the dashboard shows the roof's own production (solar
+					plus battery charge, minus
+					discharge) instead of double counting the battery.</description>
+				<default>false</default>
+				<advanced>true</advanced>
+			</parameter>
 			<parameter name="carCount" type="integer" required="false" min="0" max="8">
 				<label>Number of cars</label>
 				<default>4</default>

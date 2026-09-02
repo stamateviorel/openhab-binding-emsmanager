@@ -25,6 +25,8 @@ import org.openhab.core.common.registry.AbstractProvider;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.items.MetadataRegistry;
+import org.openhab.core.thing.ThingRegistry;
+import org.openhab.core.thing.link.ItemChannelLinkRegistry;
 import org.openhab.core.ui.components.RootUIComponent;
 import org.openhab.core.ui.components.UIComponent;
 import org.openhab.core.ui.components.UIComponentProvider;
@@ -145,6 +147,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
     /** Binding-published switches the control page offers. */
     private static final String I_BOILER_OVERRIDE = "EMS_Boiler_User_Override";
+    private static final String I_LAST_DECISION = "EMS_Bridge_Last_Decision";
     private static final String I_SHADOW_MODE = "EMS_Bridge_Shadow_Mode";
     private static final String I_SIZING_RUN = "EMS_BatterySizing_Run";
     private static final String I_SIZING_KWH = "EMS_BatterySizing_OptimalKwh";
@@ -168,20 +171,68 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private final Logger logger = LoggerFactory.getLogger(EnergyUiProvider.class);
     private final MetadataRegistry metadataRegistry;
     private final ItemRegistry itemRegistry;
+    private final @org.eclipse.jdt.annotation.Nullable ThingRegistry thingRegistry;
+    private final @org.eclipse.jdt.annotation.Nullable ItemChannelLinkRegistry linkRegistry;
     private volatile List<RootUIComponent> pages = new ArrayList<>();
 
     @Activate
-    public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry) {
+    public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry,
+            @Reference ThingRegistry thingRegistry, @Reference ItemChannelLinkRegistry linkRegistry) {
         this.metadataRegistry = metadataRegistry;
         this.itemRegistry = itemRegistry;
+        this.thingRegistry = thingRegistry;
+        this.linkRegistry = linkRegistry;
         this.pages = computePages();
         metadataRegistry.addRegistryChangeListener(metadataListener);
+        thingRegistry.addRegistryChangeListener(thingListener);
         logger.info("EnergyUiProvider activated — Energy section served from the binding (namespace {})", NAMESPACE);
+    }
+
+    /** A provider that only knows the Items: what a test builds, and what a site without Things gets. */
+    EnergyUiProvider(MetadataRegistry metadataRegistry, ItemRegistry itemRegistry) {
+        this.metadataRegistry = metadataRegistry;
+        this.itemRegistry = itemRegistry;
+        this.thingRegistry = null;
+        this.linkRegistry = null;
+        this.pages = computePages();
+        metadataRegistry.addRegistryChangeListener(metadataListener);
     }
 
     @Deactivate
     public void deactivate() {
         metadataRegistry.removeRegistryChangeListener(metadataListener);
+        ThingRegistry things = thingRegistry;
+        if (things != null) {
+            things.removeRegistryChangeListener(thingListener);
+        }
+    }
+
+    private final org.openhab.core.common.registry.RegistryChangeListener<org.openhab.core.thing.Thing> thingListener = new org.openhab.core.common.registry.RegistryChangeListener<>() {
+        @Override
+        public void added(org.openhab.core.thing.Thing element) {
+            if (isOurs(element)) {
+                refresh();
+            }
+        }
+
+        @Override
+        public void removed(org.openhab.core.thing.Thing element) {
+            if (isOurs(element)) {
+                refresh();
+            }
+        }
+
+        @Override
+        public void updated(org.openhab.core.thing.Thing oldElement, org.openhab.core.thing.Thing element) {
+            if (isOurs(element)) {
+                refresh();
+            }
+        }
+    };
+
+    private static boolean isOurs(org.openhab.core.thing.Thing thing) {
+        return org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.BINDING_ID
+                .equals(thing.getThingTypeUID().getBindingId());
     }
 
     @Override
@@ -199,12 +250,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         MetadataParticipantScanner scanner = new MetadataParticipantScanner(metadataRegistry);
         List<EnergyProvider> providers = scanner.providers();
         List<EnergyConsumer> consumers = scanner.consumers();
+        SiteModel site = SiteModel.from(thingRegistry, linkRegistry);
         List<RootUIComponent> out = new ArrayList<>();
         out.add(buildTabsPage());
         out.add(buildPastPage());
-        out.add(buildFuturePage());
-        out.add(buildNowPage(providers));
-        out.add(buildControlPage(consumers));
+        out.add(buildFuturePage(site));
+        out.add(buildNowPage(providers, site));
+        out.add(buildControlPage(consumers, site));
         out.add(buildChartsPage(providers, consumers));
         out.add(buildCircuitsChartPage());
         return out;
@@ -347,6 +399,15 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(barCard("Today, circuit by circuit", bars)));
         }
 
+        UIComponent money = figureCard("Money this month",
+                figureIfPresent(I_COST_MONTH, "paid for power", "money_euro", "red"),
+                figureIfPresent(I_SAVINGS_MONTH, "saved by the roof", "sun_max", "orange"),
+                figureIfPresent(I_EARNINGS_MONTH, "earned selling", "arrow_up_right_circle", "green"),
+                figureIfPresent("EMS_Cost_EUR_Year", "paid this year", "calendar", "red"));
+        if (money != null) {
+            root.add(cardRow(money));
+        }
+
         UIComponent coverage = figureCard("How much of the building this covers",
                 figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
                 figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
@@ -362,9 +423,33 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * A forecast only reaches as far as the data does, so this is honest about its horizon: the rest of today and
      * tomorrow for sun, the day's prices, and the decisions already taken for the hours ahead.
      */
-    private RootUIComponent buildFuturePage() {
+    private RootUIComponent buildFuturePage(SiteModel site) {
         RootUIComponent page = layoutPage(P_FUTURE, "Future");
         List<UIComponent> root = page.addSlot("default");
+
+        if (has(I_TARIFF_SCHEDULE) && has(I_FORECAST_HOURLY)) {
+            root.add(cardRow(dayStrip()));
+        } else if (has(I_OPT_PLAN_24H)) {
+            root.add(cardRow(planCard()));
+        }
+
+        for (SiteModel.Car car : site.cars()) {
+            String enabled = car.planPrefix() + "_Plan_Enabled";
+            if (!has(enabled) || !has(car.planPrefix() + "_Plan_Status")) {
+                continue;
+            }
+            UIComponent plan = figureCard(carTitle(car) + " - the plan",
+                    figureIfPresent(car.planPrefix() + "_Plan_Required_kWh", "still needed", "battery_25", "orange"),
+                    figureIfPresent(car.planPrefix() + "_Plan_Hours_Remaining", "hours left", "clock", "blue"),
+                    figureIfPresent(car.planPrefix() + "_Plan_Projected_Cost_EUR", "will cost", "money_euro", "red"),
+                    figureIfPresent(car.planPrefix() + "_Plan_Departure_At", "leaving", "car_fill", "purple"));
+            if (plan != null) {
+                // only while a plan is on: a card of zeros for a car nobody planned says nothing
+                plan.addConfig("style",
+                        java.util.Map.of("display", "=items." + enabled + ".state==='ON'?'block':'none'"));
+                root.add(cardRow(plan));
+            }
+        }
 
         UIComponent sun = figureCard("Sun expected",
                 figureIfPresent(I_FORECAST_TODAY, "rest of today", "sun_max_fill", "orange"),
@@ -396,25 +481,47 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(plan));
         }
 
-        if (has(I_TARIFF_SCHEDULE) && has(I_FORECAST_HOURLY)) {
-            root.add(cardRow(dayStrip()));
-        } else if (has(I_OPT_PLAN_24H)) {
-            root.add(cardRow(planCard()));
-        }
         return page;
     }
 
-    /**
-     * The current situation, kept to one card because it is the least useful of the three.
-     */
-    private RootUIComponent buildNowPage(List<EnergyProvider> providers) {
+    private RootUIComponent buildNowPage(List<EnergyProvider> providers, SiteModel site) {
         RootUIComponent page = layoutPage(P_NOW, "Now");
         List<UIComponent> root = page.addSlot("default");
+
+        UIComponent headline = headlineCard(site);
+        if (headline != null) {
+            root.add(cardRow(headline));
+        }
+
+        UIComponent flow = new EnergyFlowCard(site, this::has).build();
+        if (flow != null) {
+            root.add(cardRow(flow));
+        }
 
         List<UIComponent> dials = new ArrayList<>();
         if (has(I_SELFCONS_DAY) && has(I_SUPPLY_DAY)) {
             dials.add(gaugeColumn(selfSufficiencyExpression(), "ran on sun today", selfSufficiencyExpression() + "+'%'",
                     "#43a047"));
+        }
+        org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig bridge = site.bridge();
+        if (bridge != null && has(bridge.batteryPercentageItem)) {
+            String soc = "(items." + bridge.batteryPercentageItem + ".numericState||0)";
+            String reserve = has(bridge.batteryReserveTargetItem)
+                    ? "(items." + bridge.batteryReserveTargetItem + ".numericState||0)"
+                    : "0";
+            // red under the reserve the owner asked to keep, amber near it, green above
+            String colour = "=" + soc + "<" + reserve + "?'#ef5350':" + soc + "<" + reserve + "+10?'#ffa726':'#3bb273'";
+            dials.add(gaugeColumn("=Math.max(0,Math.min(100," + soc + "))", "battery", "=Math.round(" + soc + ")+'%'",
+                    colour));
+        }
+        if (has(I_CAP_QUARTER) && has(I_SET_CAPACITY_BUDGET)) {
+            String quarter = "Math.max(0,-(items." + I_CAP_QUARTER + ".numericState||0))";
+            String budget = "Math.max(1,(items." + I_SET_CAPACITY_BUDGET + ".numericState||0))";
+            String share = "Math.round(100*" + quarter + "/" + budget + ")";
+            // the one dial that should draw the eye: over the budget is money
+            String colour = "=" + share + ">=100?'#ef5350':" + share + ">=70?'#ffa726':'#5b8def'";
+            dials.add(gaugeColumn("=Math.max(0,Math.min(100," + share + "))", "of the peak budget this quarter",
+                    "=(" + quarter + "/1000).toFixed(1)+' kW'", colour));
         }
         if (has(I_DM_TRACKED) && has(I_DM_UNTRACKED)) {
             String tracked = "(items." + I_DM_TRACKED + ".numericState||0)";
@@ -428,30 +535,106 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         }
 
         List<UIComponent> live = new ArrayList<>();
-        for (EnergyProvider provider : providers) {
-            String caption = switch (provider.role()) {
-                case PV -> "roof is making";
-                case GRID -> "grid";
-                case BATTERY -> "battery";
-            };
-            live.add(figure(provider.id(), caption, providerGlyph(provider.role()), providerHue(provider.role())));
+        if (flow == null) {
+            // without the picture, the numbers have to say it
+            for (EnergyProvider provider : providers) {
+                String caption = switch (provider.role()) {
+                    case PV -> "roof is making";
+                    case GRID -> "grid";
+                    case BATTERY -> "battery";
+                };
+                live.add(figure(provider.id(), caption, providerGlyph(provider.role()), providerHue(provider.role())));
+            }
+            if (has(I_DM_TRACKED)) {
+                live.add(figure(I_DM_TRACKED, "building is using", "house_fill", "purple"));
+            }
         }
-        if (has(I_DM_TRACKED)) {
-            live.add(figure(I_DM_TRACKED, "building is using", "house_fill", "purple"));
+        if (has(I_TARIFF_NOW)) {
+            live.add(tariffNowFigure());
+        }
+        if (has(I_CO2_SAVED_TODAY)) {
+            live.add(figure(I_CO2_SAVED_TODAY, "CO₂ avoided today", "leaf_arrow_circlepath", "green"));
+        }
+        if (bridge != null && has(I_BATTERY_SETPOINT)) {
+            live.add(figure(I_BATTERY_SETPOINT, "battery asked to", "battery_25", "green"));
         }
         if (!live.isEmpty()) {
             root.add(cardRow(card("Right now", live)));
         }
 
-        UIComponent state = figureCard("Where it stands",
-                figureIfPresent(ITEM_LEVEL_TEXT, "energy level", "bolt_fill", "orange"),
-                figureIfPresent(I_CAP_QUARTER, "this quarter-hour", "gauge", "purple"),
-                figureIfPresent(I_CAP_STATUS, "peak budget", "checkmark_seal", "green"),
-                figureIfPresent(I_ANOMALY_COUNT, "odd devices today", "exclamationmark_triangle", "red"));
-        if (state != null) {
-            root.add(cardRow(state));
+        UIComponent today = figureCard("Today so far",
+                figureIfPresent("EMS_Supply_kWh_Day", "bought", "arrow_down_left_circle", "red"),
+                figureIfPresent(I_SELFCONS_DAY, "sun used", "sun_max", "orange"),
+                figureIfPresent("EMS_FeedIn_kWh_Day", "sold", "arrow_up_right_circle", "green"),
+                figureIfPresent("EMS_Cost_EUR_Day", "cost", "money_euro", "red"));
+        if (today != null) {
+            root.add(cardRow(today));
         }
         return page;
+    }
+
+    /**
+     * One sentence about what the building is doing, from the live powers rather than a status
+     * word. "Selling 3.2 kW" is what a person wants to know; "SOLAR_EXCESS" is what the engine calls it.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent headlineCard(SiteModel site) {
+        org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig bridge = site.bridge();
+        List<UIComponent> lines = new ArrayList<>();
+        if (bridge != null && has(bridge.gridLoadItem)) {
+            String grid = (bridge.invertGrid ? "-" : "") + "(items." + bridge.gridLoadItem + ".numericState||0)";
+            String exp = "Math.max(0," + grid + ")";
+            String imp = "Math.max(0,-(" + grid + "))";
+            String sentence = "=" + exp + ">100?'Selling '+(" + exp + "/1000).toFixed(1)+' kW to the grid':" + imp
+                    + ">100?'Buying '+(" + imp
+                    + "/1000).toFixed(1)+' kW from the grid':'Running on the roof and the battery'";
+            UIComponent big = new UIComponent("Label");
+            big.addConfig("text", sentence);
+            big.addConfig("style", java.util.Map.of("display", "block", "font-size", "20px", "font-weight", "700",
+                    "line-height", "1.2", "color", "=" + exp + ">100?'#3bb273':" + imp + ">100?'#7d6cd6':'#f0a83c'"));
+            lines.add(big);
+        }
+        if (has(I_LAST_DECISION)) {
+            UIComponent sub = new UIComponent("Label");
+            sub.addConfig("text",
+                    "=items." + I_LAST_DECISION
+                            + ".state==='(idle)'?'Nothing needs steering right now':'Last decision: '+items."
+                            + I_LAST_DECISION + ".state");
+            sub.addConfig("style", java.util.Map.of("display", "block", "font-size", "12px", "opacity", "0.7",
+                    "margin-top", "4px", "overflow", "hidden", "text-overflow", "ellipsis", "white-space", "nowrap"));
+            lines.add(sub);
+        }
+        UIComponent chips = statusChipsRow();
+        if (lines.isEmpty() && chips == null) {
+            return null;
+        }
+        UIComponent body = new UIComponent("div");
+        body.addConfig("style", java.util.Map.of("padding", "14px 14px 10px 14px"));
+        List<UIComponent> slot = body.addSlot("default");
+        slot.addAll(lines);
+        if (chips != null) {
+            slot.add(chips);
+        }
+        UIComponent card = new UIComponent("f7-card");
+        card.addSlot("default").add(body);
+        return card;
+    }
+
+    /** The current price with a word on where it sits in the day. */
+    private UIComponent tariffNowFigure() {
+        UIComponent column = figure(I_TARIFF_NOW, "per kWh now", "money_euro", "blue");
+        if (!has(I_TARIFF_MIN) || !has(I_TARIFF_MAX)) {
+            return column;
+        }
+        String now = "(items." + I_TARIFF_NOW + ".numericState||0)";
+        String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
+        String span = "((items." + I_TARIFF_MAX + ".numericState||0)-" + low + ")";
+        String position = "((" + span + ">0)?((" + now + "-" + low + ")/" + span + "):0.5)";
+        UIComponent word = new UIComponent("Label");
+        word.addConfig("text", "=" + position + "<0.34?'cheap hour':" + position + "<0.67?'average hour':'dear hour'");
+        word.addConfig("style", java.util.Map.of("font-size", "10px", "font-weight", "600", "line-height", "13px",
+                "color", "=" + position + "<0.34?'#43a047':" + position + "<0.67?'#ffa726':'#ef5350'"));
+        column.addComponent("default", word);
+        return column;
     }
 
     /** Framework7 glyph names, which are not the same as the oh: icon set the cards used. */
@@ -753,7 +936,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     /**
      * The things you can actually change, and the answers to the things you can ask it.
      */
-    private RootUIComponent buildControlPage(List<EnergyConsumer> consumers) {
+    private RootUIComponent buildControlPage(List<EnergyConsumer> consumers, SiteModel site) {
         RootUIComponent page = layoutPage(P_CONTROL, "Control");
         List<UIComponent> root = page.addSlot("default");
 
@@ -767,9 +950,16 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(hotWater));
         }
 
-        UIComponent settings = settingsCard();
+        UIComponent settings = settingsCard(site);
         if (settings != null) {
             root.add(cardRow(settings));
+        }
+
+        for (SiteModel.Car car : site.cars()) {
+            UIComponent plan = carCard(car);
+            if (plan != null) {
+                root.add(cardRow(plan));
+            }
         }
 
         List<UIComponent> switches = new ArrayList<>();
@@ -833,6 +1023,123 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                     List.of(switchRow(I_SHADOW_MODE, "Stop the system controlling anything")))));
         }
         return page;
+    }
+
+    /**
+     * One car: how it is charging now, and the plan for when it has to be ready.
+     * <p>
+     * The plan Items are the engine's own contract (target, departure, strategy, on/off in; status,
+     * required, hours, cost, feasible out), so this is the one place a person sets them. Cars whose
+     * plan Items do not exist get no card rather than a card of dashes.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent carCard(SiteModel.Car car) {
+        String enabled = car.planPrefix() + "_Plan_Enabled";
+        if (!has(enabled) && !has(car.modeItem())) {
+            return null;
+        }
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", carTitle(car));
+        List<UIComponent> slot = card.addSlot("default");
+
+        List<UIComponent> now = new ArrayList<>();
+        if (has(car.statusItem())) {
+            now.add(figure(car.statusItem(), "charger says", "bolt_circle", "blue"));
+        }
+        String power = has(car.powerWItem()) ? car.powerWItem() : has(car.powerKwItem()) ? car.powerKwItem() : null;
+        if (power != null) {
+            now.add(figure(power, "charging at", "speedometer", "orange"));
+        }
+        if (has(car.currentLimitItem())) {
+            now.add(figure(car.currentLimitItem(), "allowed", "gauge", "purple"));
+        }
+        if (has(car.planPrefix() + "_Plan_Projected_Cost_EUR")) {
+            now.add(figure(car.planPrefix() + "_Plan_Projected_Cost_EUR", "plan will cost", "money_euro", "red"));
+        }
+        if (!now.isEmpty()) {
+            UIComponent row = new UIComponent("f7-row");
+            row.addConfig("class", List.of("padding-vertical-half"));
+            row.addSlot("default").addAll(now);
+            slot.add(row);
+        }
+
+        if (has(car.modeItem())) {
+            slot.add(segmentedRow(car.modeItem(), "Charging",
+                    new String[][] { { "ECO", "Sun first" }, { "SNEL", "Full speed" }, { "OFF", "Manual" } }));
+        }
+        if (has(enabled)) {
+            UIComponent list = new UIComponent("oh-list-card");
+            list.addConfig("style", java.util.Map.of("margin", "0", "box-shadow", "none"));
+            List<UIComponent> rows = list.addSlot("default");
+            rows.add(switchRow(enabled, "Charge to a target by a departure time"));
+            if (has(car.planPrefix() + "_Plan_Target_kWh")) {
+                rows.add(sliderRow(car.planPrefix() + "_Plan_Target_kWh", "Energy wanted by then", 0, 100, 5));
+            }
+            if (has(car.planPrefix() + "_Plan_Departure_At")) {
+                UIComponent departure = new UIComponent("oh-input-item");
+                departure.addConfig("item", car.planPrefix() + "_Plan_Departure_At");
+                departure.addConfig("title", "Leaving at");
+                departure.addConfig("type", "datetime-local");
+                departure.addConfig("sendButton", Boolean.TRUE);
+                rows.add(departure);
+            }
+            slot.add(list);
+            if (has(car.planPrefix() + "_Plan_Strategy")) {
+                slot.add(segmentedRow(car.planPrefix() + "_Plan_Strategy", "Get there by", new String[][] {
+                        { "now", "Charging now" }, { "cheapest", "Cheapest hours" }, { "solar-first", "Sun only" } }));
+            }
+            if (has(car.planPrefix() + "_Plan_Status")) {
+                UIComponent status = new UIComponent("oh-label-item");
+                status.addConfig("item", car.planPrefix() + "_Plan_Status");
+                // the plan's own verdict, shown only while a plan is on
+                status.addConfig("style", java.util.Map.of("font-size", "12px", "opacity", "0.8", "display",
+                        "=items." + enabled + ".state==='ON'?'block':'none'"));
+                slot.add(status);
+            }
+            if (has(car.planPrefix() + "_Plan_Feasible")) {
+                UIComponent warn = chip("will not make it in time", "red", "=items." + enabled + ".state==='ON'&&items."
+                        + car.planPrefix() + "_Plan_Feasible.state==='OFF'?'inline-flex':'none'");
+                UIComponent wrap = new UIComponent("div");
+                wrap.addConfig("style", java.util.Map.of("padding", "0 14px 12px 14px"));
+                wrap.addSlot("default").add(warn);
+                slot.add(wrap);
+            }
+        }
+        return card;
+    }
+
+    /** The mode Item's label names the car on this site; the number is the fallback. */
+    private String carTitle(SiteModel.Car car) {
+        Item mode = itemRegistry.get(car.modeItem());
+        String label = mode != null ? mode.getLabel() : null;
+        return label != null && !label.isBlank() ? label : "Car " + car.number();
+    }
+
+    /** A labelled row of choices, the chosen one filled. */
+    private UIComponent segmentedRow(String item, String label, String[][] options) {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style",
+                java.util.Map.of("display", "flex", "align-items", "center", "gap", "10px", "padding", "6px 14px"));
+        List<UIComponent> parts = row.addSlot("default");
+        UIComponent name = new UIComponent("Label");
+        name.addConfig("text", label);
+        name.addConfig("style", java.util.Map.of("font-size", "12px", "flex", "0 0 34%", "opacity", "0.8"));
+        parts.add(name);
+        UIComponent segmented = new UIComponent("f7-segmented");
+        segmented.addConfig("raised", Boolean.TRUE);
+        segmented.addConfig("style", java.util.Map.of("flex", "1 1 auto", "margin", "0"));
+        List<UIComponent> buttons = segmented.addSlot("default");
+        for (String[] option : options) {
+            UIComponent button = new UIComponent("oh-button");
+            button.addConfig("text", option[1]);
+            button.addConfig("small", Boolean.TRUE);
+            button.addConfig("fill", "=items." + item + ".state === '" + option[0] + "'");
+            button.addConfig("action", "command");
+            button.addConfig("actionItem", item);
+            button.addConfig("actionCommand", option[0]);
+            buttons.add(button);
+        }
+        parts.add(segmented);
+        return row;
     }
 
     // --- compact widget vocabulary ---------------------------------------------------------------
@@ -1345,6 +1652,14 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             chips.add(chip("=items." + I_TARIFF_SOURCE + ".state",
                     "=items." + I_TARIFF_SOURCE + ".state.indexOf('market')===0?'blue':'orange'", null));
         }
+        if (has(I_CAP_WOULD_EXCEED)) {
+            chips.add(chip("about to set a new monthly peak", "red",
+                    "=items." + I_CAP_WOULD_EXCEED + ".state==='ON'?'inline-flex':'none'"));
+        }
+        if (has(I_ANOMALY_COUNT)) {
+            chips.add(chip("=items." + I_ANOMALY_COUNT + ".numericState+' device(s) behaving oddly'", "orange",
+                    "=(items." + I_ANOMALY_COUNT + ".numericState||0)>0?'inline-flex':'none'"));
+        }
         if (chips.isEmpty()) {
             return null;
         }
@@ -1356,6 +1671,18 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         UIComponent card = new UIComponent("f7-card");
         card.addSlot("default").add(row);
         return card;
+    }
+
+    /** The same chips without a card of their own, for the headline. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent statusChipsRow() {
+        UIComponent card = statusChips();
+        if (card == null) {
+            return null;
+        }
+        UIComponent row = card.getSlots().get("default").get(0);
+        row.addConfig("style",
+                java.util.Map.of("display", "flex", "flex-wrap", "wrap", "gap", "6px", "padding", "10px 0 0 0"));
+        return row;
     }
 
     private UIComponent chip(String text, String colour, @org.eclipse.jdt.annotation.Nullable String display) {
@@ -1401,8 +1728,12 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * The settings the EMS actually runs on. These used to be reachable only by editing a Thing and
      * restarting, which is why the control page had nothing but on/off switches on it.
      */
-    private @org.eclipse.jdt.annotation.Nullable UIComponent settingsCard() {
+    private @org.eclipse.jdt.annotation.Nullable UIComponent settingsCard(SiteModel site) {
         List<UIComponent> rows = new ArrayList<>();
+        org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig bridge = site.bridge();
+        if (bridge != null && has(bridge.batteryReserveTargetItem)) {
+            rows.add(sliderRow(bridge.batteryReserveTargetItem, "Battery reserve to keep", 0, 100, 5));
+        }
         if (has(I_SET_BOILER_TARGET)) {
             rows.add(sliderRow(I_SET_BOILER_TARGET, "Hot water wanted today", 0, 30, 0.5));
         }

@@ -235,7 +235,9 @@ class EnergyUiProviderTest {
                 // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
                 // and Label is its text primitive
                 "div", "Label", "oh-gauge", "oh-stepper-item", "oh-list-card", "oh-slider-item", "f7-chip",
-                "f7-progressbar");
+                "f7-progressbar", "oh-input-item",
+                // the flow picture is an inline SVG with SMIL motion
+                "svg", "g", "path", "circle", "animate");
 
         EnergyUiProvider provider = providerWith(Set.of("EMS_Forecast_Now", "EMS_Optimizer_Plan_24h",
                 "EMS_Capacity_Current_Quarter", "EMS_Cost_EUR_Month", "EMS_Bridge_Shadow_Mode", "PeakShaving_Enabled",
