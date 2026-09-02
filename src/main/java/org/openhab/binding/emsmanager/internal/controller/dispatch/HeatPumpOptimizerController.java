@@ -14,7 +14,10 @@ package org.openhab.binding.emsmanager.internal.controller.dispatch;
 
 import static org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.*;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.function.Supplier;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -85,7 +88,13 @@ public final class HeatPumpOptimizerController implements Controller {
     private final java.util.Map<String, ThermalModelEstimator> estimators = new java.util.HashMap<>();
     private final java.util.Map<String, double[]> lastSample = new java.util.HashMap<>(); // [tInPrev, tOutPrev, lastMs]
     private final java.util.Map<String, Long> lastPlanMs = new java.util.HashMap<>();
-    private static final long REPLAN_INTERVAL_MS = 15 * 60 * 1000L; // re-plan every 15 min
+    private final java.util.Map<String, PlanMemo> lastPlan = new java.util.HashMap<>();
+    static final long REPLAN_INTERVAL_MS = 15 * 60 * 1000L; // re-plan every 15 min
+
+    /** One pump's last DP plan, held between replans. */
+    record PlanMemo(boolean preheatNow, @Nullable ZonedDateTime preheatAt, double planCost) {
+        static final PlanMemo NONE = new PlanMemo(false, null, Double.NaN);
+    }
 
     public HeatPumpOptimizerController(ThingRegistry thingRegistry, ItemRegistry itemRegistry,
             HardPeakShavingController hardPeakShaving) {
@@ -268,8 +277,9 @@ public final class HeatPumpOptimizerController implements Controller {
      * Predictive branch. Feeds one sample into the per-pump RLS estimator,
      * publishes the learned R/C/RMSE, and (every {@link #REPLAN_INTERVAL_MS}) runs
      * the 24-h DP planner using the tariff schedule + a flat-T_out forecast (current
-     * outdoor temp held constant when no hourly forecast is available). Returns true
-     * if the plan's first hour says "heat now".
+     * outdoor temp held constant when no hourly forecast is available). Between
+     * replans the last plan stands. Returns true if the plan's first hour says
+     * "heat now".
      */
     private boolean runPredictive(HeatPumpAssetHandler hp, HeatPumpConfig cfg, EnergyContext ctx, double currentTemp,
             double targetTemp, double outdoorTemp, double powerW, double cop, double dayAvg, Dir dir) {
@@ -301,10 +311,9 @@ public final class HeatPumpOptimizerController implements Controller {
         boolean planValid = dir != Dir.IDLE && est.sampleCount() > 200 && !Double.isNaN(r) && !Double.isNaN(c) && r > 0
                 && c > 0 && sched != null && sched.length >= 24 && !Double.isNaN(targetTemp);
 
-        boolean preheatNow = false;
-        java.time.ZonedDateTime preheatAt = null;
-        double planCost = Double.NaN;
-        if (planValid && sched != null && (nowMs - lastPlanMs.getOrDefault(id, 0L)) > REPLAN_INTERVAL_MS) {
+        ZonedDateTime now = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault());
+        double[] schedule = sched == null ? new double[0] : sched;
+        PlanMemo memo = planOrLatched(id, nowMs, planValid, () -> {
             // Real hourly outdoor forecast (e.g. from OpenMeteo) when available; fall
             // back to holding the current temp constant.
             double[] tOutForecast = new double[24];
@@ -319,24 +328,68 @@ public final class HeatPumpOptimizerController implements Controller {
                     }
                 }
             }
-            ThermalPlanner.Plan plan = ThermalPlanner.plan(currentTemp, targetTemp, cfg.tempDeadbandC, tOutForecast,
-                    sched, r, c, cfg.heatPowerW, cop > 0 ? cop : 1, dir == Dir.COOL);
-            if (plan.action().length > 0) {
-                preheatNow = plan.action()[0] == 1;
-                planCost = plan.totalCost() >= 1e17 ? Double.NaN : plan.totalCost();
-                // First hour where the plan heats → "preheat starts at".
-                for (int hh = 0; hh < plan.action().length; hh++) {
-                    if (plan.action()[hh] == 1) {
-                        preheatAt = java.time.ZonedDateTime.now().plusHours(hh).withMinute(0).withSecond(0).withNano(0);
-                        break;
-                    }
-                }
-            }
-            lastPlanMs.put(id, nowMs);
-        }
+            return planFromNow(now, currentTemp, targetTemp, cfg.tempDeadbandC, tOutForecast, schedule, r, c,
+                    cfg.heatPowerW, cop > 0 ? cop : 1, dir == Dir.COOL);
+        });
 
-        hp.publishModel(r, c, rmse, preheatAt, planCost);
-        return preheatNow;
+        hp.publishModel(r, c, rmse, memo.preheatAt(), memo.planCost());
+        return memo.preheatNow();
+    }
+
+    /**
+     * Replans at most every {@link #REPLAN_INTERVAL_MS}; between replans the last plan stands, and an
+     * invalid model drops it. Visible for testing.
+     */
+    PlanMemo planOrLatched(String id, long nowMs, boolean planValid, Supplier<PlanMemo> planner) {
+        if (!planValid) {
+            lastPlan.remove(id);
+            return PlanMemo.NONE;
+        }
+        PlanMemo held = lastPlan.get(id);
+        if (held != null && (nowMs - lastPlanMs.getOrDefault(id, 0L)) <= REPLAN_INTERVAL_MS) {
+            return held;
+        }
+        PlanMemo fresh = planner.get();
+        lastPlan.put(id, fresh);
+        lastPlanMs.put(id, nowMs);
+        return fresh;
+    }
+
+    /**
+     * Runs the DP planner over the next 24 h. {@code sched24} is indexed by hour of today while the
+     * planner (and {@code tOutForecast}) count hours from now, so the prices are rotated first.
+     * Visible for testing.
+     */
+    static PlanMemo planFromNow(ZonedDateTime now, double currentTemp, double targetTemp, double deadbandC,
+            double[] tOutForecast, double[] sched24, double r, double c, double heatPowerW, double cop,
+            boolean cooling) {
+        ThermalPlanner.Plan plan = ThermalPlanner.plan(currentTemp, targetTemp, deadbandC, tOutForecast,
+                rotateToNow(sched24, now.getHour()), r, c, heatPowerW, cop, cooling);
+        if (plan.action().length == 0) {
+            return PlanMemo.NONE;
+        }
+        boolean preheatNow = plan.action()[0] == 1;
+        double planCost = plan.totalCost() >= 1e17 ? Double.NaN : plan.totalCost();
+        ZonedDateTime preheatAt = null;
+        for (int hh = 0; hh < plan.action().length; hh++) {
+            if (plan.action()[hh] == 1) {
+                preheatAt = now.plusHours(hh).withMinute(0).withSecond(0).withNano(0);
+                break;
+            }
+        }
+        return new PlanMemo(preheatNow, preheatAt, planCost);
+    }
+
+    /**
+     * Rotates an hour-of-day schedule so index 0 is {@code hourNow}. Tomorrow's prices are not
+     * known here, so the hours past midnight reuse today's price for the same hour.
+     */
+    static double[] rotateToNow(double[] sched, int hourNow) {
+        double[] out = new double[sched.length];
+        for (int i = 0; i < sched.length; i++) {
+            out[i] = sched[(hourNow + i) % sched.length];
+        }
+        return out;
     }
 
     /** Climate direction for a unit. */
