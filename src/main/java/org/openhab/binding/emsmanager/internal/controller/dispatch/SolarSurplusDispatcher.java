@@ -39,8 +39,8 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
  * <li>If battery is below its reserve floor, add +1500 W to the threshold —
  * don't steal from the battery's recharge.</li>
  * <li>If the 5-min avg grid (export +, import −) exceeds the threshold AND
- * boiler is OFF AND no plugged ECO car wants more current → emit
- * boiler ON.</li>
+ * boiler is OFF AND no plugged ECO car that is actually drawing wants more
+ * current → emit boiler ON.</li>
  * <li>If 5-min avg grid &lt; −1000 W AND boiler is ON → emit boiler OFF.</li>
  * </ol>
  *
@@ -50,6 +50,9 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
 public final class SolarSurplusDispatcher implements Controller {
 
     public static final String NAME = "solar-surplus-dispatcher";
+
+    /** Below this a plugged car is not taking energy — full, or the EV has suspended the session. */
+    static final double CAR_DRAWING_MIN_W = 200.0;
 
     private final boolean shadowMode;
     private final @Nullable BoilerPlanController boilerPlan;
@@ -143,10 +146,12 @@ public final class SolarSurplusDispatcher implements Controller {
     }
 
     /**
-     * Any plugged ECO car whose current limit is below MAX gets first dibs on
-     * the surplus, so EV charging is preferred over heating the boiler.
+     * Any plugged ECO car that is actually drawing and whose current limit is
+     * below MAX gets first dibs on the surplus, so EV charging is preferred over
+     * heating the boiler. A full car (SuspendedEV, 0 W) has a limit too, but
+     * raising it buys nothing. Visible for testing.
      */
-    private boolean anyEcoCarWantsMoreCurrent(EnergyContext ctx) {
+    static boolean anyEcoCarWantsMoreCurrent(EnergyContext ctx) {
         for (CarSnapshot car : ctx.cars().values()) {
             if (!car.cableConnected()) {
                 continue;
@@ -154,7 +159,8 @@ public final class SolarSurplusDispatcher implements Controller {
             if (car.mode() != CarSnapshot.Mode.ECO) {
                 continue;
             }
-            if (car.currentLimitA() > 0 && car.currentLimitA() < CapabilityCheck.MAX_CHARGING_CURRENT_A) {
+            boolean drawing = Math.abs(car.liveDrawW()) > CAR_DRAWING_MIN_W || "Charging".equals(car.ocppStatus());
+            if (drawing && car.currentLimitA() > 0 && car.currentLimitA() < CapabilityCheck.MAX_CHARGING_CURRENT_A) {
                 return true;
             }
         }
