@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.emsmanager.internal.core.CarSnapshot;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
@@ -83,8 +84,12 @@ public final class EvChargingPlanController implements Controller {
     private static final double ECO_REALISTIC_KW_PER_CAR = 3.0; // realistic solar-only sustained kW per car
     private final double gridRealisticKwPerCar; // maxA × phases × phaseVoltage / 1000
 
+    /** Reproduces the {@code EVSE%d_Plan_*} item names of the binding constants. */
+    public static final String DEFAULT_PLAN_ITEM_PREFIX_PATTERN = "EVSE%d_Plan_";
+
     private final EventPublisher eventPublisher;
     private final ItemRegistry itemRegistry;
+    private final String planItemPrefixPattern;
 
     // Per-car runtime state. Survives across ticks; reset on plan-disable or cable-disconnect.
     private record SessionState(double kwhAccumulated, long lastTickMs, long planStartedMs, boolean cableSeen) {
@@ -98,9 +103,24 @@ public final class EvChargingPlanController implements Controller {
 
     public EvChargingPlanController(EventPublisher eventPublisher, ItemRegistry itemRegistry,
             org.openhab.binding.emsmanager.internal.ems.EvElectrical elec) {
+        this(eventPublisher, itemRegistry, elec, DEFAULT_PLAN_ITEM_PREFIX_PATTERN);
+    }
+
+    /**
+     * @param carPlanItemPrefixPattern {@code String.format} pattern with one {@code %d} (the car
+     *            number) that prefixes every per-car plan item, e.g. {@code EVSE%d_Plan_}
+     */
+    public EvChargingPlanController(EventPublisher eventPublisher, ItemRegistry itemRegistry,
+            org.openhab.binding.emsmanager.internal.ems.EvElectrical elec, String carPlanItemPrefixPattern) {
         this.eventPublisher = eventPublisher;
         this.itemRegistry = itemRegistry;
         this.gridRealisticKwPerCar = elec.maxChargeCurrentA() * elec.phases() * elec.phaseVoltage() / 1000.0;
+        this.planItemPrefixPattern = carPlanItemPrefixPattern.isBlank() ? DEFAULT_PLAN_ITEM_PREFIX_PATTERN
+                : carPlanItemPrefixPattern;
+    }
+
+    private String planItem(int n, String suffix) {
+        return String.format(planItemPrefixPattern, n) + suffix;
     }
 
     @Override
@@ -152,16 +172,16 @@ public final class EvChargingPlanController implements Controller {
     private void evaluateCar(CarSnapshot car, EnergyContext ctx, long nowMs) {
         int n = Integer.parseInt(car.carKey().substring(3));
 
-        boolean enabledPlan = readSwitch(String.format(ITEM_CAR_PLAN_ENABLED_FMT, n));
+        boolean enabledPlan = readSwitch(planItem(n, "Enabled"));
         if (!enabledPlan) {
             sessions.remove(car.carKey());
             publishStatus(n, "Plan off", true, 0.0, 0.0, 0.0);
             return;
         }
 
-        double targetKwh = readNumber(String.format(ITEM_CAR_PLAN_TARGET_KWH_FMT, n));
-        Instant departure = readInstant(String.format(ITEM_CAR_PLAN_DEPARTURE_FMT, n));
-        String strategy = readString(String.format(ITEM_CAR_PLAN_STRATEGY_FMT, n), "now");
+        double targetKwh = readNumber(planItem(n, "Target_kWh"));
+        Instant departure = readInstant(planItem(n, "Departure_At"));
+        String strategy = readString(planItem(n, "Strategy"), "now");
 
         if (Double.isNaN(targetKwh) || targetKwh <= 0.0) {
             publishStatus(n, "No target set", true, 0.0, 0.0, 0.0);
@@ -231,7 +251,9 @@ public final class EvChargingPlanController implements Controller {
 
         switch (strategy) {
             case "cheapest":
-                projectedCost = projectCheapestCost(ctx, required, hoursRem, tariffNow);
+                projectedCost = cheapestCostEstimate(ctx.tariffSchedule24h(),
+                        ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).getHour(), hoursRem, required,
+                        tariffNow);
                 feasible = feasibleGrid;
                 if (!feasibleGrid) {
                     status = String.format("⚠️ Not achievable: %.1f kWh in %.1f h (>22 kW/car)", required, hoursRem);
@@ -272,21 +294,25 @@ public final class EvChargingPlanController implements Controller {
 
     /**
      * Approximate the cost when the user picks "cheapest" — pick the N cheapest
-     * hours of the next 24 that satisfy required at 7 kW (single-phase 32 A
-     * is a reasonable charge-window-rate estimate).
+     * hours between now and departure that satisfy required at 7 kW
+     * (single-phase 32 A is a reasonable charge-window-rate estimate).
+     * {@code sched} is indexed by hour of today; hours past midnight reuse
+     * today's price for the same hour because tomorrow's schedule is not
+     * known here, and the window is capped at 24 h. Visible for testing.
      */
-    private double projectCheapestCost(EnergyContext ctx, double requiredKwh, double hoursRem, double fallbackPrice) {
-        double[] sched = ctx.tariffSchedule24h();
+    static double cheapestCostEstimate(double @Nullable [] sched, int hourNow, double hoursRem, double requiredKwh,
+            double fallbackPrice) {
         if (sched == null || sched.length == 0) {
             return requiredKwh * fallbackPrice;
         }
-        // Pick floor(hoursRem) hours from the schedule (we don't model wrap-around for >24h windows).
         int hoursAvail = Math.min((int) Math.floor(hoursRem), sched.length);
         if (hoursAvail <= 0) {
             return requiredKwh * fallbackPrice;
         }
         double[] copy = new double[hoursAvail];
-        System.arraycopy(sched, 0, copy, 0, hoursAvail);
+        for (int i = 0; i < hoursAvail; i++) {
+            copy[i] = sched[(hourNow + i) % sched.length];
+        }
         java.util.Arrays.sort(copy);
         // Number of hours we need at 7 kW.
         double assumedKw = 7.0;
@@ -303,11 +329,11 @@ public final class EvChargingPlanController implements Controller {
     private void publishStatus(int n, String status, boolean feasible, double required, double hoursRem,
             double projectedCost) {
         try {
-            post(String.format(ITEM_CAR_PLAN_STATUS_FMT, n), new StringType(status));
-            post(String.format(ITEM_CAR_PLAN_FEASIBLE_FMT, n), OnOffType.from(feasible));
-            post(String.format(ITEM_CAR_PLAN_REQUIRED_KWH_FMT, n), new DecimalType(round2(required)));
-            post(String.format(ITEM_CAR_PLAN_HOURS_REM_FMT, n), new DecimalType(round2(hoursRem)));
-            post(String.format(ITEM_CAR_PLAN_PROJECTED_COST_FMT, n), new DecimalType(round2(projectedCost)));
+            post(planItem(n, "Status"), new StringType(status));
+            post(planItem(n, "Feasible"), OnOffType.from(feasible));
+            post(planItem(n, "Required_kWh"), new DecimalType(round2(required)));
+            post(planItem(n, "Hours_Remaining"), new DecimalType(round2(hoursRem)));
+            post(planItem(n, "Projected_Cost_EUR"), new DecimalType(round2(projectedCost)));
         } catch (Throwable t) {
             // items might not exist on a fresh install — that's fine
         }
