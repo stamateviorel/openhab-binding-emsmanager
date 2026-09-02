@@ -39,6 +39,45 @@ public record ForecastSnapshot(Instant refreshedAt, double nowW, double next1hWh
     public static final ForecastSnapshot EMPTY = new ForecastSnapshot(Instant.EPOCH, Double.NaN, Double.NaN, Double.NaN,
             Double.NaN, Double.NaN, Double.NaN, null, null, null, "", "");
 
+    /** Past this the "today" figures describe some other day. */
+    public static final java.time.Duration MAX_PRESENTABLE_AGE = java.time.Duration.ofHours(36);
+
+    /**
+     * This snapshot as it may be shown at {@code now}. A snapshot older than
+     * {@link #MAX_PRESENTABLE_AGE} - one restored from the cache after days off, or the last good
+     * fetch during a long outage - keeps only what is still true: the series points that lie in the
+     * future. The day figures are dropped rather than presented as today's.
+     */
+    public ForecastSnapshot presentableAt(Instant now) {
+        if (refreshedAt.equals(Instant.EPOCH) || !refreshedAt.plus(MAX_PRESENTABLE_AGE).isBefore(now)) {
+            return this;
+        }
+        return new ForecastSnapshot(refreshedAt, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN,
+                null, rateLimitRemaining, lastError, "", futurePointsOf(hourlySeriesCsv, now));
+    }
+
+    private static String futurePointsOf(String seriesCsv, Instant now) {
+        StringBuilder sb = new StringBuilder();
+        for (String tok : seriesCsv.split(",")) {
+            int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                continue;
+            }
+            try {
+                if (Long.parseLong(tok.substring(0, eq).trim()) <= now.getEpochSecond()) {
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(tok.trim());
+        }
+        return sb.toString();
+    }
+
     /**
      * Serialize an hourly power map to {@code "epochSecond=W,…"} over its full horizon in
      * ascending time order — the cache/wire form behind {@link #hourlySeriesCsv()}.
