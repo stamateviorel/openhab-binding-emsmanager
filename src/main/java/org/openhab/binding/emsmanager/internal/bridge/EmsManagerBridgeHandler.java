@@ -266,7 +266,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // EV charging plan — pure observer. Reads per-car plan inputs,
         // integrates session kWh, publishes required / projected cost / status
         // for the UI. Does not emit setpoints (the UI prompts the user).
-        controllerScheduler.register(new EvChargingPlanController(eventPublisher, itemRegistry, evElec));
+        // the UI and the site name the head of the plan items ("Car%d"); the controller wants the
+        // whole prefix up to the field name
+        controllerScheduler.register(new EvChargingPlanController(eventPublisher, itemRegistry, evElec,
+                config.carPlanItemPrefixPattern + "_Plan_"));
         // Deadline-aware DHW boiler planner — solar-first, cheapest-hour overnight
         // top-up. Registered before SolarSurplus so the surplus dispatcher sees its
         // decision and won't turn the boiler off (import) mid-top-up. Its own shadow
@@ -296,7 +299,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // ProductionShavingDispatcher — anti-curtailment when battery full + solar high.
         controllerScheduler.register(new ProductionShavingDispatcher());
         // Boiler force-on schedule. CSV in bridge config; no-op when empty.
-        BoilerScheduleController boilerSchedule = new BoilerScheduleController(config.boilerForceOnSchedule);
+        BoilerScheduleController boilerSchedule = new BoilerScheduleController(config.boilerForceOnSchedule, hard);
         controllerScheduler.register(boilerSchedule);
         if (boilerSchedule.enabled()) {
             logger.info("BoilerScheduleController: schedule active = '{}'", boilerSchedule.rawSchedule());
@@ -384,7 +387,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             // Without a charger Thing there is no per-charger rating, so the site main breaker is the
             // tightest bound available - still far better than the 63 A default it used before.
             assets.put(key, new ChargerAssetHandler(eventPublisher, key, pause, currentLimit, charging,
-                    config.mainBreakerAmpsPerPhase));
+                    config.mainBreakerAmpsPerPhase, config.evMaxChargeCurrentA));
         }
         // Per-charger asset handlers from emsmanager:charger Things. A charger
         // Thing's carKey overrides the matching fixed car%d handler with its own
@@ -399,7 +402,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             if (h instanceof org.openhab.binding.emsmanager.internal.charger.ChargerHandler ch) {
                 var ccfg = ch.getCfg();
                 assets.put(ch.carKey(), new ChargerAssetHandler(eventPublisher, ch.carKey(), ccfg.pauseItem,
-                        ccfg.currentLimitItem, ccfg.chargingItem, ccfg.breakerLimitA));
+                        ccfg.currentLimitItem, ccfg.chargingItem, ccfg.breakerLimitA, config.evMaxChargeCurrentA));
                 chargerThings++;
             }
         }
@@ -414,7 +417,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         batteryConfig.fixedSetpointW = config.batteryFixedSetpointW;
         batteryConfig.minSetpointW = config.batteryMinSetpointW;
         batteryConfig.maxSetpointW = config.batteryMaxSetpointW;
-        assets.put(ASSET_BATTERY, new BatteryAssetHandler(eventPublisher, batteryConfig));
+        assets.put(ASSET_BATTERY, new BatteryAssetHandler(eventPublisher, batteryConfig, itemRegistry));
 
         int interval = Math.max(1, config.tickIntervalSeconds);
         tickJob = scheduler.scheduleWithFixedDelay(this::tick, interval, interval, TimeUnit.SECONDS);
