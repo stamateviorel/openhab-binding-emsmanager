@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.controller.peak.HardPeakShavingController;
 import org.openhab.binding.emsmanager.internal.core.Controller;
 import org.openhab.binding.emsmanager.internal.core.EnergyContext;
 import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
@@ -46,11 +48,10 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Priority {@link EmsManagerBindingConstants#PRIO_SOLAR_SURPLUS} − 5 so
  * it outranks the surplus dispatcher (forces ON when surplus would have
- * decided OFF). It does NOT outrank PeakShaving — when hard-peak is engaged
- * tier ≥ 3 (boiler off), the boiler asset handler's dedupe will still
- * write OFF after the schedule writes ON, because the asset handler is
- * dumb and processes requests in priority order: later-priority requests
- * (higher number) overwrite earlier ones at apply-time.
+ * decided OFF). It does NOT outrank hard peak shaving: while any tier is
+ * engaged the schedule stays silent. The shaving controller writes its
+ * boiler-off once, at engage, and the resolver only arbitrates requests
+ * made in the same tick — a per-tick ON from here would simply undo it.
  *
  * @author Stamate Viorel - Initial contribution
  */
@@ -63,13 +64,19 @@ public final class BoilerScheduleController implements Controller {
 
     private final Map<DayOfWeek, List<TimeWindow>> windows;
     private final String rawSchedule;
+    private final @Nullable HardPeakShavingController hard;
 
     private record TimeWindow(LocalTime start, LocalTime end) {
     }
 
     public BoilerScheduleController(String scheduleCsv) {
+        this(scheduleCsv, null);
+    }
+
+    public BoilerScheduleController(String scheduleCsv, @Nullable HardPeakShavingController hard) {
         this.rawSchedule = scheduleCsv == null ? "" : scheduleCsv.trim();
         this.windows = parse(this.rawSchedule);
+        this.hard = hard;
     }
 
     @Override
@@ -95,6 +102,10 @@ public final class BoilerScheduleController implements Controller {
     @Override
     public List<SetpointRequest> evaluate(EnergyContext ctx) {
         if (windows.isEmpty()) {
+            return List.of();
+        }
+        HardPeakShavingController shaving = hard;
+        if (shaving != null && shaving.level() > 0) {
             return List.of();
         }
         ZonedDateTime now = ctx.tickAt().atZone(ZoneId.systemDefault());
