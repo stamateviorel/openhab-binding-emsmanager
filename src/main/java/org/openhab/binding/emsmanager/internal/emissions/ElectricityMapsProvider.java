@@ -14,6 +14,7 @@ package org.openhab.binding.emsmanager.internal.emissions;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -36,7 +37,10 @@ import com.google.gson.JsonParser;
  * <p>
  * Free tier — 50 calls/day, so we poll every 30 min (48/day). On any
  * fetch error, we keep the last known good value rather than going to NaN
- * (so CO₂ counting never gaps).
+ * (so CO₂ counting never gaps), and the next attempt waits
+ * {@link #RETRY_SPACING_MS}: this is called from the tick, and a retry on
+ * every tick during an outage would spend the day's quota in minutes and
+ * hold the tick lock for the HTTP timeout each time.
  *
  * @author Stamate Viorel - Initial contribution
  */
@@ -46,32 +50,44 @@ public final class ElectricityMapsProvider implements EmissionsTracker {
     private static final Logger LOGGER = LoggerFactory.getLogger(ElectricityMapsProvider.class);
     private static final String API = "https://api.electricitymap.org/v3/carbon-intensity/latest?zone=";
     private static final long REFRESH_INTERVAL_MS = TimeUnit.MINUTES.toMillis(30);
+    static final long RETRY_SPACING_MS = TimeUnit.MINUTES.toMillis(5);
     private static final int HTTP_TIMEOUT_MS = 10_000;
 
     private final HttpClient httpClient;
     private final String apiKey;
     private final String zone;
     private final double injectionOffset;
+    private final LongSupplier clock;
     private final AtomicReference<@Nullable Snapshot> last = new AtomicReference<>();
+    private volatile long lastAttemptMs = 0L;
 
     private record Snapshot(double gridGramsPerKWh, long fetchedAtMs) {
     }
 
     public ElectricityMapsProvider(HttpClient httpClient, String apiKey, String zone,
             double injectionOffsetGramsPerKWh) {
+        this(httpClient, apiKey, zone, injectionOffsetGramsPerKWh, System::currentTimeMillis);
+    }
+
+    ElectricityMapsProvider(HttpClient httpClient, String apiKey, String zone, double injectionOffsetGramsPerKWh,
+            LongSupplier clock) {
         this.httpClient = httpClient;
         this.apiKey = apiKey;
         this.zone = zone == null || zone.isBlank() ? "BE" : zone;
         this.injectionOffset = injectionOffsetGramsPerKWh;
+        this.clock = clock;
     }
 
     @Override
     public double currentGridGramsPerKWh() {
         Snapshot s = last.get();
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         if (s == null || (now - s.fetchedAtMs()) > REFRESH_INTERVAL_MS) {
-            tryFetch(now);
-            s = last.get();
+            if (lastAttemptMs == 0L || (now - lastAttemptMs) >= RETRY_SPACING_MS) {
+                lastAttemptMs = now;
+                tryFetch(now);
+                s = last.get();
+            }
         }
         return s == null ? Double.NaN : s.gridGramsPerKWh();
     }

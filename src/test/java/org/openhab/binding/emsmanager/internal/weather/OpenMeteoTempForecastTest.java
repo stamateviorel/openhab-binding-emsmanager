@@ -13,11 +13,17 @@
 package org.openhab.binding.emsmanager.internal.weather;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import java.time.Instant;
 import java.util.TreeMap;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.api.Request;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -61,5 +67,46 @@ class OpenMeteoTempForecastTest {
         TreeMap<Instant, Double> m = OpenMeteoTempForecast.parse(s);
         assertEquals(1, m.size());
         assertEquals(2.8, m.get(Instant.ofEpochSecond(1767229200)), 1e-9);
+    }
+
+    /** A client whose API is down: every request times out. */
+    private static HttpClient downClient() throws Exception {
+        Request request = mock(Request.class);
+        when(request.timeout(anyLong(), any())).thenReturn(request);
+        when(request.send()).thenThrow(new TimeoutException("simulated outage"));
+        HttpClient client = mock(HttpClient.class);
+        when(client.newRequest(anyString())).thenReturn(request);
+        return client;
+    }
+
+    /**
+     * hourlyFrom is asked on every 5 s tick under the tick lock; with the API down each call used
+     * to be a fresh 10 s attempt, so an Open-Meteo outage stalled the whole EMS.
+     */
+    @Test
+    void anOutageIsNotRetriedOnEveryTick() throws Exception {
+        HttpClient client = downClient();
+        AtomicLong clock = new AtomicLong(1_000_000L);
+        OpenMeteoTempForecast f = new OpenMeteoTempForecast(client, 50.8, 4.3, clock::get);
+
+        for (int tick = 0; tick < 48; tick++) {
+            assertEquals(0, f.hourlyFrom(Instant.ofEpochMilli(clock.get()), 24).length);
+            clock.addAndGet(5_000L);
+        }
+
+        verify(client, times(1)).newRequest(anyString());
+    }
+
+    @Test
+    void itDoesRetryOnceTheSpacingHasPassed() throws Exception {
+        HttpClient client = downClient();
+        AtomicLong clock = new AtomicLong(1_000_000L);
+        OpenMeteoTempForecast f = new OpenMeteoTempForecast(client, 50.8, 4.3, clock::get);
+
+        f.hourlyFrom(Instant.ofEpochMilli(clock.get()), 24);
+        clock.addAndGet(6 * 60_000L);
+        f.hourlyFrom(Instant.ofEpochMilli(clock.get()), 24);
+
+        verify(client, times(2)).newRequest(anyString());
     }
 }
