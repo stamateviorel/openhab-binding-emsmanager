@@ -51,6 +51,18 @@ import org.slf4j.LoggerFactory;
  * approximation. The <em>ranking</em> is robust even if the absolute numbers
  * are estimates.
  *
+ * <p>
+ * What the comparison assumes about fees:
+ * <ul>
+ * <li>{@code EMS_Tariff_Schedule24h_CSV} is raw day-ahead price plus the tariff Thing's configured
+ * {@code markupEurPerKWh}, without VAT (see {@code EnergyChartsClient} / {@code EntsoeBeClient}). It
+ * is compared as-is under "ENTSO-E spot": the site's own dynamic contract, markup included.</li>
+ * <li>The other spot-based candidates are built from the raw price - the schedule with that markup
+ * taken off again - and apply their own VAT and markup exactly once. Without the markup value
+ * they would be priced on top of the site's markup and every dynamic provider would lose.</li>
+ * <li>Flat and day/night curves are taken as all-in prices as given.</li>
+ * </ul>
+ *
  * @author Stamate Viorel - Initial contribution
  */
 @NonNullByDefault
@@ -67,12 +79,24 @@ public final class TariffComparisonService {
     private final EventPublisher eventPublisher;
     private final ItemRegistry itemRegistry;
     private final PersistenceServiceRegistry persistenceRegistry;
+    private final double scheduleMarkupEurPerKWh;
 
+    /** Assumes the schedule carries no markup; prefer the overload that passes the tariff Thing's value. */
     public TariffComparisonService(EventPublisher eventPublisher, ItemRegistry itemRegistry,
             PersistenceServiceRegistry persistenceRegistry) {
+        this(eventPublisher, itemRegistry, persistenceRegistry, 0.0);
+    }
+
+    /**
+     * @param scheduleMarkupEurPerKWh the markup the tariff Thing adds to raw spot in the schedule it
+     *            publishes, so it can be taken off before other providers' fees go on
+     */
+    public TariffComparisonService(EventPublisher eventPublisher, ItemRegistry itemRegistry,
+            PersistenceServiceRegistry persistenceRegistry, double scheduleMarkupEurPerKWh) {
         this.eventPublisher = eventPublisher;
         this.itemRegistry = itemRegistry;
         this.persistenceRegistry = persistenceRegistry;
+        this.scheduleMarkupEurPerKWh = scheduleMarkupEurPerKWh;
     }
 
     /**
@@ -108,17 +132,8 @@ public final class TariffComparisonService {
         }
 
         // Representative spot-price day from the live tariff Thing schedule.
-        double[] spot = TariffComparisonCalculator.csvCurve(readString("EMS_Tariff_Schedule24h_CSV"));
-
-        Map<String, double[]> curves = new LinkedHashMap<>();
-        curves.put("Vast (huidig)", TariffComparisonCalculator.flatCurve(flatPrice));
-        curves.put("Dag/nacht", TariffComparisonCalculator.dayNightCurve(0.32, 0.18, 7, 22));
-        if (spot != null) {
-            curves.put("ENTSO-E spot", spot);
-            curves.put("Tibber", TariffComparisonCalculator.retailOnSpotCurve(spot, BE_VAT, 0.045));
-            curves.put("aWATTar", TariffComparisonCalculator.retailOnSpotCurve(spot, BE_VAT, 0.015));
-            curves.put("Engie Dynamic", TariffComparisonCalculator.engieDynamicCurve(spot));
-        }
+        double[] schedule = TariffComparisonCalculator.csvCurve(readString("EMS_Tariff_Schedule24h_CSV"));
+        Map<String, double[]> curves = candidateCurves(flatPrice, schedule, scheduleMarkupEurPerKWh);
 
         List<TariffComparisonCalculator.ProviderResult> ranked = TariffComparisonCalculator.compare(netImportKwh,
                 curves, lookbackDays);
@@ -143,6 +158,29 @@ public final class TariffComparisonService {
 
         LOGGER.info("TariffComparison ({} d): {}", lookbackDays, human);
         return csv.toString();
+    }
+
+    /**
+     * The candidate price curves. Package-private so the fee arithmetic can be tested without
+     * persistence.
+     *
+     * @param schedule the published 24 h schedule (raw spot + {@code markup}), or null when absent
+     */
+    static Map<String, double[]> candidateCurves(double flatPrice, double @Nullable [] schedule, double markup) {
+        Map<String, double[]> curves = new LinkedHashMap<>();
+        curves.put("Vast (huidig)", TariffComparisonCalculator.flatCurve(flatPrice));
+        curves.put("Dag/nacht", TariffComparisonCalculator.dayNightCurve(0.32, 0.18, 7, 22));
+        if (schedule != null) {
+            double[] rawSpot = new double[schedule.length];
+            for (int h = 0; h < schedule.length; h++) {
+                rawSpot[h] = schedule[h] - markup;
+            }
+            curves.put("ENTSO-E spot", schedule);
+            curves.put("Tibber", TariffComparisonCalculator.retailOnSpotCurve(rawSpot, BE_VAT, 0.045));
+            curves.put("aWATTar", TariffComparisonCalculator.retailOnSpotCurve(rawSpot, BE_VAT, 0.015));
+            curves.put("Engie Dynamic", TariffComparisonCalculator.engieDynamicCurve(rawSpot));
+        }
+        return curves;
     }
 
     private @Nullable QueryablePersistenceService getQueryablePersistence() {
