@@ -351,7 +351,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      */
     private RootUIComponent buildPastPage() {
         RootUIComponent page = layoutPage(P_PAST, "Past");
-        List<UIComponent> root = page.addSlot("default");
+        List<UIComponent> root = shell(page);
 
         UIComponent browser = browserCard();
         if (browser != null) {
@@ -428,7 +428,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      */
     private RootUIComponent buildFuturePage(SiteModel site) {
         RootUIComponent page = layoutPage(P_FUTURE, "Future");
-        List<UIComponent> root = page.addSlot("default");
+        List<UIComponent> root = shell(page);
 
         if (has(I_TARIFF_SCHEDULE) && has(I_FORECAST_HOURLY)) {
             root.add(cardRow(dayStrip()));
@@ -471,7 +471,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
     private RootUIComponent buildNowPage(List<EnergyProvider> providers, SiteModel site) {
         RootUIComponent page = layoutPage(P_NOW, "Now");
-        List<UIComponent> root = page.addSlot("default");
+        List<UIComponent> root = shell(page);
 
         UIComponent headline = headlineCard(site);
         if (headline != null) {
@@ -480,7 +480,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
         UIComponent flow = new EnergyFlowCard(site, this::has).build();
         if (flow != null) {
-            root.add(cardRow(flow));
+            root.add(item(flow, "wide"));
         }
 
         List<UIComponent> dials = new ArrayList<>();
@@ -505,8 +505,16 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             String share = "Math.round(100*" + quarter + "/" + budget + ")";
             // the one dial that should draw the eye: over the budget is money
             String colour = "=" + share + ">=100?'#ef5350':" + share + ">=70?'#ffa726':'#5b8def'";
-            dials.add(gaugeColumn("=Math.max(0,Math.min(100," + share + "))", "of the peak budget this quarter",
-                    "=(" + quarter + "/1000).toFixed(1)+' kW'", colour));
+            // the quarter-hour is what the grid bills; minutes left says how long the average can still move
+            UIComponent dial = gaugeColumn("=Math.max(0,Math.min(100," + share + "))",
+                    "=(15-(dayjs().minute()%15))+' min left in the billing quarter'",
+                    "=(" + quarter + "/1000).toFixed(1)+' kW'", colour);
+            if (has(I_CAP_WOULD_EXCEED)) {
+                UIComponent gauge = dial.getSlots().get("default").get(0);
+                gauge.addConfig("style", java.util.Map.of("border-radius", "50%", "animation",
+                        "=items." + I_CAP_WOULD_EXCEED + ".state==='ON'?'ems-attn 1.6s ease-in-out infinite':'none'"));
+            }
+            dials.add(dial);
         }
         if (has(I_DM_TRACKED) && has(I_DM_UNTRACKED)) {
             String tracked = "(items." + I_DM_TRACKED + ".numericState||0)";
@@ -516,7 +524,12 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             dials.add(gaugeColumn(share, "of the building measured", share + "+'%'", "#5b8def"));
         }
         if (!dials.isEmpty()) {
-            root.add(cardRow(card(null, dials)));
+            UIComponent dialCard = card(null, dials);
+            root.add(item(dialCard, flow != null ? "side" : "full"));
+        }
+
+        if (has(I_TARIFF_SCHEDULE) && has(I_TARIFF_MIN) && has(I_TARIFF_MAX) && has(I_TARIFF_NOW)) {
+            root.add(item(priceAheadCard(), "half"));
         }
 
         List<UIComponent> live = new ArrayList<>();
@@ -544,7 +557,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             live.add(figure(I_BATTERY_SETPOINT, "battery asked to", "battery_25", "green"));
         }
         if (!live.isEmpty()) {
-            root.add(cardRow(card("Right now", live)));
+            root.add(item(card("Right now", live), "half"));
         }
 
         UIComponent today = figureCard("Today so far",
@@ -578,6 +591,10 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                     "line-height", "1.2", "color", "=" + exp + ">100?'#3bb273':" + imp + ">100?'#7d6cd6':'#f0a83c'"));
             lines.add(big);
         }
+        UIComponent advice = adviceLine(bridge);
+        if (advice != null) {
+            lines.add(advice);
+        }
         if (has(I_LAST_DECISION)) {
             UIComponent sub = new UIComponent("Label");
             sub.addConfig("text",
@@ -600,6 +617,120 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             slot.add(chips);
         }
         UIComponent card = new UIComponent("f7-card");
+        card.addSlot("default").add(body);
+        return card;
+    }
+
+    /**
+     * What to do about it, in one line.
+     * <p>
+     * Spare power now, a cheaper hour coming, or a dear hour to sit out: the same signals the engine
+     * plans on, said in words a person can act on with the dishwasher. Built only from Items this
+     * site has, so a site without a tariff simply gets the surplus half.
+     */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent adviceLine(
+            org.openhab.binding.emsmanager.internal.config.@org.eclipse.jdt.annotation.Nullable EmsBridgeConfig bridge) {
+        if (bridge == null || !has(bridge.gridLoadItem)) {
+            return null;
+        }
+        String grid = (bridge.invertGrid ? "-" : "") + "(items." + bridge.gridLoadItem + ".numericState||0)";
+        String exp = "Math.max(0," + grid + ")";
+        String imp = "Math.max(0,-(" + grid + "))";
+        String sun3 = has(I_FORECAST_3H) ? "(items." + I_FORECAST_3H + ".numericState||0)" : "0";
+        StringBuilder e = new StringBuilder("=");
+        e.append(exp).append(">1500?'Spare '+(").append(exp).append("/1000).toFixed(1)+' kW right now'+(").append(sun3)
+                .append(">3?' and sun for the next three hours':'')+' - a good moment for the big loads':");
+        if (has(I_TARIFF_NOW) && has(I_TARIFF_MIN) && has(I_TARIFF_MAX)) {
+            String now = "(items." + I_TARIFF_NOW + ".numericState||0)";
+            String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
+            String span = "((items." + I_TARIFF_MAX + ".numericState||0)-" + low + ")";
+            String pos = "((" + span + ">0)?((" + now + "-" + low + ")/" + span + "):0.5)";
+            if (has(I_TARIFF_CHEAPEST_AT)) {
+                String cheapAt = "dayjs(items." + I_TARIFF_CHEAPEST_AT + ".state).hour()";
+                e.append("(").append(pos).append(">=0.34&&").append(cheapAt)
+                        .append(">dayjs().hour())?'Cheapest power at '+").append(cheapAt)
+                        .append("+':00 - wait with the heavy loads if you can':");
+            }
+            e.append("(").append(pos).append(">=0.67&&").append(imp).append(">1500)?'Dear hour - buying '+(")
+                    .append(imp).append("/1000).toFixed(1)+' kW; best to hold the heavy loads':");
+            e.append("(").append(pos).append("<0.34)?'Cheap hour - a fine time for the heavy loads':");
+        }
+        e.append("'Nothing to do - the house is running as planned'");
+
+        UIComponent box = new UIComponent("div");
+        box.addConfig("style", java.util.Map.of("display", "flex", "align-items", "center", "gap", "8px", "margin-top",
+                "8px", "padding", "9px 11px", "border-radius", "10px", "background", "rgba(240,168,60,0.13)"));
+        List<UIComponent> parts = box.addSlot("default");
+        UIComponent icon = new UIComponent("f7-icon");
+        icon.addConfig("f7", "lightbulb_fill");
+        icon.addConfig("size", Integer.valueOf(16));
+        icon.addConfig("style", java.util.Map.of("color", "#f0a83c", "flex", "0 0 auto"));
+        parts.add(icon);
+        UIComponent text = new UIComponent("Label");
+        text.addConfig("text", e.toString());
+        text.addConfig("style", java.util.Map.of("font-size", "13px", "line-height", "1.3"));
+        parts.add(text);
+        return box;
+    }
+
+    /**
+     * The next six hours of price, from the schedule the tariff already publishes.
+     * <p>
+     * Six columns from the current hour, coloured by where each sits between the day's cheapest
+     * and dearest, so "should I wait an hour" is answered by shape.
+     */
+    private UIComponent priceAheadCard() {
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", "Price, next six hours");
+        String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
+        String high = "(items." + I_TARIFF_MAX + ".numericState||0)";
+        String span = "(" + high + "-" + low + ")";
+
+        UIComponent body = new UIComponent("div");
+        body.addConfig("style", java.util.Map.of("padding", "8px 14px 12px 14px"));
+        List<UIComponent> bodySlot = body.addSlot("default");
+
+        UIComponent head = new UIComponent("div");
+        head.addConfig("style", java.util.Map.of("display", "flex", "justify-content", "space-between", "font-size",
+                "12px", "margin-bottom", "6px"));
+        List<UIComponent> headSlot = head.addSlot("default");
+        UIComponent nowLabel = new UIComponent("Label");
+        nowLabel.addConfig("text", "=(items." + I_TARIFF_NOW + ".numericState||0).toFixed(2)+' now'");
+        nowLabel.addConfig("style", java.util.Map.of("font-weight", "700"));
+        headSlot.add(nowLabel);
+        UIComponent range = new UIComponent("Label");
+        range.addConfig("text", "='today '+" + low + ".toFixed(2)+' to '+" + high + ".toFixed(2)+' per kWh'");
+        range.addConfig("style", java.util.Map.of("opacity", "0.6"));
+        headSlot.add(range);
+        bodySlot.add(head);
+
+        UIComponent bars = new UIComponent("div");
+        bars.addConfig("style", java.util.Map.of("display", "grid", "grid-template-columns",
+                "repeat(6, minmax(0, 1fr))", "gap", "4px", "align-items", "end", "height", "46px"));
+        List<UIComponent> barSlot = bars.addSlot("default");
+        UIComponent hours = new UIComponent("div");
+        hours.addConfig("style",
+                java.util.Map.of("display", "grid", "grid-template-columns", "repeat(6, minmax(0, 1fr))", "gap", "4px",
+                        "font-size", "9px", "opacity", "0.6", "text-align", "center", "margin-top", "3px"));
+        List<UIComponent> hourSlot = hours.addSlot("default");
+        for (int i = 0; i < 6; i++) {
+            String hour = "((dayjs().hour()+" + i + ")%24)";
+            String price = "Number((items." + I_TARIFF_SCHEDULE + ".state||'').split(',')[" + hour + "]||0)";
+            String pos = "((" + span + ">0)?((" + price + "-" + low + ")/" + span + "):0.5)";
+            UIComponent bar = new UIComponent("div");
+            bar.addConfig("class", List.of("bar"));
+            bar.addConfig("style",
+                    java.util.Map.of("border-radius", "4px 4px 0 0", "height",
+                            "=Math.round(8+38*Math.max(0,Math.min(1," + pos + ")))+'px'", "background",
+                            "=" + pos + "<0.34?'#43a047':" + pos + "<0.67?'#ffa726':'#ef5350'", "outline",
+                            i == 0 ? "2px solid var(--f7-text-color)" : "none", "outline-offset", "1px"));
+            barSlot.add(bar);
+            UIComponent label = new UIComponent("Label");
+            label.addConfig("text", i == 0 ? "now" : "=" + hour + "+':00'");
+            hourSlot.add(label);
+        }
+        bodySlot.add(bars);
+        bodySlot.add(hours);
         card.addSlot("default").add(body);
         return card;
     }
@@ -910,6 +1041,47 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return page;
     }
 
+    /**
+     * The look of the section, once, as a scoped stylesheet on the root of every page.
+     * <p>
+     * MainUI scopes {@code stylesheet} on any component to that component's subtree, so one sheet on
+     * the page root styles every card in it without touching the rest of the UI. Theme colours come
+     * from the Framework7 variables so the same sheet reads in light and dark. Motion is limited to
+     * the flow dots, a bar settling into its new width, and one pulse that only runs while the house
+     * is about to set a new billing peak.
+     */
+    private static final String STYLE = """
+            .ems{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;padding:6px 10px 18px 10px}
+            .ems-item{grid-column:span 12;min-width:0}
+            @media(min-width:768px){.ems-item.half{grid-column:span 6}.ems-item.wide{grid-column:span 7}.ems-item.side{grid-column:span 5}}
+            .ems .card{margin:0;border-radius:14px;background:var(--f7-card-bg-color);border:1px solid rgba(127,127,127,.14);box-shadow:0 1px 2px rgba(0,0,0,.04),0 12px 28px -18px rgba(0,0,0,.25)}
+            .ems .card-header{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.6;min-height:0;padding:12px 14px 0 14px}
+            .ems .card-header:after{display:none}
+            .ems .card-content{padding-top:2px}
+            .ems .list ul{background:transparent}
+            .ems .list ul:before,.ems .list ul:after{display:none}
+            .ems .item-title{font-weight:500;font-size:14px}
+            .ems .bar{transition:width .5s ease,height .5s ease}
+            @keyframes ems-attn{0%,100%{box-shadow:0 0 0 0 rgba(239,83,80,0)}50%{box-shadow:0 0 0 7px rgba(239,83,80,.28)}}
+            """;
+
+    /** The page's content root: everything a page shows goes into the list this returns. */
+    private List<UIComponent> shell(RootUIComponent page) {
+        UIComponent root = new UIComponent("div");
+        root.addConfig("class", List.of("ems"));
+        root.addConfig("stylesheet", STYLE);
+        page.addSlot("default").add(root);
+        return root.addSlot("default");
+    }
+
+    /** A card taking part of the row on a tablet: {@code half}, {@code wide} or {@code side}. */
+    private UIComponent item(UIComponent card, String span) {
+        UIComponent cell = new UIComponent("div");
+        cell.addConfig("class", List.of("ems-item", span));
+        cell.addSlot("default").add(card);
+        return cell;
+    }
+
     private UIComponent tab(String title, String icon, String pageUid) {
         UIComponent t = new UIComponent("oh-tab");
         t.addConfig("title", title);
@@ -923,7 +1095,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      */
     private RootUIComponent buildControlPage(List<EnergyConsumer> consumers, SiteModel site) {
         RootUIComponent page = layoutPage(P_CONTROL, "Control");
-        List<UIComponent> root = page.addSlot("default");
+        List<UIComponent> root = shell(page);
 
         UIComponent status = statusChips();
         if (status != null) {
@@ -1009,7 +1181,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      */
     private RootUIComponent buildCarsPage(SiteModel site) {
         RootUIComponent page = layoutPage(P_CARS, "Cars");
-        List<UIComponent> root = page.addSlot("default");
+        List<UIComponent> root = shell(page);
         List<UIComponent> cards = new ArrayList<>();
         for (SiteModel.Car car : site.cars()) {
             UIComponent card = carCard(car);
@@ -1025,17 +1197,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(listCard("Cars", List.of(note))));
             return page;
         }
-        // two cars per row on a tablet, one per row on a phone
-        for (int i = 0; i < cards.size(); i += 2) {
-            UIComponent left = col("100", cards.get(i));
-            left.addConfig("medium", "50");
-            if (i + 1 < cards.size()) {
-                UIComponent right = col("100", cards.get(i + 1));
-                right.addConfig("medium", "50");
-                root.add(block(null, row(left, right)));
-            } else {
-                root.add(block(null, row(left)));
-            }
+        for (UIComponent card : cards) {
+            root.add(item(card, "half"));
         }
         return page;
     }
@@ -1055,6 +1218,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         UIComponent card = new UIComponent("f7-card");
         card.addConfig("title", carTitle(car));
         List<UIComponent> slot = card.addSlot("default");
+
+        UIComponent state = carStateChip(car);
+        if (state != null) {
+            slot.add(state);
+        }
 
         List<UIComponent> now = new ArrayList<>();
         if (has(car.statusItem())) {
@@ -1095,6 +1263,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 rows.add(departure);
             }
             slot.add(list);
+            if (has(car.planPrefix() + "_Plan_Target_kWh") && has(car.planPrefix() + "_Plan_Required_kWh")) {
+                slot.add(deliveredBar(car, enabled));
+            }
             if (has(car.planPrefix() + "_Plan_Strategy")) {
                 slot.add(segmentedRow(car.planPrefix() + "_Plan_Strategy", "Get there by", new String[][] {
                         { "now", "Charging now" }, { "cheapest", "Cheapest hours" }, { "solar-first", "Sun only" } }));
@@ -1124,15 +1295,63 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 slot.add(planRow);
             }
             if (has(car.planPrefix() + "_Plan_Feasible")) {
-                UIComponent warn = chip("will not make it in time", "red", "=items." + enabled + ".state==='ON'&&items."
-                        + car.planPrefix() + "_Plan_Feasible.state==='OFF'?'inline-flex':'none'");
-                UIComponent wrap = new UIComponent("div");
-                wrap.addConfig("style", java.util.Map.of("padding", "0 14px 12px 14px"));
-                wrap.addSlot("default").add(warn);
-                slot.add(wrap);
+                String late = "items." + enabled + ".state==='ON'&&items." + car.planPrefix()
+                        + "_Plan_Feasible.state==='OFF'";
+                UIComponent warn = new UIComponent("div");
+                warn.addConfig("style",
+                        java.util.Map.of("display", "=" + late + "?'block':'none'", "margin", "0 14px 12px 14px",
+                                "padding", "9px 11px", "border-radius", "10px", "background", "rgba(239,83,80,0.12)",
+                                "font-size", "12px", "line-height", "1.3"));
+                UIComponent text = new UIComponent("Label");
+                text.addConfig("text",
+                        "This plan will not make it in time. Switch to Full speed, or move the departure later.");
+                warn.addSlot("default").add(text);
+                slot.add(warn);
             }
         }
         return card;
+    }
+
+    /** Cable, charging or idle - one chip on the card's first line. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent carStateChip(SiteModel.Car car) {
+        if (!has(car.cableItem()) && !has(car.statusItem())) {
+            return null;
+        }
+        String power = has(car.powerWItem()) ? "(items." + car.powerWItem() + ".numericState||0)"
+                : has(car.powerKwItem()) ? "((items." + car.powerKwItem() + ".numericState||0)*1000)" : "0";
+        String cable = has(car.cableItem()) ? "items." + car.cableItem() + ".state==='ON'" : "true";
+        String text = "=" + power + ">200?'charging '+(" + power + "/1000).toFixed(1)+' kW':" + cable
+                + "?'plugged in, not charging':'no cable'";
+        String colour = "=" + power + ">200?'orange':" + cable + "?'blue':'gray'";
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style", java.util.Map.of("padding", "6px 14px 0 14px"));
+        row.addSlot("default").add(chip(text, colour, null));
+        return row;
+    }
+
+    /** How far the plan has got: delivered out of wanted, with what is still to come. */
+    private UIComponent deliveredBar(SiteModel.Car car, String enabled) {
+        String target = "(items." + car.planPrefix() + "_Plan_Target_kWh.numericState||0)";
+        String required = "(items." + car.planPrefix() + "_Plan_Required_kWh.numericState||0)";
+        String delivered = "Math.max(0," + target + "-" + required + ")";
+        UIComponent box = new UIComponent("div");
+        box.addConfig("style", java.util.Map.of("padding", "4px 14px 8px 14px", "display",
+                "=items." + enabled + ".state==='ON'?'block':'none'"));
+        List<UIComponent> parts = box.addSlot("default");
+        UIComponent caption = new UIComponent("Label");
+        caption.addConfig("text", "=" + delivered + ".toFixed(1)+' of '+" + target + ".toFixed(0)+' kWh delivered'");
+        caption.addConfig("style", java.util.Map.of("font-size", "11px", "opacity", "0.7"));
+        parts.add(caption);
+        UIComponent track = new UIComponent("div");
+        track.addConfig("style", java.util.Map.of("height", "10px", "border-radius", "5px", "background",
+                "rgba(127,127,127,0.18)", "overflow", "hidden", "margin-top", "4px"));
+        UIComponent fill = new UIComponent("div");
+        fill.addConfig("class", List.of("bar"));
+        fill.addConfig("style", java.util.Map.of("height", "10px", "border-radius", "5px", "background", "#ef7b3e",
+                "width", "=Math.max(0,Math.min(100,100*" + delivered + "/(" + target + "||1)))+'%'"));
+        track.addSlot("default").add(fill);
+        parts.add(track);
+        return box;
     }
 
     /** The mode Item's label names the car on this site; the number is the fallback. */
@@ -1340,93 +1559,97 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * forecast and the optimiser's plan string.
      */
     private UIComponent dayStrip() {
-        UIComponent card = new UIComponent("f7-card");
-        card.addConfig("title", "Your day");
+        return timelineCard();
+    }
 
+    /**
+     * The day as lanes on one clock: sun, price, battery plan. Three things a person would read
+     * off three widgets, aligned so that "charge when it is cheap and sunny" is a glance.
+     */
+    private UIComponent timelineCard() {
+        UIComponent card = new UIComponent("f7-card");
+        card.addConfig("title", "Today, hour by hour");
         UIComponent body = new UIComponent("div");
-        body.addConfig("style", java.util.Map.of("display", "flex", "align-items", "flex-end", "gap", "2px", "padding",
-                "10px 14px 4px 14px", "height", "84px"));
-        List<UIComponent> columns = body.addSlot("default");
+        body.addConfig("style", java.util.Map.of("padding", "8px 14px 12px 14px", "display", "flex", "flex-direction",
+                "column", "gap", "4px"));
+        List<UIComponent> slot = body.addSlot("default");
+
         String peak = hourlyPeakExpression();
-        for (int hour = 0; hour < 24; hour++) {
-            columns.add(hourColumn(hour, peak));
+        slot.add(laneLabel("Sun expected"));
+        UIComponent sun = lane("46px");
+        for (int h = 0; h < 24; h++) {
+            UIComponent bar = new UIComponent("div");
+            bar.addConfig("class", List.of("bar"));
+            bar.addConfig("style",
+                    java.util.Map.of("align-self", "end", "width", "100%", "border-radius", "2px 2px 0 0", "background",
+                            "#f0a83c", "opacity", "=" + isNowExpr(h) + "?'1':(" + h + "<dayjs().hour()?'0.35':'0.8')",
+                            "height", "=Math.round(2+44*" + hourlySunExpression(h) + "/" + peak + ")+'px'"));
+            sun.getSlots().get("default").add(bar);
         }
-        List<UIComponent> cardSlot = card.addSlot("default");
-        cardSlot.add(body);
+        slot.add(sun);
+
+        String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
+        String span = "((items." + I_TARIFF_MAX + ".numericState||0)-" + low + ")";
+        slot.add(laneLabel("Price - green cheap, red dear"));
+        UIComponent price = lane("14px");
+        for (int h = 0; h < 24; h++) {
+            String p = "Number((items." + I_TARIFF_SCHEDULE + ".state||'').split(',')[" + h + "]||0)";
+            String pos = "((" + span + ">0)?((" + p + "-" + low + ")/" + span + "):0)";
+            UIComponent cell = new UIComponent("div");
+            cell.addConfig("style",
+                    java.util.Map.of("border-radius", "2px", "height", "14px", "background",
+                            "=" + pos + "<0.34?'#43a047':" + pos + "<0.67?'#ffa726':'#ef5350'", "opacity",
+                            "=" + h + "<dayjs().hour()?'0.35':'1'", "outline",
+                            "=" + isNowExpr(h) + "?'2px solid var(--f7-text-color)':'none'", "outline-offset", "1px"));
+            price.getSlots().get("default").add(cell);
+        }
+        slot.add(price);
+
+        if (has(I_OPT_PLAN_24H)) {
+            slot.add(laneLabel("Battery plan - green charges, purple discharges"));
+            UIComponent plan = lane("10px");
+            for (int h = 0; h < 24; h++) {
+                String c = "((items." + I_OPT_PLAN_24H + ".state||'')[" + h + "]||'.')";
+                UIComponent cell = new UIComponent("div");
+                cell.addConfig("style", java.util.Map.of("border-radius", "2px", "height", "10px", "background",
+                        "=" + c + "==='c'?'#3bb273':" + c + "==='d'?'#7d6cd6':'rgba(127,127,127,0.18)'"));
+                plan.getSlots().get("default").add(cell);
+            }
+            slot.add(plan);
+        }
 
         UIComponent scale = new UIComponent("div");
-        scale.addConfig("style", java.util.Map.of("display", "flex", "justify-content", "space-between", "padding",
-                "0 14px 10px 14px", "font-size", "9px", "opacity", "0.55"));
+        scale.addConfig("style", java.util.Map.of("display", "flex", "justify-content", "space-between", "font-size",
+                "9px", "opacity", "0.55", "margin-top", "2px"));
         List<UIComponent> marks = scale.addSlot("default");
         for (String mark : List.of("00", "06", "12", "18", "24")) {
             UIComponent label = new UIComponent("Label");
             label.addConfig("text", mark);
             marks.add(label);
         }
-        cardSlot.add(scale);
-        cardSlot.add(stripLegend());
+        slot.add(scale);
+        card.addSlot("default").add(body);
         return card;
     }
 
-    /**
-     * The strip carries three variables at once (bar height, bar colour, marker). Without naming
-     * them it reads as decoration, which is how a dense chart ends up ignored.
-     */
-    private UIComponent stripLegend() {
-        UIComponent row = new UIComponent("div");
-        row.addConfig("style", java.util.Map.of("padding", "0 14px 12px 14px", "font-size", "10px", "opacity", "0.6",
-                "line-height", "14px"));
-        UIComponent text = new UIComponent("Label");
-        text.addConfig("text", "bar height = sun expected · colour = price (green cheap, red dear) "
-                + "· triangle = battery charges, inverted triangle = discharges");
-        row.addSlot("default").add(text);
-        return row;
+    private static String isNowExpr(int hour) {
+        return "(dayjs().hour()===" + hour + ")";
     }
 
-    /** One hour of the strip. */
-    private UIComponent hourColumn(int hour, String peak) {
-        String sun = hourlySunExpression(hour);
-        String price = "Number((items." + I_TARIFF_SCHEDULE + ".state||'').split(',')[" + hour + "]||0)";
-        String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
-        String span = "((items." + I_TARIFF_MAX + ".numericState||0)-" + low + ")";
-        // where this hour sits between the day's cheapest and dearest, 0..1
-        String position = "((" + span + ">0)?((" + price + "-" + low + ")/" + span + "):0)";
+    private UIComponent laneLabel(String text) {
+        UIComponent label = new UIComponent("Label");
+        label.addConfig("text", text);
+        label.addConfig("style", java.util.Map.of("font-size", "10px", "opacity", "0.6", "margin-top", "6px"));
+        return label;
+    }
 
-        UIComponent column = new UIComponent("div");
-        column.addConfig("style", java.util.Map.of("flex", "1 1 0", "display", "flex", "flex-direction", "column",
-                "align-items", "center", "justify-content", "flex-end", "height", "100%"));
-        List<UIComponent> parts = column.addSlot("default");
-
-        UIComponent bar = new UIComponent("div");
-        bar.addConfig("style",
-                java.util.Map.of("width", "100%", "border-radius", "3px 3px 0 0", "transition", "height 0.6s ease",
-                        // a floor of 3px so an hour with no sun is still visibly an hour
-                        "height", "=Math.round(3+57*" + sun + "/" + peak + ")+'px'", "background",
-                        "=" + position + "<0.34?'#43a047':" + position + "<0.67?'#ffa726':'#ef5350'"));
-        parts.add(bar);
-
-        // what the battery means to do this hour, straight off the plan string
-        UIComponent marker = new UIComponent("Label");
-        marker.addConfig("text", "=((items." + I_OPT_PLAN_24H + ".state||'')[" + hour + "]||'.')==='c'?'▲':((items."
-                + I_OPT_PLAN_24H + ".state||'')[" + hour + "]||'.')==='d'?'▼':'·'");
-        marker.addConfig("style", java.util.Map.of("font-size", "9px", "line-height", "11px", "opacity", "0.8"));
-        parts.add(marker);
-
-        if (has(I_CLOCK_HOUR)) {
-            String isNow = "(items." + I_CLOCK_HOUR + ".numericState===" + hour + ")";
-            // A strip of 24 identical columns gives no sense of where the day has got to; without
-            // this, "cheapest hour 12:00" cannot be read as past or still ahead.
-            bar.addConfig("style", java.util.Map.of("width", "100%", "border-radius", "3px 3px 0 0", "transition",
-                    "height 0.6s ease", "height", "=Math.round(3+57*" + sun + "/" + peak + ")+'px'", "background",
-                    "=" + position + "<0.34?'#43a047':" + position + "<0.67?'#ffa726':'#ef5350'", "opacity",
-                    "=" + isNow + "?'1':'0.55'", "outline", "=" + isNow + "?'2px solid var(--f7-theme-color)':'none'"));
-            UIComponent tick = new UIComponent("Label");
-            tick.addConfig("text", "=" + isNow + "?'nu':''");
-            tick.addConfig("style", java.util.Map.of("font-size", "8px", "line-height", "9px", "font-weight", "600",
-                    "color", "var(--f7-theme-color)"));
-            parts.add(tick);
-        }
-        return column;
+    /** Twenty-four equal columns, one per hour, for any lane. */
+    private UIComponent lane(String height) {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style", java.util.Map.of("display", "grid", "grid-template-columns",
+                "repeat(24, minmax(0, 1fr))", "gap", "2px", "height", height, "align-items", "end"));
+        row.addSlot("default");
+        return row;
     }
 
     /** This hour's forecast watts, out of the {@code HH:MM=watts} series. */
@@ -1654,7 +1877,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
     /** A whole card as one page row. */
     private UIComponent cardRow(UIComponent card) {
-        return block(null, row(col("100", card)));
+        return item(card, "full");
     }
 
     /** A switch as a compact row rather than a card of its own. */
@@ -1872,43 +2095,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      */
     private boolean has(String item) {
         return itemRegistry.get(item) != null;
-    }
-
-    /** A tile, or nothing where the Item behind it does not exist on this site. */
-    /**
-     * A block of tiles, dropping the ones whose Items are absent and the whole block when none survive.
-     *
-     * @param title the block's heading
-     * @param tiles the candidate tiles, nulls allowed
-     * @return the block, or {@code null} where this site has nothing to put in it
-     */
-    private UIComponent col(String width, UIComponent child) {
-        UIComponent c = new UIComponent("oh-grid-col");
-        c.addConfig("width", width);
-        c.addSlot("default").add(child);
-        return c;
-    }
-
-    private UIComponent row(UIComponent... cols) {
-        UIComponent r = new UIComponent("oh-grid-row");
-        r.addConfig("gap", Boolean.TRUE);
-        List<UIComponent> slot = r.addSlot("default");
-        for (UIComponent c : cols) {
-            slot.add(c);
-        }
-        return r;
-    }
-
-    private UIComponent block(@org.eclipse.jdt.annotation.Nullable String title, UIComponent... rows) {
-        UIComponent b = new UIComponent("oh-block");
-        if (title != null) {
-            b.addConfig("title", title);
-        }
-        List<UIComponent> slot = b.addSlot("default");
-        for (UIComponent r : rows) {
-            slot.add(r);
-        }
-        return b;
     }
 
     // --- participant → presentation --------------------------------------------------------------

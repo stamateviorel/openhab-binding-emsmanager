@@ -330,13 +330,14 @@ class EnergyUiProviderTest {
     }
 
     @Test
-    void theDayStripMarksTheCurrentHourAndSaysWhatItsColoursMean() throws Exception {
+    void theTimelineMarksTheCurrentHourAndNamesItsColours() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path
                 .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
 
-        assertTrue(source.contains("I_CLOCK_HOUR + \".numericState===\""),
+        assertTrue(source.contains("dayjs().hour()===\" + hour"),
                 "the current hour must be identified per column, not assumed");
-        assertTrue(source.contains("colour = price"), "a three-variable strip needs its encoding named");
+        assertTrue(source.contains("green cheap, red dear"), "a coloured lane needs its encoding named");
+        assertTrue(source.contains("green charges, purple discharges"), "so does the battery lane");
     }
 
     @Test
