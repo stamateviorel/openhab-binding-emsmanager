@@ -101,4 +101,23 @@ class EvChargingPlanControllerTest {
 
         verify(registry).getItem("EVSE1_Plan_Enabled");
     }
+
+    @Test
+    void theCheapestHoursArePlannedAsWindowsInTheOrderTheyCome() {
+        // from 20:00, 6 hours left, prices dearest at 21 and 22: the two cheapest of the six are 20 and 23
+        double[] sched = new double[24];
+        java.util.Arrays.fill(sched, 0.30);
+        sched[21] = 0.50;
+        sched[22] = 0.50;
+        sched[20] = 0.10;
+        sched[23] = 0.12;
+        int[] offsets = EvChargingPlanController.cheapestHours(sched, 20, 6.0, 14.0);
+        assertArrayEquals(new int[] { 0, 3 }, offsets, "14 kWh at 7 kW is two hours: 20:00 and 23:00");
+    }
+
+    @Test
+    void nothingNeededMeansNoWindows() {
+        assertEquals(0, EvChargingPlanController.cheapestHours(new double[24], 8, 6.0, 0.0).length);
+        assertEquals(0, EvChargingPlanController.cheapestHours(null, 8, 6.0, 10.0).length);
+    }
 }

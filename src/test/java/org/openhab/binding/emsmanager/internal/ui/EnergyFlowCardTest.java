@@ -212,4 +212,30 @@ class EnergyFlowCardTest {
             }
         }
     }
+
+    @Test
+    void theTimelineStretchesToThirtySixHoursWithACarLaneOnceTomorrowIsKnown() {
+        EnergyUiProvider p = siteWith(
+                Set.of("Grid_load", "Solar_load", "EMS_Tariff_Schedule24h_CSV", "EMS_Tariff_Schedule48h_CSV",
+                        "EMS_Forecast_Today_Hourly_CSV", "EMS_Forecast_Tomorrow_Hourly_CSV", "EMS_Tariff_Today_Min",
+                        "EMS_Tariff_Today_Max", "Car1_Plan_Enabled", "Car1_Plan_Hours", "Car1_Plan_Status"),
+                bridgeAndMeters(), links());
+        UIComponent future = page(p, "emsmanager_energy_future");
+        List<String> texts = new ArrayList<>();
+        collectTexts(future, texts);
+        assertTrue(texts.stream().anyMatch(x -> x.contains("when it will charge")), "car 1 gets a lane");
+        assertTrue(texts.stream().anyMatch(x -> x.contains("not published yet")), "the two-day price lane is drawn");
+        // sun 36 + price 36 + car 36 columns at least
+        assertTrue(count(future, "div") >= 108, "thirty-six columns per lane, found " + count(future, "div"));
+    }
+
+    @Test
+    void withoutTomorrowTheTimelineStaysAtToday() {
+        EnergyUiProvider p = siteWith(Set.of("Grid_load", "Solar_load", "EMS_Tariff_Schedule24h_CSV",
+                "EMS_Forecast_Today_Hourly_CSV", "EMS_Tariff_Today_Min", "EMS_Tariff_Today_Max"), bridgeAndMeters(),
+                links());
+        List<String> texts = new ArrayList<>();
+        collectTexts(page(p, "emsmanager_energy_future"), texts);
+        assertFalse(texts.stream().anyMatch(x -> x.contains("not published yet")));
+    }
 }

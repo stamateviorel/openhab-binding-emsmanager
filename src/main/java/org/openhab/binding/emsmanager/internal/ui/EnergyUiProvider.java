@@ -128,6 +128,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_TARIFF_MAX = "EMS_Tariff_Today_Max";
     private static final String I_TARIFF_SOURCE = "EMS_Tariff_Source";
     private static final String I_FORECAST_HOURLY = "EMS_Forecast_Today_Hourly_CSV";
+    private static final String I_FORECAST_HOURLY_TOMORROW = "EMS_Forecast_Tomorrow_Hourly_CSV";
+    private static final String I_TARIFF_SCHEDULE_48H = "EMS_Tariff_Schedule48h_CSV";
     private static final String I_FORECAST_TOMORROW = "EMS_Forecast_Tomorrow_kWh";
     private static final String I_FORECAST_6H = "EMS_Forecast_Next_6h";
     private static final String I_BOILER_WINDOW = "EMS_BoilerPlan_Window";
@@ -431,7 +433,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<UIComponent> root = shell(page);
 
         if (has(I_TARIFF_SCHEDULE) && has(I_FORECAST_HOURLY)) {
-            root.add(cardRow(dayStrip()));
+            root.add(cardRow(timelineCard(site)));
         } else if (has(I_OPT_PLAN_24H)) {
             root.add(cardRow(planCard()));
         }
@@ -1357,13 +1359,61 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         parts.add(caption);
         UIComponent track = new UIComponent("div");
         track.addConfig("style", java.util.Map.of("height", "10px", "border-radius", "5px", "background",
-                "rgba(127,127,127,0.18)", "overflow", "hidden", "margin-top", "4px"));
-        UIComponent fill = new UIComponent("div");
-        fill.addConfig("class", List.of("bar"));
-        fill.addConfig("style", java.util.Map.of("height", "10px", "border-radius", "5px", "background", "#ef7b3e",
-                "width", "=Math.max(0,Math.min(100,100*" + delivered + "/(" + target + "||1)))+'%'"));
-        track.addSlot("default").add(fill);
-        parts.add(track);
+                "rgba(127,127,127,0.18)", "overflow", "hidden", "margin-top", "4px", "display", "flex"));
+        List<UIComponent> fills = track.addSlot("default");
+        String gridItem = car.planPrefix() + "_Plan_FromGrid_kWh";
+        if (has(gridItem)) {
+            String fromGrid = "Math.min(" + delivered + ",(items." + gridItem + ".numericState||0))";
+            UIComponent sun = new UIComponent("div");
+            sun.addConfig("class", List.of("bar"));
+            sun.addConfig("style", java.util.Map.of("height", "10px", "background", "#f0a83c", "width",
+                    "=Math.max(0,Math.min(100,100*(" + delivered + "-" + fromGrid + ")/(" + target + "||1)))+'%'"));
+            fills.add(sun);
+            UIComponent grid = new UIComponent("div");
+            grid.addConfig("class", List.of("bar"));
+            grid.addConfig("style", java.util.Map.of("height", "10px", "background", "#7d6cd6", "width",
+                    "=Math.max(0,Math.min(100,100*" + fromGrid + "/(" + target + "||1)))+'%'"));
+            fills.add(grid);
+            parts.add(track);
+            UIComponent legend = new UIComponent("Label");
+            legend.addConfig("text", "='from sun '+(" + delivered + "-" + fromGrid + ").toFixed(1)+' kWh, from grid '+"
+                    + fromGrid + ".toFixed(1)+' kWh'");
+            legend.addConfig("style",
+                    java.util.Map.of("font-size", "10px", "opacity", "0.6", "margin-top", "3px", "display", "block"));
+            parts.add(legend);
+        } else {
+            UIComponent fill = new UIComponent("div");
+            fill.addConfig("class", List.of("bar"));
+            fill.addConfig("style", java.util.Map.of("height", "10px", "background", "#ef7b3e", "width",
+                    "=Math.max(0,Math.min(100,100*" + delivered + "/(" + target + "||1)))+'%'"));
+            fills.add(fill);
+            parts.add(track);
+        }
+        String hoursItem = car.planPrefix() + "_Plan_Hours";
+        if (has(hoursItem)) {
+            UIComponent when = new UIComponent("Label");
+            when.addConfig("text", "When it will charge, next 24 hours");
+            when.addConfig("style",
+                    java.util.Map.of("font-size", "10px", "opacity", "0.6", "margin-top", "8px", "display", "block"));
+            parts.add(when);
+            UIComponent lane = lane("10px", 24);
+            lane.addConfig("style",
+                    java.util.Map.of("display", "grid", "grid-template-columns", "repeat(24, minmax(0, 1fr))", "gap",
+                            "2px", "height", "10px", "align-items", "end", "margin-top", "3px"));
+            for (int i = 0; i < 24; i++) {
+                String c = "((items." + hoursItem + ".state||'')[dayjs().hour()+" + i + "]||'.')";
+                UIComponent cell = new UIComponent("div");
+                cell.addConfig("style", java.util.Map.of("border-radius", "2px", "height", "10px", "background",
+                        "=" + c + "==='g'?'#7d6cd6':" + c + "==='s'?'#f0a83c':'rgba(127,127,127,0.18)'"));
+                lane.getSlots().get("default").add(cell);
+            }
+            parts.add(lane);
+            UIComponent legend2 = new UIComponent("Label");
+            legend2.addConfig("text", "purple = planned from the grid, amber = on sun");
+            legend2.addConfig("style",
+                    java.util.Map.of("font-size", "9px", "opacity", "0.5", "margin-top", "2px", "display", "block"));
+            parts.add(legend2);
+        }
         return box;
     }
 
@@ -1572,57 +1622,87 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * forecast and the optimiser's plan string.
      */
     private UIComponent dayStrip() {
-        return timelineCard();
+        return timelineCard(SiteModel.empty());
     }
 
     /**
      * The day as lanes on one clock: sun, price, battery plan. Three things a person would read
      * off three widgets, aligned so that "charge when it is cheap and sunny" is a glance.
      */
-    private UIComponent timelineCard() {
+    /**
+     * The hours ahead as lanes on one clock: sun, price, battery plan, and a lane per car with a
+     * plan. Thirty-six hours from now when tomorrow's prices and sun are published, today alone
+     * otherwise; hours the market has not published yet are drawn grey rather than guessed.
+     */
+    private UIComponent timelineCard(SiteModel site) {
+        boolean twoDays = has(I_TARIFF_SCHEDULE_48H) && has(I_FORECAST_HOURLY_TOMORROW);
+        int hours = twoDays ? 36 : 24;
         UIComponent card = new UIComponent("f7-card");
-        card.addConfig("title", "Today, hour by hour");
+        card.addConfig("title", twoDays ? "The next 36 hours" : "Today, hour by hour");
         UIComponent body = new UIComponent("div");
         body.addConfig("style", java.util.Map.of("padding", "8px 14px 12px 14px", "display", "flex", "flex-direction",
                 "column", "gap", "4px"));
         List<UIComponent> slot = body.addSlot("default");
 
-        String peak = hourlyPeakExpression();
+        // column i is absolute hour a(i) counted from today's midnight: today alone starts at 0,
+        // the two-day view starts at the current hour
+        java.util.function.IntFunction<String> abs = i -> twoDays ? "(dayjs().hour()+" + i + ")" : String.valueOf(i);
+        String peak = twoDays
+                ? "Math.max(" + hourlyPeakExpression() + "," + hourlyPeakExpression(I_FORECAST_HOURLY_TOMORROW) + ")"
+                : hourlyPeakExpression();
+
         slot.add(laneLabel("Sun expected"));
-        UIComponent sun = lane("46px");
-        for (int h = 0; h < 24; h++) {
+        UIComponent sun = lane("46px", hours);
+        for (int i = 0; i < hours; i++) {
+            String a = abs.apply(i);
+            String w = twoDays
+                    ? "(" + a + "<24?" + hourlyAt(I_FORECAST_HOURLY, a) + ":"
+                            + hourlyAt(I_FORECAST_HOURLY_TOMORROW, a + "-24") + ")"
+                    : hourlySunExpression(i);
+            String opacity = twoDays ? (i == 0 ? "1" : "0.8")
+                    : "=" + isNowExpr(i) + "?'1':(" + i + "<dayjs().hour()?'0.35':'0.8')";
             UIComponent bar = new UIComponent("div");
             bar.addConfig("class", List.of("bar"));
             bar.addConfig("style",
                     java.util.Map.of("align-self", "end", "width", "100%", "border-radius", "2px 2px 0 0", "background",
-                            "#f0a83c", "opacity", "=" + isNowExpr(h) + "?'1':(" + h + "<dayjs().hour()?'0.35':'0.8')",
-                            "height", "=Math.round(2+44*" + hourlySunExpression(h) + "/" + peak + ")+'px'"));
+                            "#f0a83c", "opacity", opacity, "height", "=Math.round(2+44*" + w + "/" + peak + ")+'px'"));
             sun.getSlots().get("default").add(bar);
         }
         slot.add(sun);
 
         String low = "(items." + I_TARIFF_MIN + ".numericState||0)";
         String span = "((items." + I_TARIFF_MAX + ".numericState||0)-" + low + ")";
-        slot.add(laneLabel("Price - green cheap, red dear"));
-        UIComponent price = lane("14px");
-        for (int h = 0; h < 24; h++) {
-            String p = "Number((items." + I_TARIFF_SCHEDULE + ".state||'').split(',')[" + h + "]||0)";
+        slot.add(laneLabel(
+                twoDays ? "Price - green cheap, red dear, grey not published yet" : "Price - green cheap, red dear"));
+        UIComponent price = lane("14px", hours);
+        for (int i = 0; i < hours; i++) {
+            String a = abs.apply(i);
+            String raw = twoDays ? "((items." + I_TARIFF_SCHEDULE_48H + ".state||'').split(',')[" + a + "]||'')"
+                    : "((items." + I_TARIFF_SCHEDULE + ".state||'').split(',')[" + i + "]||'')";
+            String p = "Number(" + raw + ")";
+            String known = "(" + raw + "!==''&&!isNaN(" + p + "))";
             String pos = "((" + span + ">0)?((" + p + "-" + low + ")/" + span + "):0)";
+            String outline = twoDays ? (i == 0 ? "2px solid var(--f7-text-color)" : "none")
+                    : "=" + isNowExpr(i) + "?'2px solid var(--f7-text-color)':'none'";
             UIComponent cell = new UIComponent("div");
             cell.addConfig("style",
                     java.util.Map.of("border-radius", "2px", "height", "14px", "background",
-                            "=" + pos + "<0.34?'#43a047':" + pos + "<0.67?'#ffa726':'#ef5350'", "opacity",
-                            "=" + h + "<dayjs().hour()?'0.35':'1'", "outline",
-                            "=" + isNowExpr(h) + "?'2px solid var(--f7-text-color)':'none'", "outline-offset", "1px"));
+                            "=!" + known + "?'rgba(127,127,127,0.25)':" + pos + "<0.34?'#43a047':" + pos
+                                    + "<0.67?'#ffa726':'#ef5350'",
+                            "opacity", twoDays ? "1" : "=" + i + "<dayjs().hour()?'0.35':'1'", "outline", outline,
+                            "outline-offset", "1px"));
             price.getSlots().get("default").add(cell);
         }
         slot.add(price);
 
         if (has(I_OPT_PLAN_24H)) {
             slot.add(laneLabel("Battery plan - green charges, purple discharges"));
-            UIComponent plan = lane("10px");
-            for (int h = 0; h < 24; h++) {
-                String c = "((items." + I_OPT_PLAN_24H + ".state||'')[" + h + "]||'.')";
+            UIComponent plan = lane("10px", hours);
+            for (int i = 0; i < hours; i++) {
+                String a = abs.apply(i);
+                // the optimiser plans today only; past midnight there is no plan yet
+                String c = twoDays ? "(" + a + "<24?((items." + I_OPT_PLAN_24H + ".state||'')[" + a + "]||'.'):'?')"
+                        : "((items." + I_OPT_PLAN_24H + ".state||'')[" + i + "]||'.')";
                 UIComponent cell = new UIComponent("div");
                 cell.addConfig("style", java.util.Map.of("border-radius", "2px", "height", "10px", "background",
                         "=" + c + "==='c'?'#3bb273':" + c + "==='d'?'#7d6cd6':'rgba(127,127,127,0.18)'"));
@@ -1631,18 +1711,65 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             slot.add(plan);
         }
 
+        for (SiteModel.Car car : site.cars()) {
+            String hoursItem = car.planPrefix() + "_Plan_Hours";
+            String enabled = car.planPrefix() + "_Plan_Enabled";
+            if (!has(hoursItem) || !has(enabled)) {
+                continue;
+            }
+            String shown = "=items." + enabled + ".state==='ON'?'";
+            UIComponent label = laneLabel(carTitle(car) + " - when it will charge");
+            label.addConfig("style", java.util.Map.of("font-size", "10px", "opacity", "0.6", "margin-top", "6px",
+                    "display", shown + "block':'none'"));
+            slot.add(label);
+            UIComponent carLane = lane("10px", hours);
+            carLane.addConfig("style", java.util.Map.of("display", shown + "grid':'none'", "grid-template-columns",
+                    "repeat(" + hours + ", minmax(0, 1fr))", "gap", "2px", "height", "10px", "align-items", "end"));
+            for (int i = 0; i < hours; i++) {
+                String a = abs.apply(i);
+                String c = "((items." + hoursItem + ".state||'')[" + a + "]||'.')";
+                UIComponent cell = new UIComponent("div");
+                cell.addConfig("style", java.util.Map.of("border-radius", "2px", "height", "10px", "background",
+                        "=" + c + "==='g'?'#7d6cd6':" + c + "==='s'?'#f0a83c':'rgba(127,127,127,0.18)'"));
+                carLane.getSlots().get("default").add(cell);
+            }
+            slot.add(carLane);
+        }
+
         UIComponent scale = new UIComponent("div");
         scale.addConfig("style", java.util.Map.of("display", "flex", "justify-content", "space-between", "font-size",
                 "9px", "opacity", "0.55", "margin-top", "2px"));
         List<UIComponent> marks = scale.addSlot("default");
-        for (String mark : List.of("00", "06", "12", "18", "24")) {
-            UIComponent label = new UIComponent("Label");
-            label.addConfig("text", mark);
-            marks.add(label);
+        if (twoDays) {
+            for (int i = 0; i <= 36; i += 6) {
+                UIComponent label = new UIComponent("Label");
+                label.addConfig("text", i == 0 ? "now"
+                        : "=(((dayjs().hour()+" + i + ")%24)<10?'0':'')+((dayjs().hour()+" + i + ")%24)");
+                marks.add(label);
+            }
+        } else {
+            for (String mark : List.of("00", "06", "12", "18", "24")) {
+                UIComponent label = new UIComponent("Label");
+                label.addConfig("text", mark);
+                marks.add(label);
+            }
         }
         slot.add(scale);
         card.addSlot("default").add(body);
         return card;
+    }
+
+    /** This hour's forecast watts out of a {@code HH:MM=watts} series, by an expression for the hour. */
+    private static String hourlyAt(String item, String hourExpr) {
+        return "Number(((items." + item + ".state||'').split(',')[" + hourExpr + "]||'=0').split('=')[1]||0)";
+    }
+
+    private String hourlyPeakExpression(String item) {
+        StringBuilder peak = new StringBuilder("Math.max(1");
+        for (int hour = 0; hour < 24; hour++) {
+            peak.append(',').append(hourlyAt(item, String.valueOf(hour)));
+        }
+        return peak.append(')').toString();
     }
 
     private static String isNowExpr(int hour) {
@@ -1657,10 +1784,10 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** Twenty-four equal columns, one per hour, for any lane. */
-    private UIComponent lane(String height) {
+    private UIComponent lane(String height, int hours) {
         UIComponent row = new UIComponent("div");
         row.addConfig("style", java.util.Map.of("display", "grid", "grid-template-columns",
-                "repeat(24, minmax(0, 1fr))", "gap", "2px", "height", height, "align-items", "end"));
+                "repeat(" + hours + ", minmax(0, 1fr))", "gap", "2px", "height", height, "align-items", "end"));
         row.addSlot("default");
         return row;
     }

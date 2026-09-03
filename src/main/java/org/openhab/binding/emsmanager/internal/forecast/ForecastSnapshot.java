@@ -79,6 +79,42 @@ public record ForecastSnapshot(Instant refreshedAt, double nowW, double next1hWh
     }
 
     /**
+     * One day of the series as {@code HH:MM=W} for its 24 local hours, zeros where the series has
+     * nothing, so a dashboard can draw tomorrow with the same code it draws today.
+     */
+    public static String hourlyCsvFor(String seriesCsv, java.time.LocalDate day, java.time.ZoneId zone) {
+        double[] watts = new double[24];
+        boolean any = false;
+        for (String tok : seriesCsv.split(",")) {
+            int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                continue;
+            }
+            try {
+                java.time.ZonedDateTime at = Instant.ofEpochSecond(Long.parseLong(tok.substring(0, eq).trim()))
+                        .atZone(zone);
+                if (at.toLocalDate().equals(day)) {
+                    watts[at.getHour()] = Double.parseDouble(tok.substring(eq + 1).trim());
+                    any = true;
+                }
+            } catch (NumberFormatException e) {
+                continue;
+            }
+        }
+        if (!any) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int h = 0; h < 24; h++) {
+            if (h > 0) {
+                sb.append(',');
+            }
+            sb.append(String.format(java.util.Locale.ROOT, "%02d:00=%.0f", h, watts[h]));
+        }
+        return sb.toString();
+    }
+
+    /**
      * Serialize an hourly power map to {@code "epochSecond=W,…"} over its full horizon in
      * ascending time order — the cache/wire form behind {@link #hourlySeriesCsv()}.
      */

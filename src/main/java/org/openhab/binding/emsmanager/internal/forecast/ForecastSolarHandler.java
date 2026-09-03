@@ -249,6 +249,11 @@ public final class ForecastSolarHandler extends BaseThingHandler {
                 snap.hourlyTodayCsv() == null || snap.hourlyTodayCsv().isEmpty() ? UnDefType.UNDEF
                         : new org.openhab.core.library.types.StringType(snap.hourlyTodayCsv()));
         publishSeries(snap.hourlySeriesCsv());
+        String tomorrow = ForecastSnapshot.hourlyCsvFor(snap.hourlySeriesCsv(),
+                java.time.LocalDate.now(java.time.ZoneId.systemDefault()).plusDays(1),
+                java.time.ZoneId.systemDefault());
+        updateState(FC_CHANNEL_HOURLY_TOMORROW_CSV,
+                tomorrow.isEmpty() ? UnDefType.UNDEF : new org.openhab.core.library.types.StringType(tomorrow));
 
         java.time.Instant peak = snap.peakTodayAt();
         if (peak == null) {

@@ -76,6 +76,7 @@ public final class EmsManagerBindingConstants {
     public static final String FC_CHANNEL_RATE_LIMIT_REMAINING = "rateLimitRemaining";
     public static final String FC_CHANNEL_LAST_ERROR = "lastError";
     public static final String FC_CHANNEL_HOURLY_TODAY_CSV = "hourlyForecastTodayCsv"; // hourly forecast CSV
+    public static final String FC_CHANNEL_HOURLY_TOMORROW_CSV = "hourlyForecastTomorrowCsv";
     public static final String FC_CHANNEL_FORECAST_SERIES = "forecastSeries"; // hourly TimeSeries future states
 
     // Tariff Thing channel IDs (prefix TR_)

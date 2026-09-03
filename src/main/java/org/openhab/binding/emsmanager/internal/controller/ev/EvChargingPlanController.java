@@ -92,7 +92,13 @@ public final class EvChargingPlanController implements Controller {
     private final String planItemPrefixPattern;
 
     // Per-car runtime state. Survives across ticks; reset on plan-disable or cable-disconnect.
-    private record SessionState(double kwhAccumulated, long lastTickMs, long planStartedMs, boolean cableSeen) {
+    /** Hours the plan means to charge, indexed from today 00:00 over two days. */
+    static final int PLAN_HOURS = 48;
+    /** The rate a charging window is planned at, kW - single-phase 32 A, a fair average of the fleet. */
+    static final double WINDOW_KW = 7.0;
+
+    private record SessionState(double kwhAccumulated, double fromGridKwh, long lastTickMs, long planStartedMs,
+            boolean cableSeen) {
     }
 
     private final Map<String, SessionState> sessions = new HashMap<>();
@@ -176,6 +182,7 @@ public final class EvChargingPlanController implements Controller {
         if (!enabledPlan) {
             sessions.remove(car.carKey());
             publishStatus(n, "Plan off", true, 0.0, 0.0, 0.0);
+            post(planItem(n, "Hours"), new StringType(".".repeat(PLAN_HOURS)));
             return;
         }
 
@@ -195,25 +202,31 @@ public final class EvChargingPlanController implements Controller {
         // Maintain session accumulator. Reset on cable disconnect (plan implicitly carries over the cable cycle).
         SessionState s = sessions.get(car.carKey());
         if (s == null) {
-            s = new SessionState(0.0, nowMs, nowMs, car.cableConnected());
+            s = new SessionState(0.0, 0.0, nowMs, nowMs, car.cableConnected());
         }
         // Cable cycle: when cable disconnects + later reconnects, reset accumulator.
         if (s.cableSeen && !car.cableConnected()) {
-            s = new SessionState(0.0, nowMs, nowMs, false);
+            s = new SessionState(0.0, 0.0, nowMs, nowMs, false);
         } else if (!s.cableSeen && car.cableConnected()) {
-            s = new SessionState(0.0, nowMs, nowMs, true);
+            s = new SessionState(0.0, 0.0, nowMs, nowMs, true);
         }
 
         // Integrate kW × dt → kWh while plugged & drawing.
         long dtMs = nowMs - s.lastTickMs;
         double newKwh = s.kwhAccumulated;
+        double fromGrid = s.fromGridKwh;
         if (car.cableConnected() && dtMs > 0 && dtMs < 60_000L && !Double.isNaN(car.liveDrawW())) {
             double drawKw = Math.abs(car.liveDrawW()) / 1000.0;
             double hours = dtMs / 3_600_000.0;
             newKwh += drawKw * hours;
+            // What the grid was supplying at the same moment is the part of this draw that was not
+            // sun: an approximation, but the one the dashboard can honestly show as "from grid".
+            double importKw = Double.isNaN(ctx.gridLoadRawW()) ? 0.0 : Math.max(0.0, -ctx.gridLoadRawW()) / 1000.0;
+            fromGrid += Math.min(drawKw, importKw) * hours;
         }
-        s = new SessionState(newKwh, nowMs, s.planStartedMs, car.cableConnected());
+        s = new SessionState(newKwh, fromGrid, nowMs, s.planStartedMs, car.cableConnected());
         sessions.put(car.carKey(), s);
+        post(planItem(n, "FromGrid_kWh"), new DecimalType(round2(fromGrid)));
 
         double required = Math.max(0.0, targetKwh - newKwh);
         double hoursRem = Duration.between(Instant.ofEpochMilli(nowMs), departure).toMillis() / 3_600_000.0;
@@ -248,12 +261,16 @@ public final class EvChargingPlanController implements Controller {
         double projectedCost = 0.0;
         String status;
         boolean feasible;
+        int hourNow = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).getHour();
+        char[] windows = new char[PLAN_HOURS];
+        java.util.Arrays.fill(windows, '.');
 
         switch (strategy) {
             case "cheapest":
-                projectedCost = cheapestCostEstimate(ctx.tariffSchedule24h(),
-                        ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).getHour(), hoursRem, required,
-                        tariffNow);
+                projectedCost = cheapestCostEstimate(ctx.tariffSchedule24h(), hourNow, hoursRem, required, tariffNow);
+                for (int offset : cheapestHours(ctx.tariffSchedule24h(), hourNow, hoursRem, required)) {
+                    mark(windows, hourNow + offset, 'g');
+                }
                 feasible = feasibleGrid;
                 if (!feasibleGrid) {
                     status = String.format("⚠️ Not achievable: %.1f kWh in %.1f h (>22 kW/car)", required, hoursRem);
@@ -279,6 +296,9 @@ public final class EvChargingPlanController implements Controller {
             case "now":
             default:
                 projectedCost = required * tariffNow;
+                for (int offset = 0; offset < Math.min(hoursRem, Math.ceil(required / WINDOW_KW)); offset++) {
+                    mark(windows, hourNow + offset, 'g');
+                }
                 feasible = feasibleGrid;
                 if (!feasibleGrid) {
                     status = String.format("⚠️ Not achievable: %.1f kWh in %.1f h", required, hoursRem);
@@ -290,6 +310,40 @@ public final class EvChargingPlanController implements Controller {
         }
 
         publishStatus(n, status, feasible, required, hoursRem, projectedCost);
+        post(planItem(n, "Hours"), new StringType(new String(windows)));
+    }
+
+    private static void mark(char[] windows, int hourFromTodayMidnight, char what) {
+        if (hourFromTodayMidnight >= 0 && hourFromTodayMidnight < windows.length) {
+            windows[hourFromTodayMidnight] = what;
+        }
+    }
+
+    /**
+     * Offsets from now of the cheapest hours that cover the need at {@link #WINDOW_KW}, in the
+     * order they come. The same hours {@link #cheapestCostEstimate} prices. Visible for testing.
+     */
+    static int[] cheapestHours(double @Nullable [] sched, int hourNow, double hoursRem, double requiredKwh) {
+        if (sched == null || sched.length == 0) {
+            return new int[0];
+        }
+        int hoursAvail = Math.min((int) Math.floor(hoursRem), sched.length);
+        if (hoursAvail <= 0 || requiredKwh <= 0) {
+            return new int[0];
+        }
+        Integer[] offsets = new Integer[hoursAvail];
+        for (int i = 0; i < hoursAvail; i++) {
+            offsets[i] = i;
+        }
+        java.util.Arrays.sort(offsets,
+                (a, b) -> Double.compare(sched[(hourNow + a) % sched.length], sched[(hourNow + b) % sched.length]));
+        int hoursNeeded = Math.min((int) Math.ceil(requiredKwh / WINDOW_KW), hoursAvail);
+        int[] chosen = new int[hoursNeeded];
+        for (int i = 0; i < hoursNeeded; i++) {
+            chosen[i] = offsets[i];
+        }
+        java.util.Arrays.sort(chosen);
+        return chosen;
     }
 
     /**

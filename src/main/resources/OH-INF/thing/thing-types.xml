@@ -982,6 +982,7 @@
 			<channel id="rateLimitRemaining" typeId="fcRateLimitRemaining"/>
 			<channel id="lastError" typeId="fcLastError"/>
 			<channel id="hourlyForecastTodayCsv" typeId="fcHourlyTodayCsv"/>
+			<channel id="hourlyForecastTomorrowCsv" typeId="fcHourlyTomorrowCsv"/>
 			<channel id="forecastSeries" typeId="fcForecastSeries"/>
 		</channels>
 
@@ -1123,6 +1124,12 @@
 		<item-type>String</item-type>
 		<label>Forecast — today hourly (CSV)</label>
 		<description>HH:MM=W,HH:MM=W,… for today. Dashboard chart parses this for forecast-vs-actual overlay.</description>
+		<state readOnly="true"/>
+	</channel-type>
+	<channel-type id="fcHourlyTomorrowCsv" advanced="true">
+		<item-type>String</item-type>
+		<label>Forecast — tomorrow hourly (CSV)</label>
+		<description>HH:MM=W,HH:MM=W,… for tomorrow, so the dashboard can draw the day ahead.</description>
 		<state readOnly="true"/>
 	</channel-type>
 
