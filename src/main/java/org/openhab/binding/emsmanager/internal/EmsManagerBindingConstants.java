@@ -254,6 +254,9 @@ public final class EmsManagerBindingConstants {
     public static final String ITEM_TARIFF_SCHEDULE_24H_CSV = "EMS_Tariff_Schedule24h_CSV";
     public static final String ITEM_FORECAST_TODAY_KWH = "EMS_Forecast_Today_kWh";
     public static final String ITEM_FORECAST_TOMORROW_KWH = "EMS_Forecast_Tomorrow_kWh";
+    /** The forecast Thing's hourly series as published by the site: {@code HH:MM=W,...} for 24 hours. */
+    public static final String ITEM_FORECAST_TODAY_HOURLY_CSV = "EMS_Forecast_Today_Hourly_CSV";
+    public static final String ITEM_FORECAST_TOMORROW_HOURLY_CSV = "EMS_Forecast_Tomorrow_Hourly_CSV";
 
     // EV charging plan items (per-car N=1..4). Inputs (settable):
     public static final String ITEM_CAR_PLAN_TARGET_KWH_FMT = "EVSE%d_Plan_Target_kWh";

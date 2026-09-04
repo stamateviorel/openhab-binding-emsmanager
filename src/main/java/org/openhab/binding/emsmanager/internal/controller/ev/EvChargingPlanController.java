@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,6 +97,8 @@ public final class EvChargingPlanController implements Controller {
     static final int PLAN_HOURS = 48;
     /** The rate a charging window is planned at, kW - single-phase 32 A, a fair average of the fleet. */
     static final double WINDOW_KW = 7.0;
+    /** An hour counts as a sun window from this much forecast roof power. */
+    static final double SUN_WINDOW_MIN_W = 1500.0;
 
     private record SessionState(double kwhAccumulated, double fromGridKwh, long lastTickMs, long planStartedMs,
             boolean cableSeen) {
@@ -252,6 +255,15 @@ public final class EvChargingPlanController implements Controller {
         double requiredAvgKw = required / Math.max(0.1, hoursRem);
         boolean feasibleEco = requiredAvgKw <= ECO_REALISTIC_KW_PER_CAR;
         boolean feasibleGrid = requiredAvgKw <= gridRealisticKwPerCar;
+        int hourNowForSun = ZonedDateTime.ofInstant(ctx.tickAt(), ZoneId.systemDefault()).getHour();
+        double[] sunW = hourlySun48();
+        int[] sunHours = sunHours(sunW, hourNowForSun, hoursRem);
+        double sunKwh = sunKwh(sunW, sunHours);
+        if (sunW.length > 0) {
+            // with a real forecast, "enough sun" is what the roof will make in the hours left, not a
+            // flat 3 kW assumption
+            feasibleEco = sunKwh >= required;
+        }
 
         double tariffNow = ctx.tariffPriceNowEurPerKWh();
         if (Double.isNaN(tariffNow)) {
@@ -282,7 +294,11 @@ public final class EvChargingPlanController implements Controller {
                 }
                 break;
             case "solar-first":
-                projectedCost = feasibleEco ? 0.0 : (required - (hoursRem * ECO_REALISTIC_KW_PER_CAR)) * tariffNow;
+                projectedCost = feasibleEco ? 0.0
+                        : (required - (sunW.length > 0 ? sunKwh : hoursRem * ECO_REALISTIC_KW_PER_CAR)) * tariffNow;
+                for (int h : sunHours) {
+                    mark(windows, h, 's');
+                }
                 feasible = feasibleGrid;
                 if (!feasibleGrid) {
                     status = String.format("⚠️ Not achievable: %.1f kWh in %.1f h", required, hoursRem);
@@ -311,6 +327,62 @@ public final class EvChargingPlanController implements Controller {
 
         publishStatus(n, status, feasible, required, hoursRem, projectedCost);
         post(planItem(n, "Hours"), new StringType(new String(windows)));
+    }
+
+    /**
+     * The roof's forecast for today and tomorrow, W per hour from today's midnight; empty when the
+     * site publishes no hourly forecast.
+     */
+    private double[] hourlySun48() {
+        String today = readString(ITEM_FORECAST_TODAY_HOURLY_CSV, "");
+        String tomorrow = readString(ITEM_FORECAST_TOMORROW_HOURLY_CSV, "");
+        if (today.isEmpty()) {
+            return new double[0];
+        }
+        double[] out = new double[PLAN_HOURS];
+        fillHourly(out, 0, today);
+        fillHourly(out, 24, tomorrow);
+        return out;
+    }
+
+    private static void fillHourly(double[] out, int offset, String csv) {
+        int h = 0;
+        for (String tok : csv.split(",")) {
+            int eq = tok.indexOf('=');
+            if (eq > 0 && h < 24) {
+                try {
+                    out[offset + h] = Double.parseDouble(tok.substring(eq + 1).trim());
+                } catch (NumberFormatException e) {
+                    out[offset + h] = 0.0;
+                }
+            }
+            h++;
+        }
+    }
+
+    /** Hours from now to departure with enough sun to count as a charging window. Visible for testing. */
+    static int[] sunHours(double[] sunW, int hourNow, double hoursRem) {
+        int hoursAvail = Math.min((int) Math.floor(hoursRem), Math.max(0, sunW.length - hourNow));
+        List<Integer> hours = new ArrayList<>();
+        for (int i = 0; i < hoursAvail; i++) {
+            if (sunW[hourNow + i] >= SUN_WINDOW_MIN_W) {
+                hours.add(hourNow + i);
+            }
+        }
+        int[] out = new int[hours.size()];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = hours.get(i);
+        }
+        return out;
+    }
+
+    /** What those hours can put into the car, at most the window rate per hour. Visible for testing. */
+    static double sunKwh(double[] sunW, int[] hours) {
+        double kwh = 0.0;
+        for (int h : hours) {
+            kwh += Math.min(sunW[h], WINDOW_KW * 1000.0) / 1000.0;
+        }
+        return kwh;
     }
 
     private static void mark(char[] windows, int hourFromTodayMidnight, char what) {

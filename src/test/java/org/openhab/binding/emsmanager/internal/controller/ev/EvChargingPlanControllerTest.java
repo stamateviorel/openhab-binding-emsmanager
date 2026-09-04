@@ -120,4 +120,24 @@ class EvChargingPlanControllerTest {
         assertEquals(0, EvChargingPlanController.cheapestHours(new double[24], 8, 6.0, 0.0).length);
         assertEquals(0, EvChargingPlanController.cheapestHours(null, 8, 6.0, 10.0).length);
     }
+
+    @Test
+    void sunWindowsAreTheHoursWithEnoughRoofBeforeDeparture() {
+        double[] sun = new double[48];
+        sun[10] = 4000;
+        sun[11] = 8000;
+        sun[12] = 9000;
+        sun[13] = 800; // a cloud
+        sun[14] = 6000;
+        sun[15] = 3000;
+        int[] hours = EvChargingPlanController.sunHours(sun, 9, 6.0); // 09:00, leaving at 15:00
+        assertArrayEquals(new int[] { 10, 11, 12, 14 }, hours, "the cloudy hour and the hour after departure are out");
+        assertEquals(4.0 + 7.0 + 7.0 + 6.0, EvChargingPlanController.sunKwh(sun, hours), 1e-9,
+                "a car takes at most the window rate from a 9 kW roof");
+    }
+
+    @Test
+    void withoutAForecastThereAreNoSunWindows() {
+        assertEquals(0, EvChargingPlanController.sunHours(new double[0], 9, 6.0).length);
+    }
 }
