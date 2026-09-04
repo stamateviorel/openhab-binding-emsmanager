@@ -79,8 +79,9 @@ class EnergyUiProviderTest {
         }
         Object title = component.getConfig() == null ? null : component.getConfig().get("title");
         // the heading sits on the card now, not on the block that holds it
-        if (("oh-block".equals(component.getType()) || "f7-card".equals(component.getType()))
-                && title instanceof String text) {
+        // headings live on cards, and on the header line of a folded section
+        if (("oh-block".equals(component.getType()) || "f7-card".equals(component.getType())
+                || "f7-list-item".equals(component.getType())) && title instanceof String text) {
             found.add(text);
         }
         if (component.getSlots() != null) {
@@ -238,7 +239,7 @@ class EnergyUiProviderTest {
                 // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
                 // and Label is its text primitive
                 "div", "Label", "oh-gauge", "oh-stepper-item", "oh-list-card", "oh-slider-item", "f7-chip",
-                "f7-progressbar", "oh-input-item",
+                "f7-progressbar", "oh-input-item", "f7-list", "f7-list-item", "f7-accordion-content",
                 // the flow picture is an inline SVG with SMIL motion
                 "svg", "g", "path", "circle", "animate");
 
@@ -344,29 +345,6 @@ class EnergyUiProviderTest {
     }
 
     @Test
-    void theControlPageOffersTheSetpointsAndNotJustSwitches() {
-        EnergyUiProvider provider = providerWith(Set.of("EMS_Set_Boiler_Target_kWh", "EMS_Set_Boiler_ReadyBy_Hour",
-                "EMS_Set_Grid_Margin_W", "EMS_Set_Capacity_Budget_W"));
-
-        List<String> types = new ArrayList<>();
-        for (RootUIComponent page : provider.getAll()) {
-            collectTypes(page, types);
-        }
-
-        assertTrue(types.contains("oh-slider-item"), "a numeric setpoint deserves a slider, not a read-only figure");
-        assertTrue(types.contains("oh-stepper-item"), "an hour is a stepper");
-    }
-
-    @Test
-    void aSliderOnlyCommandsOnRelease() throws Exception {
-        String source = java.nio.file.Files.readString(java.nio.file.Path
-                .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
-
-        assertTrue(source.contains("\"releaseOnly\", Boolean.TRUE"),
-                "dragging a slider must not fire a command per pixel - each one reinitialises the bridge");
-    }
-
-    @Test
     void aChipThatOnlyMattersSometimesHidesItself() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path
                 .of("src/main/java/org/openhab/binding/emsmanager/internal/ui/" + "EnergyUiProvider.java"));
@@ -419,6 +397,73 @@ class EnergyUiProviderTest {
         }
         if (component.getSlots() != null) {
             component.getSlots().values().forEach(list -> list.forEach(c -> collectWithItem(c, item, found)));
+        }
+    }
+
+    @Test
+    void theControlPageOffersTheSetpointsAsSteppersYouCanType() {
+        RootUIComponent control = page(providerWith(Set.of("EMS_Set_Grid_Margin_W", "EMS_Set_Boiler_Target_kWh")),
+                "emsmanager_energy_control");
+        List<UIComponent> steppers = new ArrayList<>();
+        collectOfType(control, "oh-stepper-item", steppers);
+        assertEquals(2, steppers.size(), "a numeric setpoint is a stepper, not a read-only figure or a slider");
+        for (UIComponent stepper : steppers) {
+            assertEquals(Boolean.TRUE, stepper.getConfig().get("manualInputMode"),
+                    "the number must be typeable, not only nudged");
+        }
+        List<UIComponent> sliders = new ArrayList<>();
+        collectOfType(control, "oh-slider-item", sliders);
+        assertTrue(sliders.isEmpty(), "a slider on a phone is a guess to the nearest thumb-width");
+    }
+
+    @Test
+    void repeatedThingsFoldWithTheirEssentialsInTheHeader() {
+        RootUIComponent past = page(providerWith(Set.of("EMS_SelfConsumption_kWh_Day", "EMS_Supply_kWh_Day",
+                "EMS_Cost_EUR_Day", "EMS_SelfConsumption_kWh_Month", "EMS_Supply_kWh_Month")),
+                "emsmanager_energy_past");
+        List<UIComponent> sections = new ArrayList<>();
+        collectOfType(past, "f7-list-item", sections);
+        assertEquals(2, sections.size(), "a section per period the site keeps");
+        UIComponent today = sections.get(0);
+        assertEquals("Today", today.getConfig().get("title"));
+        assertTrue(String.valueOf(today.getConfig().get("after")).contains("EMS_Cost_EUR_Day"),
+                "the header says how the period stands before it is opened");
+        assertNotNull(find(today, "f7-accordion-content"), "the detail is behind the header");
+    }
+
+    private static @Nullable UIComponent find(@Nullable UIComponent c, String type) {
+        if (c == null) {
+            return null;
+        }
+        if (type.equals(c.getType())) {
+            return c;
+        }
+        if (c.getSlots() != null) {
+            for (List<UIComponent> slot : c.getSlots().values()) {
+                for (UIComponent child : slot) {
+                    UIComponent hit = find(child, type);
+                    if (hit != null) {
+                        return hit;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private void collectOfType(@Nullable UIComponent c, String type, List<UIComponent> out) {
+        if (c == null) {
+            return;
+        }
+        if (type.equals(c.getType())) {
+            out.add(c);
+        }
+        if (c.getSlots() != null) {
+            for (List<UIComponent> slot : c.getSlots().values()) {
+                for (UIComponent child : slot) {
+                    collectOfType(child, type, out);
+                }
+            }
         }
     }
 }

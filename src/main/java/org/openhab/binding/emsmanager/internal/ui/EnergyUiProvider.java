@@ -177,6 +177,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private final @org.eclipse.jdt.annotation.Nullable ThingRegistry thingRegistry;
     private final @org.eclipse.jdt.annotation.Nullable ItemChannelLinkRegistry linkRegistry;
     private volatile List<RootUIComponent> pages = new ArrayList<>();
+    /** The site as of the last rebuild, for the helpers that name things. */
+    private volatile SiteModel site = SiteModel.empty();
 
     @Activate
     public EnergyUiProvider(@Reference MetadataRegistry metadataRegistry, @Reference ItemRegistry itemRegistry,
@@ -254,6 +256,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<EnergyProvider> providers = scanner.providers();
         List<EnergyConsumer> consumers = scanner.consumers();
         SiteModel site = SiteModel.from(thingRegistry, linkRegistry);
+        this.site = site;
         List<RootUIComponent> out = new ArrayList<>();
         out.add(buildTabsPage());
         out.add(buildPastPage());
@@ -370,18 +373,34 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 }
             }
         }
+        List<UIComponent> sections = new ArrayList<>();
         if (!totals.isEmpty()) {
             String scale = largestOf(totals);
-            List<UIComponent> bars = new ArrayList<>();
             for (String[] period : PERIODS) {
                 UIComponent bar = periodBar(period[0], period[1], scale);
-                if (bar != null) {
-                    bars.add(bar);
+                if (bar == null) {
+                    continue;
                 }
+                List<UIComponent> content = new ArrayList<>();
+                UIComponent barBox = new UIComponent("div");
+                barBox.addConfig("style", java.util.Map.of("padding", "0 14px"));
+                barBox.addSlot("default").add(bar);
+                content.add(barBox);
+                UIComponent money = figureCard(null,
+                        figureIfPresent("EMS_Cost_EUR" + period[0], "paid for power", "money_euro", "red"),
+                        figureIfPresent("EMS_Savings_EUR" + period[0], "saved by the roof", "sun_max", "orange"),
+                        figureIfPresent("EMS_Earnings_EUR" + period[0], "earned selling", "arrow_up_right_circle",
+                                "green"),
+                        figureIfPresent("EMS_FeedIn_kWh" + period[0], "sold", "arrow_up_right", "green"));
+                if (money != null) {
+                    content.add(money);
+                }
+                sections.add(section(period[1], periodSummary(period[0]), null,
+                        "_Day".equals(period[0]) ? "true" : null, content));
             }
-            if (!bars.isEmpty()) {
-                root.add(cardRow(barCard("Where your energy came from", bars)));
-            }
+        }
+        if (!sections.isEmpty()) {
+            root.add(cardRow(accordion(sections)));
         }
 
         // Circuits as bars, longest first by value at a glance: this is the "what should I look at" card.
@@ -401,23 +420,28 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 bars.add(barRow(kwh, prettyCircuit(circuit), CIRCUIT_COLORS[hue % CIRCUIT_COLORS.length], scale));
                 hue++;
             }
-            root.add(cardRow(barCard("Today, circuit by circuit", bars)));
-        }
-
-        UIComponent money = figureCard("Money this month",
-                figureIfPresent(I_COST_MONTH, "paid for power", "money_euro", "red"),
-                figureIfPresent(I_SAVINGS_MONTH, "saved by the roof", "sun_max", "orange"),
-                figureIfPresent(I_EARNINGS_MONTH, "earned selling", "arrow_up_right_circle", "green"),
-                figureIfPresent("EMS_Cost_EUR_Year", "paid this year", "calendar", "red"));
-        if (money != null) {
-            root.add(cardRow(money));
-        }
-
-        UIComponent coverage = figureCard("How much of the building this covers",
-                figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
-                figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
-        if (coverage != null) {
-            root.add(cardRow(coverage));
+            UIComponent barBox = new UIComponent("div");
+            barBox.addConfig("style", java.util.Map.of("padding", "4px 14px 8px 14px"));
+            barBox.addSlot("default").addAll(bars);
+            List<UIComponent> content = new ArrayList<>();
+            content.add(barBox);
+            UIComponent coverage = figureCard(null,
+                    figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
+                    figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
+            if (coverage != null) {
+                content.add(coverage);
+            }
+            String measuredShare = has(I_DM_TRACKED) && has(I_DM_UNTRACKED) ? "=Math.round(100*(items." + I_DM_TRACKED
+                    + ".numericState||0)/(((items." + I_DM_TRACKED + ".numericState||0)+(items." + I_DM_UNTRACKED
+                    + ".numericState||0))||1))+'% of the building measured'" : null;
+            UIComponent circuitsCard = new UIComponent("f7-card");
+            circuitsCard.addConfig("title", "Today, circuit by circuit");
+            UIComponent list = new UIComponent("f7-list");
+            list.addConfig("accordionList", Boolean.TRUE);
+            list.addConfig("class", List.of("no-margin"));
+            list.addSlot("default").add(section("Circuits, biggest first", measuredShare, null, null, content));
+            circuitsCard.addSlot("default").add(list);
+            root.add(cardRow(circuitsCard));
         }
         return page;
     }
@@ -438,34 +462,46 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             root.add(cardRow(planCard()));
         }
 
-        UIComponent sun = figureCard("Sun expected",
-                figureIfPresent(I_FORECAST_TODAY, "rest of today", "sun_max_fill", "orange"),
+        List<UIComponent> folded = new ArrayList<>();
+        UIComponent sun = figureCard(null, figureIfPresent(I_FORECAST_TODAY, "rest of today", "sun_max_fill", "orange"),
                 figureIfPresent(I_FORECAST_TOMORROW, "tomorrow", "sun_max", "orange"),
                 figureIfPresent(I_FORECAST_6H, "next 6 hours", "sun_min", "orange"),
                 figureIfPresent(I_FORECAST_PEAK_AT, "sunniest hour", "clock", "orange"));
         if (sun != null) {
-            root.add(cardRow(sun));
+            String head = has(I_FORECAST_TODAY) && has(I_FORECAST_TOMORROW)
+                    ? "=(items." + I_FORECAST_TODAY + ".numericState||0).toFixed(0)+' kWh today, '+(items."
+                            + I_FORECAST_TOMORROW + ".numericState||0).toFixed(0)+' tomorrow'"
+                    : null;
+            folded.add(section("Sun expected", head, null, null, List.of(sun)));
         }
 
-        UIComponent prices = figureCard("Prices today", figureIfPresent(I_TARIFF_NOW, "now", "money_euro", "blue"),
+        UIComponent prices = figureCard(null, figureIfPresent(I_TARIFF_NOW, "now", "money_euro", "blue"),
                 figureIfPresent(I_TARIFF_NEXT_1H, "next hour", "money_euro", "blue"),
                 figureIfPresent(I_TARIFF_CHEAPEST_AT, "cheapest hour", "arrow_down_circle_fill", "green"),
                 figureIfPresent(I_TARIFF_DEAREST_AT, "dearest hour", "arrow_up_circle_fill", "red"));
         if (prices != null) {
-            root.add(cardRow(prices));
+            List<UIComponent> content = new ArrayList<>();
+            content.add(prices);
             UIComponent note = estimateNote();
             if (note != null) {
-                root.add(cardRow(note));
+                content.add(note);
             }
+            String head = has(I_TARIFF_NOW) ? "=(items." + I_TARIFF_NOW + ".numericState||0).toFixed(2)+' now'" : null;
+            folded.add(section("Prices today", head, null, null, content));
         }
 
-        UIComponent plan = figureCard("Already decided",
+        UIComponent plan = figureCard(null,
                 figureIfPresent(I_OPT_NEXT_CHARGE, "battery charges", "arrow_down_circle", "blue"),
                 figureIfPresent(I_OPT_NEXT_DISCHARGE, "battery discharges", "arrow_up_circle", "purple"),
                 figureIfPresent(I_BOILER_WINDOW, "water heated by", "drop_fill", "blue"),
                 figureIfPresent(I_CAP_PROJECTED, "month heading for", "gauge", "purple"));
         if (plan != null) {
-            root.add(cardRow(plan));
+            String head = has(I_OPT_NEXT_CHARGE) ? "='battery charges at '+items." + I_OPT_NEXT_CHARGE + ".state+':00'"
+                    : null;
+            folded.add(section("Already decided", head, null, null, List.of(plan)));
+        }
+        if (!folded.isEmpty()) {
+            root.add(cardRow(accordion(folded)));
         }
 
         return page;
@@ -1104,6 +1140,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             .list ul:before,.list ul:after{display:none}
             .item-title{font-weight:500;font-size:14px}
             .bar{transition:width .5s ease,height .5s ease}
+            .accordion-list .item-title{font-weight:600;font-size:14px}
+            .accordion-list .item-after{font-size:11px;opacity:.75;font-variant-numeric:tabular-nums;white-space:normal;text-align:right;max-width:55%}
+            .accordion-list .item-subtitle{font-size:11px;opacity:.6}
+            .accordion-list .item-inner:after{background:rgba(127,127,127,.18)}
+            .accordion-item-content .card{box-shadow:none;border:none;margin:0}
             @keyframes ems-attn{0%,100%{box-shadow:0 0 0 0 rgba(239,83,80,0)}50%{box-shadow:0 0 0 7px rgba(239,83,80,.28)}}
             """;
 
@@ -1191,8 +1232,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 switches.add(switchRow(item, consumerTitle(consumer)));
             }
         }
+        List<UIComponent> folded = new ArrayList<>();
         if (!switches.isEmpty()) {
-            root.add(cardRow(listCard("Switches", switches)));
+            folded.add(section("Switches", null, "hot water, peak protection, loads", "true", switches));
         }
 
         List<UIComponent> actions = new ArrayList<>();
@@ -1209,29 +1251,43 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             actions.add(actionButton(I_COMPARE_RUN, "Am I on the right tariff?", "blue"));
         }
         if (!actions.isEmpty()) {
-            root.add(cardRow(listCard("Ask it to do something", actions)));
+            UIComponent box = new UIComponent("div");
+            box.addConfig("style", java.util.Map.of("padding", "4px 14px"));
+            box.addSlot("default").addAll(actions);
+            folded.add(section("Ask it to do something", null, "peak shaving, battery size, tariff check", null,
+                    List.of(box)));
         }
 
-        UIComponent answers = figureCard("Answers",
+        UIComponent answers = figureCard(null,
                 figureIfPresent(I_SIZING_KWH, "battery size that fits", "battery_100", "purple"),
                 figureIfPresent(I_SIZING_PAYBACK, "pays back in, years", "calendar", "purple"),
                 figureIfPresent(I_COMPARE_CHEAPEST, "best tariff", "money_euro_circle", "blue"),
                 figureIfPresent(I_BATTERY_SETPOINT, "battery set to", "battery_25", "green"));
+        List<UIComponent> answerParts = new ArrayList<>();
         if (answers != null) {
-            root.add(cardRow(answers));
+            answerParts.add(answers);
         }
         if (has(I_COMPARE_SUMMARY)) {
             UIComponent summary = new UIComponent("oh-label-item");
             summary.addConfig("item", I_COMPARE_SUMMARY);
             summary.addConfig("style", java.util.Map.of("font-size", "12px", "line-height", "1.3"));
-            root.add(cardRow(listCard("Tariffs compared", List.of(summary))));
+            answerParts.add(summary);
+        }
+        if (!answerParts.isEmpty()) {
+            String best = has(I_COMPARE_CHEAPEST) ? "=items." + I_COMPARE_CHEAPEST + ".state" : null;
+            folded.add(section("Answers", best, null, null, answerParts));
         }
 
         for (String reason : heatPumpAdviceItems()) {
             UIComponent advice = new UIComponent("oh-label-item");
             advice.addConfig("item", reason);
             advice.addConfig("style", java.util.Map.of("font-size", "12px", "line-height", "1.3"));
-            root.add(cardRow(listCard(heatPumpTitle(reason), List.of(advice))));
+            String mode = reason.substring(0, reason.length() - "_Reason".length()) + "_RecMode";
+            folded.add(section(heatPumpTitle(reason), has(mode) ? "=items." + mode + ".state" : null, null, null,
+                    List.of(advice)));
+        }
+        if (!folded.isEmpty()) {
+            root.add(cardRow(accordion(folded)));
         }
 
         if (has(I_SHADOW_MODE)) {
@@ -1248,25 +1304,61 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private RootUIComponent buildCarsPage(SiteModel site) {
         RootUIComponent page = layoutPage(P_CARS, "Cars");
         List<UIComponent> root = shell(page);
-        List<UIComponent> cards = new ArrayList<>();
+        List<UIComponent> sections = new ArrayList<>();
         for (SiteModel.Car car : site.cars()) {
-            UIComponent card = carCard(car);
-            if (card != null) {
-                cards.add(card);
+            List<UIComponent> parts = carParts(car);
+            if (!parts.isEmpty()) {
+                sections.add(section(carTitle(car), carStateExpression(car), carPlanSummary(car),
+                        carChargingExpression(car), parts));
             }
         }
-        if (cards.isEmpty()) {
+        if (sections.isEmpty()) {
             UIComponent note = new UIComponent("oh-label-item");
             note.addConfig("title", "No chargers");
             note.addConfig("subtitle",
-                    "Set carCount and the per-car item patterns on the EMS bridge to get a card per car here.");
+                    "Set carCount and the per-car item patterns on the EMS bridge to get a section per car here.");
             root.add(cardRow(listCard("Cars", List.of(note))));
             return page;
         }
-        for (UIComponent card : cards) {
-            root.add(item(card, "half"));
-        }
+        root.add(cardRow(accordion(sections)));
         return page;
+    }
+
+    /** Charging at N kW, plugged in, or no cable - the header's right-hand side. */
+    private @org.eclipse.jdt.annotation.Nullable String carStateExpression(SiteModel.Car car) {
+        if (!has(car.cableItem()) && !has(car.statusItem()) && !has(car.powerWItem()) && !has(car.powerKwItem())) {
+            return null;
+        }
+        String power = carPowerExpression(car);
+        String cable = has(car.cableItem()) ? "items." + car.cableItem() + ".state==='ON'" : "true";
+        return "=" + power + ">200?'charging '+(" + power + "/1000).toFixed(1)+' kW':" + cable
+                + "?'plugged in':'no cable'";
+    }
+
+    private String carPowerExpression(SiteModel.Car car) {
+        return has(car.powerWItem()) ? "(items." + car.powerWItem() + ".numericState||0)"
+                : has(car.powerKwItem()) ? "((items." + car.powerKwItem() + ".numericState||0)*1000)" : "0";
+    }
+
+    /** The car that is charging opens its section by itself. */
+    private String carChargingExpression(SiteModel.Car car) {
+        return "=" + carPowerExpression(car) + ">200";
+    }
+
+    /** One line on the plan: delivered of wanted and the hours left, or that there is no plan. */
+    private @org.eclipse.jdt.annotation.Nullable String carPlanSummary(SiteModel.Car car) {
+        String enabled = car.planPrefix() + "_Plan_Enabled";
+        String target = car.planPrefix() + "_Plan_Target_kWh";
+        String required = car.planPrefix() + "_Plan_Required_kWh";
+        String hours = car.planPrefix() + "_Plan_Hours_Remaining";
+        if (!has(enabled) || !has(target) || !has(required)) {
+            return null;
+        }
+        String t = "(items." + target + ".numericState||0)";
+        String r = "(items." + required + ".numericState||0)";
+        String left = has(hours) ? "+', '+(items." + hours + ".numericState||0).toFixed(1)+' h left'" : "";
+        return "=items." + enabled + ".state==='ON'?Math.max(0," + t + "-" + r + ").toFixed(1)+' of '+" + t
+                + ".toFixed(0)+' kWh'" + left + ":'no plan'";
     }
 
     /**
@@ -1276,18 +1368,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * required, hours, cost, feasible out), so this is the one place a person sets them. Cars whose
      * plan Items do not exist get no card rather than a card of dashes.
      */
-    private @org.eclipse.jdt.annotation.Nullable UIComponent carCard(SiteModel.Car car) {
+    private List<UIComponent> carParts(SiteModel.Car car) {
         String enabled = car.planPrefix() + "_Plan_Enabled";
+        List<UIComponent> slot = new ArrayList<>();
         if (!has(enabled) && !has(car.modeItem())) {
-            return null;
-        }
-        UIComponent card = new UIComponent("f7-card");
-        card.addConfig("title", carTitle(car));
-        List<UIComponent> slot = card.addSlot("default");
-
-        UIComponent state = carStateChip(car);
-        if (state != null) {
-            slot.add(state);
+            return slot;
         }
 
         List<UIComponent> now = new ArrayList<>();
@@ -1318,7 +1403,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             List<UIComponent> rows = list.addSlot("default");
             rows.add(switchRow(enabled, "Charge to a target by a departure time"));
             if (has(car.planPrefix() + "_Plan_Target_kWh")) {
-                rows.add(sliderRow(car.planPrefix() + "_Plan_Target_kWh", "Energy wanted by then", 0, 100, 5));
+                rows.add(stepperRow(car.planPrefix() + "_Plan_Target_kWh", "Energy wanted by then", 0, 100, 5));
             }
             if (has(car.planPrefix() + "_Plan_Departure_At")) {
                 UIComponent departure = new UIComponent("oh-input-item");
@@ -1375,24 +1460,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 slot.add(warn);
             }
         }
-        return card;
-    }
-
-    /** Cable, charging or idle - one chip on the card's first line. */
-    private @org.eclipse.jdt.annotation.Nullable UIComponent carStateChip(SiteModel.Car car) {
-        if (!has(car.cableItem()) && !has(car.statusItem())) {
-            return null;
-        }
-        String power = has(car.powerWItem()) ? "(items." + car.powerWItem() + ".numericState||0)"
-                : has(car.powerKwItem()) ? "((items." + car.powerKwItem() + ".numericState||0)*1000)" : "0";
-        String cable = has(car.cableItem()) ? "items." + car.cableItem() + ".state==='ON'" : "true";
-        String text = "=" + power + ">200?'charging '+(" + power + "/1000).toFixed(1)+' kW':" + cable
-                + "?'plugged in, not charging':'no cable'";
-        String colour = "=" + power + ">200?'orange':" + cable + "?'blue':'gray'";
-        UIComponent row = new UIComponent("div");
-        row.addConfig("style", java.util.Map.of("padding", "6px 14px 0 14px"));
-        row.addSlot("default").add(chip(text, colour, null));
-        return row;
+        return slot;
     }
 
     /** How far the plan has got: delivered out of wanted, with what is still to come. */
@@ -1468,8 +1536,16 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return box;
     }
 
-    /** The mode Item's label names the car on this site; the number is the fallback. */
+    /**
+     * The car's name: the EV circuit's Thing label that carries its number ("Auto 1 - Poort"), else
+     * the mode Item's label, else "Car n".
+     */
     private String carTitle(SiteModel.Car car) {
+        for (SiteModel.Circuit c : site.circuits()) {
+            if ("ev".equals(c.category()) && c.label().matches(".*\\b" + car.number() + "\\b.*")) {
+                return c.label();
+            }
+        }
         Item mode = itemRegistry.get(car.modeItem());
         String label = mode != null ? mode.getLabel() : null;
         return label != null && !label.isBlank() ? label : "Car " + car.number();
@@ -1501,6 +1577,52 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         }
         parts.add(segmented);
         return row;
+    }
+
+    // --- collapsible sections --------------------------------------------------------------------
+
+    /**
+     * Sections that fold. Four cars, four periods, three kinds of advice: laid out in full they are a
+     * page of scrolling, and what a person wants first is the one line that says how each stands.
+     * Each header carries that line; the detail waits behind a tap.
+     */
+    private UIComponent accordion(List<UIComponent> sections) {
+        UIComponent card = new UIComponent("f7-card");
+        UIComponent list = new UIComponent("f7-list");
+        list.addConfig("accordionList", Boolean.TRUE);
+        list.addConfig("class", List.of("no-margin"));
+        list.addSlot("default").addAll(sections);
+        card.addSlot("default").add(list);
+        return card;
+    }
+
+    /**
+     * @param after the figures on the header's right, an expression or plain text, or null
+     * @param subtitle a second header line, expression or text, or null
+     * @param opened whether it starts open - an expression, so the car that is charging opens itself
+     */
+    private UIComponent section(String title, @org.eclipse.jdt.annotation.Nullable String after,
+            @org.eclipse.jdt.annotation.Nullable String subtitle, @org.eclipse.jdt.annotation.Nullable String opened,
+            List<UIComponent> content) {
+        UIComponent item = new UIComponent("f7-list-item");
+        item.addConfig("title", title);
+        item.addConfig("accordionItem", Boolean.TRUE);
+        if (after != null) {
+            item.addConfig("after", after);
+        }
+        if (subtitle != null) {
+            item.addConfig("subtitle", subtitle);
+        }
+        if (opened != null) {
+            item.addConfig("accordionItemOpened", opened);
+        }
+        UIComponent body = new UIComponent("f7-accordion-content");
+        UIComponent inner = new UIComponent("div");
+        inner.addConfig("style", java.util.Map.of("padding", "0 0 8px 0"));
+        inner.addSlot("default").addAll(content);
+        body.addSlot("default").add(inner);
+        item.addSlot("default").add(body);
+        return item;
     }
 
     // --- compact widget vocabulary ---------------------------------------------------------------
@@ -1571,6 +1693,21 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         readings.add(reading("EMS_Cost_EUR" + suffix, "cost", "#ef5350"));
         parts.add(footer);
         return row;
+    }
+
+    /** The header line of a period: sun, grid and cost, only the parts this site keeps. */
+    private @org.eclipse.jdt.annotation.Nullable String periodSummary(String suffix) {
+        List<String> parts = new ArrayList<>();
+        if (has("EMS_SelfConsumption_kWh" + suffix)) {
+            parts.add("'sun '+(items.EMS_SelfConsumption_kWh" + suffix + ".numericState||0).toFixed(0)+' kWh'");
+        }
+        if (has("EMS_Supply_kWh" + suffix)) {
+            parts.add("'grid '+(items.EMS_Supply_kWh" + suffix + ".numericState||0).toFixed(0)+' kWh'");
+        }
+        if (has("EMS_Cost_EUR" + suffix)) {
+            parts.add("(items.EMS_Cost_EUR" + suffix + ".numericState||0).toFixed(0)+' EUR'");
+        }
+        return parts.isEmpty() ? null : "=" + String.join("+' - '+", parts);
     }
 
     /** A length of the stacked bar. */
@@ -2174,19 +2311,19 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<UIComponent> rows = new ArrayList<>();
         org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig bridge = site.bridge();
         if (bridge != null && has(bridge.batteryReserveTargetItem)) {
-            rows.add(sliderRow(bridge.batteryReserveTargetItem, "Battery reserve to keep", 0, 100, 5));
+            rows.add(stepperRow(bridge.batteryReserveTargetItem, "Battery reserve to keep", 0, 100, 5));
         }
         if (has(I_SET_BOILER_TARGET)) {
-            rows.add(sliderRow(I_SET_BOILER_TARGET, "Hot water wanted today", 0, 30, 0.5));
+            rows.add(stepperRow(I_SET_BOILER_TARGET, "Hot water wanted today", 0, 30, 0.5));
         }
         if (has(I_SET_BOILER_READY_BY)) {
             rows.add(stepperRow(I_SET_BOILER_READY_BY, "Hot water ready by", 0, 23, 1));
         }
         if (has(I_SET_GRID_MARGIN)) {
-            rows.add(sliderRow(I_SET_GRID_MARGIN, "Grid headroom kept spare", 0, 3000, 50));
+            rows.add(stepperRow(I_SET_GRID_MARGIN, "Grid headroom kept spare", 0, 3000, 50));
         }
         if (has(I_SET_CAPACITY_BUDGET)) {
-            rows.add(sliderRow(I_SET_CAPACITY_BUDGET, "Peak budget to stay under", 0, 15000, 250));
+            rows.add(stepperRow(I_SET_CAPACITY_BUDGET, "Peak budget to stay under", 0, 15000, 250));
         }
         if (rows.isEmpty()) {
             return null;
@@ -2198,28 +2335,22 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         return card;
     }
 
-    private UIComponent sliderRow(String item, String label, double min, double max, double step) {
-        UIComponent row = new UIComponent("oh-slider-item");
-        row.addConfig("item", item);
-        row.addConfig("title", label);
-        row.addConfig("min", min);
-        row.addConfig("max", max);
-        row.addConfig("step", step);
-        row.addConfig("unit", "");
-        row.addConfig("label", Boolean.TRUE);
-        row.addConfig("scale", Boolean.FALSE);
-        // without this the item is commanded on every pixel of the drag
-        row.addConfig("releaseOnly", Boolean.TRUE);
-        return row;
-    }
-
-    private UIComponent stepperRow(String item, String label, int min, int max, int step) {
+    /**
+     * A setpoint: minus, the value, plus - and the value itself can be typed. A slider on a phone
+     * is a guess to the nearest thumb-width; a setpoint is the number the person meant.
+     */
+    private UIComponent stepperRow(String item, String label, double min, double max, double step) {
         UIComponent row = new UIComponent("oh-stepper-item");
         row.addConfig("item", item);
         row.addConfig("title", label);
         row.addConfig("min", min);
         row.addConfig("max", max);
         row.addConfig("step", step);
+        row.addConfig("round", Boolean.TRUE);
+        row.addConfig("raised", Boolean.TRUE);
+        row.addConfig("autorepeat", Boolean.TRUE);
+        row.addConfig("manualInputMode", Boolean.TRUE);
+        row.addConfig("decimalPoint", Integer.valueOf(step < 1 ? 1 : 0));
         return row;
     }
 
