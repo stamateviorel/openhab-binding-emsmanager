@@ -40,7 +40,7 @@ import org.openhab.core.thing.link.ItemChannelLinkRegistry;
 public final class SiteModel {
 
     /** One metered circuit: the live power Item the device-meter Thing publishes, and how to show it. */
-    public record Circuit(String powerItem, String label, String category, String colour) {
+    public record Circuit(String powerItem, @Nullable String energyItem, String label, String category, String colour) {
     }
 
     /** Per-car Item names the engine reads, derived from the bridge's own patterns. */
@@ -106,12 +106,14 @@ public final class SiteModel {
         if (linked.isEmpty()) {
             return null;
         }
+        Set<String> energy = links.getLinkedItemNames(new ChannelUID(thing.getUID(), "kwhToday"));
         DeviceMeterConfig cfg = thing.getConfiguration().as(DeviceMeterConfig.class);
         String label = thing.getLabel();
         if (label == null || label.isBlank()) {
             label = cfg.name;
         }
-        return new Circuit(linked.iterator().next(), label, cfg.category, cfg.color);
+        return new Circuit(linked.iterator().next(), energy.isEmpty() ? null : energy.iterator().next(), label,
+                cfg.category, cfg.color);
     }
 
     public boolean hasBridge() {

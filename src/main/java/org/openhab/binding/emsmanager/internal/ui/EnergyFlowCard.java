@@ -53,6 +53,13 @@ final class EnergyFlowCard {
     private static final Map<String, String> CATEGORY_LABELS = Map.of("ev", "Cars", "hvac", "Air conditioning",
             "heating", "Heating", "lighting", "Lighting", "appliance", "Appliances", "other", "Other");
 
+    /** The colour a circuit is drawn in: its own if the Thing set one, else its category's. */
+    static String colourOf(SiteModel.Circuit c) {
+        return c.colour().isBlank() || "#666666".equals(c.colour())
+                ? CATEGORY_COLOURS.getOrDefault(c.category(), "#9b8f7e")
+                : c.colour();
+    }
+
     /** Above this many circuits a category with this many members is drawn as one ribbon. */
     private static final int MERGE_ABOVE = 8;
     private static final int MERGE_MIN_MEMBERS = 3;

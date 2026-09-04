@@ -90,7 +90,25 @@ class EnergyFlowCardTest {
 
     private static Map<String, String> links() {
         return Map.of("emsmanager:device-meter:boiler:currentW", "EMS_DM_Boiler_W",
-                "emsmanager:device-meter:car1:currentW", "EMS_DM_Car1_W");
+                "emsmanager:device-meter:car1:currentW", "EMS_DM_Car1_W", "emsmanager:device-meter:boiler:kwhToday",
+                "EMS_DM_Boiler_kWh");
+    }
+
+    @Test
+    void theCircuitChartTakesTheCountersFromTheThingsNotFromNames() {
+        EnergyUiProvider p = siteWith(Set.of("Grid_load", "Solar_load", "EMS_DM_Boiler_W", "EMS_DM_Boiler_kWh"),
+                bridgeAndMeters(), links());
+        UIComponent chart = page(p, "emsmanager_energy_circuits");
+        assertEquals(1, count(chart, "oh-aggregate-series"), "the boiler has a counter, the car does not");
+    }
+
+    @Test
+    void thePowerChartGetsABatteryLevelPanelWhenTheSiteHasOne() {
+        EnergyUiProvider with = siteWith(Set.of("Grid_load", "Solar_load", "Battery_percentage"), bridgeAndMeters(),
+                links());
+        assertEquals(2, count(page(with, "emsmanager_energy_charts"), "oh-chart-grid"));
+        EnergyUiProvider without = siteWith(Set.of("Grid_load", "Solar_load"), bridgeAndMeters(), links());
+        assertEquals(1, count(page(without, "emsmanager_energy_charts"), "oh-chart-grid"));
     }
 
     private static @Nullable UIComponent find(@Nullable UIComponent c, String type) {

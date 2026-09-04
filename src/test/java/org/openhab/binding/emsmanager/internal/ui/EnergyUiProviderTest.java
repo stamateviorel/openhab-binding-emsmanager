@@ -142,8 +142,11 @@ class EnergyUiProviderTest {
 
         List<String> items = itemsOn(chart);
         assertTrue(items.contains("EMS_DM_Airco_kWh"), "the circuit with an energy meter must be charted");
-        assertFalse(items.contains("EMS_DM_Airco_W"), "the live power item would chart empty");
+        assertFalse(items.contains("EMS_DM_Airco_W"), "the live power item is not persisted and would chart empty");
         assertFalse(items.contains("EMS_DM_Boiler_kWh"), "a circuit without an energy meter cannot be charted");
+        List<String> types = new ArrayList<>();
+        collectTypes(chart, types);
+        assertTrue(types.contains("oh-aggregate-series"), "hour buckets of the counter, not the raw counter");
     }
 
     /**
@@ -229,9 +232,9 @@ class EnergyUiProviderTest {
     public void everyComponentTypeIsOneMainUiShips() {
         Set<String> known = Set.of("oh-tabs-page", "oh-tab", "oh-layout-page", "oh-block", "oh-grid-row", "oh-grid-col",
                 "oh-label-card", "oh-toggle-card", "oh-gauge-card", "oh-chart-page", "oh-chart-grid", "oh-time-axis",
-                "oh-value-axis", "oh-time-series", "oh-chart-legend", "oh-chart-tooltip", "oh-chart-datazoom",
-                "f7-card", "f7-row", "f7-col", "f7-icon", "f7-segmented", "oh-label-item", "oh-button",
-                "oh-toggle-item",
+                "oh-value-axis", "oh-category-axis", "oh-time-series", "oh-aggregate-series", "oh-chart-legend",
+                "oh-chart-tooltip", "oh-chart-datazoom", "f7-card", "f7-row", "f7-col", "f7-icon", "f7-segmented",
+                "oh-label-item", "oh-button", "oh-toggle-item",
                 // MainUI renders raw HTML elements too - a plain div is how the widgets on a real site draw bars,
                 // and Label is its text primitive
                 "div", "Label", "oh-gauge", "oh-stepper-item", "oh-list-card", "oh-slider-item", "f7-chip",

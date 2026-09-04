@@ -261,8 +261,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         out.add(buildNowPage(providers, site));
         out.add(buildControlPage(consumers, site));
         out.add(buildCarsPage(site));
-        out.add(buildChartsPage(providers, consumers));
-        out.add(buildCircuitsChartPage());
+        out.add(buildChartsPage(providers, consumers, site));
+        out.add(buildCircuitsChartPage(site));
         return out;
     }
 
@@ -848,143 +848,173 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 + spaced.substring(1).toLowerCase(java.util.Locale.ROOT);
     }
 
-    private RootUIComponent buildChartsPage(List<EnergyProvider> providers, List<EnergyConsumer> consumers) {
-        // ONE time-axis chart: live power today for every tagged participant (smooth, area-filled)
-        // plus the solar forecast drawn dashed into tomorrow (future=1 extends the window ahead of
-        // now). Standalone oh-chart-page (embedded charts render blank); no persistence service set
-        // → the site default is used (portable). Drag the slider to pan across time.
+    private RootUIComponent buildChartsPage(List<EnergyProvider> providers, List<EnergyConsumer> consumers,
+            SiteModel site) {
+        // ONE time-axis chart: live power today for every source (smooth, area-filled) plus the solar
+        // forecast drawn dashed ahead of now; a second, smaller panel underneath for the battery's
+        // state of charge, which is a percentage and cannot share the watt axis. chartType "day"
+        // anchors the window to today's midnights so today's actuals and the rest of today's
+        // forecast sit on one axis. Standalone oh-chart-page: embedded charts render blank.
         RootUIComponent page = new RootUIComponent(P_CHARTS, "oh-chart-page");
         page.addConfig("label", "Power");
         page.addConfig("sidebar", Boolean.FALSE);
-        // chartType "day" anchors the window to midnight..midnight TODAY, so it holds both today's
-        // actuals (past) AND today's solar forecast (future part of today). `future` alone shifts the
-        // whole window into the future and hides the actuals — do not use it here.
         page.addConfig("chartType", "day");
         page.addConfig("period", "D");
         page.updateTimestamp();
 
-        UIComponent grid = new UIComponent("oh-chart-grid");
-        grid.addConfig("includeLabels", Boolean.TRUE);
-        grid.addConfig("top", "12%");
-        grid.addConfig("height", "70%");
-        grid.addConfig("left", "12%");
-        grid.addConfig("right", "5%");
-        page.addSlot("grid").add(grid);
+        org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig bridge = site.bridge();
+        boolean soc = bridge != null && has(bridge.batteryPercentageItem);
 
-        UIComponent xAxis = new UIComponent("oh-time-axis");
-        xAxis.addConfig("gridIndex", Integer.valueOf(0));
-        page.addSlot("xAxis").add(xAxis);
-
-        UIComponent yAxis = new UIComponent("oh-value-axis");
-        yAxis.addConfig("gridIndex", Integer.valueOf(0));
-        yAxis.addConfig("name", "W");
-        page.addSlot("yAxis").add(yAxis);
+        List<UIComponent> grids = page.addSlot("grid");
+        grids.add(chartGrid("10%", soc ? "52%" : "72%"));
+        if (soc) {
+            grids.add(chartGrid("72%", "16%"));
+        }
+        List<UIComponent> xAxes = page.addSlot("xAxis");
+        List<UIComponent> yAxes = page.addSlot("yAxis");
+        xAxes.add(timeAxis(0));
+        yAxes.add(valueAxis(0, "W"));
+        if (soc) {
+            xAxes.add(timeAxis(1));
+            UIComponent pct = valueAxis(1, "%");
+            pct.addConfig("min", Integer.valueOf(0));
+            pct.addConfig("max", Integer.valueOf(100));
+            yAxes.add(pct);
+        }
 
         List<UIComponent> series = page.addSlot("series");
-        // Solar forecast: orange dashed line (no fill) so it reads distinctly against the yellow
-        // solar actual beneath it.
         if (has(ITEM_FORECAST_SERIES)) {
-            series.add(powerLine("Solar forecast", ITEM_FORECAST_SERIES, "#ff9800", true, false));
+            series.add(powerLine("Solar forecast", ITEM_FORECAST_SERIES, EnergyFlowCard.SUN, true, false, 0));
         }
-        // what the building drew, so the chart carries both halves of the story rather than only supply
-        if (has(I_DM_TRACKED)) {
-            series.add(powerLine("Building", I_DM_TRACKED, "#7e57c2", false, true));
-        }
-        for (EnergyProvider p : providers) {
-            series.add(
-                    powerLine(providerTitle(p), p.id(), providerColor(p.role()), false, p.role() != ProviderRole.GRID));
-        }
-        // Consumers only chart if they expose a measured power item — a plain on/off switch has no
-        // power series to draw.
-        for (EnergyConsumer c : consumers) {
-            String measure = c.measureItem();
-            if (measure != null) {
-                series.add(powerLine(consumerTitle(c), measure, "#42a5f5", false, true));
+        if (bridge != null && has(bridge.solarLoadItem)) {
+            series.add(powerLine("Solar", bridge.solarLoadItem, EnergyFlowCard.SUN, false, true, 0));
+            if (has(bridge.gridLoadItem)) {
+                series.add(powerLine("Grid (+ export, - import)", bridge.gridLoadItem, EnergyFlowCard.GRID, false, true,
+                        0));
+            }
+            if (has(bridge.batteryLoadItem)) {
+                series.add(powerLine("Battery (+ charge)", bridge.batteryLoadItem, EnergyFlowCard.BATTERY, false, true,
+                        0));
+            }
+            if (has(bridge.houseLoadSumItem)) {
+                series.add(powerLine("Building", bridge.houseLoadSumItem, EnergyFlowCard.BUILDING, false, false, 0));
+            }
+        } else {
+            if (has(I_DM_TRACKED)) {
+                series.add(powerLine("Building", I_DM_TRACKED, EnergyFlowCard.BUILDING, false, true, 0));
+            }
+            for (EnergyProvider p : providers) {
+                series.add(powerLine(providerTitle(p), p.id(), providerColor(p.role()), false,
+                        p.role() != ProviderRole.GRID, 0));
+            }
+            for (EnergyConsumer c : consumers) {
+                String measure = c.measureItem();
+                if (measure != null) {
+                    series.add(powerLine(consumerTitle(c), measure, "#42a5f5", false, true, 0));
+                }
             }
         }
-
-        chartControls(page);
+        if (soc) {
+            UIComponent level = powerLine("Battery level", bridge.batteryPercentageItem, EnergyFlowCard.BATTERY, false,
+                    true, 1);
+            level.addConfig("smooth", Boolean.FALSE);
+            series.add(level);
+        }
+        chartControls(page, soc ? 2 : 1);
         return page;
     }
 
-    /** A power time series (smooth line); area-filled for production/consumption, dashed for forecast. */
-
     /**
-     * Today's energy, circuit by circuit, as rising curves.
-     * <p>
-     * Deliberately built on the cumulative {@code _kWh} meters rather than the live {@code _W} ones. Instantaneous
-     * power is what the other chart already shows, and it is spiky and hard to read a day off; a rising line answers
-     * the question this page is for - <em>which circuit actually used the energy today</em> - because the one that
-     * climbs fastest is the one spending it, and the height at the end is the day's total.
-     * <p>
-     * The {@code _kWh} meters are also the ones a site is told to persist, so this chart draws where the live power
-     * items would leave it empty.
+     * Today, circuit by circuit, hour by hour: stacked bars of the energy each metered circuit took
+     * in each hour, from the day counters the device meters persist. The live power Items are not
+     * persisted on a typical site, the counters are; the difference of a counter across an hour is
+     * that hour's energy.
      */
-    private RootUIComponent buildCircuitsChartPage() {
+    private RootUIComponent buildCircuitsChartPage(SiteModel site) {
         RootUIComponent page = new RootUIComponent(P_CIRCUITS, "oh-chart-page");
-        page.addConfig("label", "Today by circuit");
+        page.addConfig("label", "By circuit");
         page.addConfig("sidebar", Boolean.FALSE);
         page.addConfig("chartType", "day");
         page.addConfig("period", "D");
         page.updateTimestamp();
 
-        UIComponent grid = new UIComponent("oh-chart-grid");
-        grid.addConfig("includeLabels", Boolean.TRUE);
-        grid.addConfig("top", "12%");
-        grid.addConfig("height", "70%");
-        grid.addConfig("left", "12%");
-        grid.addConfig("right", "5%");
-        page.addSlot("grid").add(grid);
-
-        UIComponent xAxis = new UIComponent("oh-time-axis");
+        page.addSlot("grid").add(chartGrid("10%", "72%"));
+        UIComponent xAxis = new UIComponent("oh-category-axis");
         xAxis.addConfig("gridIndex", Integer.valueOf(0));
+        xAxis.addConfig("categoryType", "hour");
         page.addSlot("xAxis").add(xAxis);
-
-        UIComponent yAxis = new UIComponent("oh-value-axis");
-        yAxis.addConfig("gridIndex", Integer.valueOf(0));
-        yAxis.addConfig("name", "kWh");
-        page.addSlot("yAxis").add(yAxis);
+        page.addSlot("yAxis").add(valueAxis(0, "kWh"));
 
         List<UIComponent> series = page.addSlot("series");
-        List<String> circuits = trackedCircuits();
-        int index = 0;
-        for (String circuit : circuits) {
-            String kwh = "EMS_DM_" + circuit + "_kWh";
-            if (!has(kwh)) {
-                continue;
+        boolean any = false;
+        for (SiteModel.Circuit c : site.circuits()) {
+            String kwh = c.energyItem();
+            if (kwh != null && has(kwh)) {
+                series.add(hourlyEnergyBars(c.label(), kwh, EnergyFlowCard.colourOf(c)));
+                any = true;
             }
-            series.add(stackedBand(prettyCircuit(circuit), kwh, CIRCUIT_COLORS[index % CIRCUIT_COLORS.length]));
-            index++;
         }
-        chartControls(page);
+        if (!any) {
+            // a site without device-meter Things: fall back to the Items by name
+            int index = 0;
+            for (String circuit : trackedCircuits()) {
+                String kwh = "EMS_DM_" + circuit + "_kWh";
+                if (has(kwh)) {
+                    series.add(hourlyEnergyBars(prettyCircuit(circuit), kwh,
+                            CIRCUIT_COLORS[index++ % CIRCUIT_COLORS.length]));
+                }
+            }
+        }
+        chartControls(page, 1);
         return page;
+    }
+
+    private UIComponent chartGrid(String top, String height) {
+        UIComponent grid = new UIComponent("oh-chart-grid");
+        grid.addConfig("includeLabels", Boolean.TRUE);
+        grid.addConfig("containLabel", Boolean.TRUE);
+        grid.addConfig("top", top);
+        grid.addConfig("height", height);
+        // tight on a phone; the labels are inside the grid so nothing is clipped
+        grid.addConfig("left", "3%");
+        grid.addConfig("right", "3%");
+        return grid;
+    }
+
+    private UIComponent timeAxis(int gridIndex) {
+        UIComponent axis = new UIComponent("oh-time-axis");
+        axis.addConfig("gridIndex", Integer.valueOf(gridIndex));
+        return axis;
+    }
+
+    private UIComponent valueAxis(int gridIndex, String name) {
+        UIComponent axis = new UIComponent("oh-value-axis");
+        axis.addConfig("gridIndex", Integer.valueOf(gridIndex));
+        axis.addConfig("name", name);
+        axis.addConfig("splitLine", java.util.Map.of("lineStyle", java.util.Map.of("opacity", Double.valueOf(0.25))));
+        return axis;
+    }
+
+    /** One circuit as a stacked bar per hour: the counter's change over the hour. */
+    private UIComponent hourlyEnergyBars(String name, String kwhItem, String colour) {
+        UIComponent series = new UIComponent("oh-aggregate-series");
+        series.addConfig("name", name);
+        series.addConfig("item", kwhItem);
+        series.addConfig("type", "bar");
+        series.addConfig("dimension1", "hour");
+        series.addConfig("aggregationFunction", "diff_last");
+        series.addConfig("stack", "circuits");
+        series.addConfig("color", colour);
+        series.addConfig("barBorderRadius", Integer.valueOf(2));
+        series.addConfig("itemStyle", java.util.Map.of("opacity", Double.valueOf(0.9)));
+        return series;
     }
 
     /** Enough distinct hues that no two circuits on a normal site share one. */
     private static final String[] CIRCUIT_COLORS = { "#5b8def", "#43a047", "#ff9800", "#ef5350", "#7e57c2", "#26a69a",
             "#ec407a", "#8d6e63", "#42a5f5", "#9ccc65", "#ffa726", "#ab47bc", "#78909c" };
 
-    /**
-     * One band of a stacked area chart.
-     * <p>
-     * Twelve cumulative lines drawn over each other is unreadable - they all rise, they all cross, and the eye cannot
-     * tell which is which. Stacked, the same twelve become bands: the height of the whole is the day's total and the
-     * thickness of each band is what that circuit spent, which is the question the page is for.
-     */
-    private UIComponent stackedBand(String name, String item, String colour) {
-        UIComponent series = new UIComponent("oh-time-series");
-        series.addConfig("name", name);
-        series.addConfig("item", item);
-        series.addConfig("type", "line");
-        series.addConfig("color", colour);
-        series.addConfig("stack", "total");
-        series.addConfig("showSymbol", Boolean.FALSE);
-        series.addConfig("lineStyle", java.util.Map.of("width", Integer.valueOf(1), "opacity", Double.valueOf(0.6)));
-        series.addConfig("areaStyle", java.util.Map.of("opacity", Double.valueOf(0.75)));
-        return series;
-    }
-
-    private UIComponent powerLine(String name, String item, String color, boolean dashed, boolean area) {
+    private UIComponent powerLine(String name, String item, String color, boolean dashed, boolean area, int gridIndex) {
         UIComponent s = new UIComponent("oh-time-series");
         s.addConfig("name", name);
         s.addConfig("item", item);
@@ -992,8 +1022,12 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         s.addConfig("color", color);
         s.addConfig("smooth", Boolean.TRUE);
         s.addConfig("showSymbol", Boolean.FALSE);
+        s.addConfig("xAxisIndex", Integer.valueOf(gridIndex));
+        s.addConfig("yAxisIndex", Integer.valueOf(gridIndex));
         if (area) {
-            s.addConfig("areaStyle", java.util.Map.of("opacity", Double.valueOf(0.15)));
+            // the fill fades from the line to the axis; on the grid series this reads as export
+            // above zero and import below
+            s.addConfig("areaStyle", java.util.Map.of("opacity", Double.valueOf(0.18)));
         }
         s.addConfig("lineStyle", dashed ? java.util.Map.of("type", "dashed", "width", Integer.valueOf(2))
                 : java.util.Map.of("width", Integer.valueOf(2)));
@@ -1013,23 +1047,32 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * Legend, axis tooltip, and inside + slider data-zoom. The slider is a draggable time scrollbar
      * — the native way to navigate across days in a chart tab (openHAB tabs have no prev/next).
      */
-    private void chartControls(RootUIComponent page) {
+    private void chartControls(RootUIComponent page, int axes) {
+        List<Integer> axisIndexes = new ArrayList<>();
+        for (int n = 0; n < axes; n++) {
+            axisIndexes.add(Integer.valueOf(n));
+        }
         UIComponent legend = new UIComponent("oh-chart-legend");
         legend.addConfig("show", Boolean.TRUE);
         legend.addConfig("top", Integer.valueOf(0));
+        legend.addConfig("type", "scroll");
         page.addSlot("legend").add(legend);
         UIComponent tooltip = new UIComponent("oh-chart-tooltip");
         tooltip.addConfig("trigger", "axis");
+        // kept inside the chart, or a phone shows half a tooltip off the screen
+        tooltip.addConfig("confine", Boolean.TRUE);
+        tooltip.addConfig("axisPointer", java.util.Map.of("type", "cross"));
         page.addSlot("tooltip").add(tooltip);
         List<UIComponent> zoom = page.addSlot("dataZoom");
         UIComponent inside = new UIComponent("oh-chart-datazoom");
         inside.addConfig("type", "inside");
-        inside.addConfig("xAxisIndex", List.of(Integer.valueOf(0)));
+        inside.addConfig("xAxisIndex", axisIndexes);
         zoom.add(inside);
         UIComponent slider = new UIComponent("oh-chart-datazoom");
         slider.addConfig("type", "slider");
-        slider.addConfig("xAxisIndex", List.of(Integer.valueOf(0)));
-        slider.addConfig("bottom", Integer.valueOf(8));
+        slider.addConfig("xAxisIndex", axisIndexes);
+        slider.addConfig("bottom", Integer.valueOf(6));
+        slider.addConfig("height", Integer.valueOf(18));
         zoom.add(slider);
     }
 
@@ -1087,10 +1130,18 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private UIComponent item(UIComponent card, String span) {
         UIComponent cell = new UIComponent("oh-grid-col");
         cell.addConfig("width", "100");
+        // phone: everything full width; tablet from 768px: pairs; desktop from 1024px: the same pairs
+        // with wide cards taking two thirds so the flow picture gets the room it needs
         cell.addConfig("medium", switch (span) {
             case "half" -> "50";
             case "wide" -> "60";
             case "side" -> "40";
+            default -> "100";
+        });
+        cell.addConfig("large", switch (span) {
+            case "half" -> "50";
+            case "wide" -> "66";
+            case "side" -> "33";
             default -> "100";
         });
         cell.addSlot("default").add(card);
