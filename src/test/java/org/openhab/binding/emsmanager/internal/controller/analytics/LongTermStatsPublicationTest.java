@@ -64,39 +64,52 @@ class LongTermStatsPublicationTest {
     }
 
     /**
-     * The month is the one that was missing, and the one whose absence is invisible - the Item exists and holds a
-     * plausible number whether or not anything maintains it.
+     * Month-to-date has exactly one owner.
+     * <p>
+     * Two controllers publishing one Item is invisible in the code and obvious in the event log: the three kWh
+     * month counters were written by both this controller and the cost accumulator, six milliseconds apart, and
+     * oscillated between the two values every tick for as long as it ran. The rule is not "skip the metrics whose
+     * source is the month Item" - it is that whoever integrates the accumulator owns the month.
      */
     @Test
-    void aMetricWhoseSourceIsNotTheMonthItemHasItsMonthPublished() throws ReflectiveOperationException {
-        String source = readSource();
+    void theMonthToDateBelongsToTheRunningAccumulator() throws ReflectiveOperationException {
+        String stats = readSource();
+        String cost = readCostAnalyticsSource();
 
-        assertTrue(source.contains("publish(monthItem"), "the month span must actually be published, not merely named");
-        assertTrue(source.contains("!monthItem.equals(m[0])"),
-                "a metric read FROM its month Item must not have that Item written back, or the accumulator is fed "
-                        + "its own output");
-    }
+        assertFalse(stats.contains("_Month\""), "this controller must not publish any month Item: "
+                + stats.lines().filter(line -> line.contains("_Month\"")).toList());
 
-    /**
-     * The kWh metrics read a daily counter, so their month Item has no other writer and must be derived here. The
-     * EUR metrics read the month Item itself and must not be.
-     */
-    @Test
-    void theEnergyMetricsAreTheOnesNeedingADerivedMonth() throws ReflectiveOperationException {
-        List<String> derived = new ArrayList<>();
-        List<String> selfSourced = new ArrayList<>();
+        List<String> unowned = new ArrayList<>();
         for (String[] metric : metrics()) {
-            if ((metric[1] + "_Month").equals(metric[0])) {
-                selfSourced.add(metric[1]);
-            } else {
-                derived.add(metric[1]);
+            String monthItem = metric[1] + "_Month";
+            String constant = constantNameFor(monthItem);
+            if (constant == null || !cost.contains("(" + constant + ",")) {
+                unowned.add(monthItem);
             }
         }
+        assertTrue(unowned.isEmpty(),
+                "dropping the month publish is only safe while the accumulator publishes it: " + unowned);
+    }
 
-        assertEquals(List.of("EMS_SelfConsumption_kWh", "EMS_FeedIn_kWh", "EMS_Supply_kWh"), derived,
-                "these three had no writer for their month Item");
-        assertEquals(List.of("EMS_Cost_EUR", "EMS_Savings_EUR", "EMS_Earnings_EUR"), selfSourced,
-                "these are read from their own month Item and must be left alone");
+    /** The constant in the binding's item table whose value is this Item name. */
+    private static @org.eclipse.jdt.annotation.Nullable String constantNameFor(String itemName)
+            throws ReflectiveOperationException {
+        for (Field field : org.openhab.binding.emsmanager.internal.EmsManagerBindingConstants.class.getFields()) {
+            if (field.getType() == String.class && itemName.equals(field.get(null))) {
+                return field.getName();
+            }
+        }
+        return null;
+    }
+
+    private String readCostAnalyticsSource() {
+        try {
+            return java.nio.file.Files.readString(
+                    java.nio.file.Path.of("src/main/java/org/openhab/binding/emsmanager/internal/controller/analytics/"
+                            + "CostAnalyticsController.java"));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("cost analytics source not readable", e);
+        }
     }
 
     private String readSource() {
