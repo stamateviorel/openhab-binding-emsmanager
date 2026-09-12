@@ -120,7 +120,7 @@ public final class LedgerPublisher {
             rows = sorted(rows, sort);
             publishText("EMS_Ledger_Label", label(view, window, rows.size()));
             publishText("EMS_Ledger_Cols_JSON", columns(view));
-            publishText("EMS_Ledger_Rows_JSON", json(rows));
+            publishText("EMS_Ledger_Rows_JSON", json(rows, columnOf(sort)));
             publishTotals(rows, view);
         } catch (Throwable t) {
             LOGGER.debug("Ledger publish failed: {}", t.toString());
@@ -242,12 +242,12 @@ public final class LedgerPublisher {
         return r == null ? 0.0 : r.amountAgo(daysAgo);
     }
 
-    private List<Row> sorted(List<Row> rows, String sort) {
-        if (sort.isBlank() || rows.isEmpty()) {
-            return rows;
+    /** Which figure a sort string ranks by, or -1 for the default order. */
+    private static int columnOf(String sort) {
+        if (sort.isBlank()) {
+            return -1;
         }
-        String[] parts = sort.split(":");
-        int column = switch (parts[0]) {
+        return switch (sort.split(":")[0]) {
             case "sun" -> 0;
             case "grid" -> 1;
             case "sold" -> 2;
@@ -255,6 +255,14 @@ public final class LedgerPublisher {
             case "saved" -> 4;
             default -> -1;
         };
+    }
+
+    private List<Row> sorted(List<Row> rows, String sort) {
+        if (sort.isBlank() || rows.isEmpty()) {
+            return rows;
+        }
+        String[] parts = sort.split(":");
+        int column = columnOf(sort);
         if (column < 0) {
             return rows;
         }
@@ -287,11 +295,16 @@ public final class LedgerPublisher {
                 : "[\"When\",\"Sun\",\"Grid\",\"Sold\",\"Cost\",\"Saved\"]";
     }
 
-    /** Rows as JSON, with the bar already scaled here - a widget constant would freeze at mount. */
-    private String json(List<Row> rows) {
+    /**
+     * Rows as JSON, with the bar already scaled here - a widget constant would freeze at mount.
+     *
+     * @param sortedBy the figure the table is ranked by, or -1. The bar follows it, because a bar
+     *            that disagrees with the order the reader asked for is worse than no bar.
+     */
+    private String json(List<Row> rows, int sortedBy) {
         double max = 0.0;
         for (Row r : rows) {
-            max = Math.max(max, Math.abs(r.primary()));
+            max = Math.max(max, Math.abs(sizeOf(r, sortedBy)));
         }
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < rows.size(); i++) {
@@ -301,7 +314,7 @@ public final class LedgerPublisher {
             }
             sb.append("{\"k\":\"").append(escape(r.key())).append("\",\"l\":\"").append(escape(r.label()))
                     .append("\",\"s\":\"").append(escape(r.sub())).append("\",\"bar\":")
-                    .append(max <= 0 ? 0 : Math.round(100.0 * Math.abs(r.primary()) / max)).append(",\"f\":[");
+                    .append(max <= 0 ? 0 : Math.round(100.0 * Math.abs(sizeOf(r, sortedBy)) / max)).append(",\"f\":[");
             for (int f = 0; f < r.figures().length; f++) {
                 if (f > 0) {
                     sb.append(',');
@@ -329,6 +342,10 @@ public final class LedgerPublisher {
                 publishNumber(items[i], round(totals[i]));
             }
         }
+    }
+
+    private static double sizeOf(Row row, int sortedBy) {
+        return sortedBy >= 0 && sortedBy < row.figures().length ? row.figures()[sortedBy] : row.primary();
     }
 
     private static double round(double value) {
