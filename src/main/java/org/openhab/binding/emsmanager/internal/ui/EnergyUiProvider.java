@@ -1140,6 +1140,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             .list ul:before,.list ul:after{display:none}
             .item-title{font-weight:500;font-size:14px}
             .bar{transition:width .5s ease,height .5s ease}
+            li{list-style:none}
+            .figure .item-inner{padding:0;min-height:0}
+            .figure .item-inner:after{display:none}
             .accordion-list .item-title{font-weight:600;font-size:14px}
             .accordion-list .item-after{font-size:11px;opacity:.75;font-variant-numeric:tabular-nums;white-space:normal;text-align:right;max-width:55%}
             .accordion-list .item-subtitle{font-size:11px;opacity:.6}
@@ -2172,14 +2175,14 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
         UIComponent value = new UIComponent("oh-label-item");
         value.addConfig("item", item);
-        value.addConfig("class", List.of("text-align-center"));
+        value.addConfig("class", List.of("text-align-center", "figure"));
         value.addConfig("style", java.util.Map.of("font-weight", "bold", "font-size", "17px", "line-height", "1.25"));
         slot.add(value);
 
-        UIComponent label = new UIComponent("oh-label-item");
-        label.addConfig("title", caption);
-        label.addConfig("class", List.of("text-align-center"));
-        label.addConfig("style", java.util.Map.of("font-size", "10px", "line-height", "1.15", "opacity", "0.65"));
+        UIComponent label = new UIComponent("Label");
+        label.addConfig("text", caption);
+        label.addConfig("style", java.util.Map.of("display", "block", "text-align", "center", "font-size", "10px",
+                "line-height", "1.15", "opacity", "0.65"));
         slot.add(label);
         return column;
     }
