@@ -223,31 +223,42 @@ public final class LedgerPublisher {
         return Double.isNaN(value) ? 0.0 : value;
     }
 
-    /** One row per calendar month the rings still reach. */
+    /**
+     * One row per calendar month, summed day by day so the ring and the rollup can each answer the part
+     * they know. A month with nothing behind it at all is left out; a month only partly recorded totals
+     * what it has and says nothing about the rest.
+     */
     private List<Row> monthRows(LocalDate today) {
         List<Row> rows = new ArrayList<>();
         int held = heldDays();
+        DailySeriesSource source = series;
+        if (source != null) {
+            source.load(today.minusDays(DailySeriesSource.MAX_DAYS), today);
+        }
         LocalDate month = today.withDayOfMonth(1);
-        for (int i = 0; i < 14 && rows.size() < MAX_ROWS; i++) {
+        for (int i = 0; i < 24 && rows.size() < MAX_ROWS; i++) {
             LocalDate first = month.minusMonths(i);
             LocalDate last = first.plusMonths(1).minusDays(1);
-            int from = (int) java.time.temporal.ChronoUnit.DAYS.between(last.isAfter(today) ? today : last, today);
-            int to = (int) java.time.temporal.ChronoUnit.DAYS.between(first, today);
-            if (from > held) {
-                break;
+            if (last.isAfter(today)) {
+                last = today;
             }
-            double[] f = new double[5];
+            double[] f = { Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN };
             String[] metrics = { SUN, GRID, SOLD, COST, SAVED };
-            for (int m = 0; m < metrics.length; m++) {
-                DailyRollup r = stats.rollupOf(metrics[m]);
-                double total = r == null ? 0.0 : r.sumRange(Math.max(1, from), Math.min(to, held));
-                if (i == 0 && r != null) {
-                    total += r.dayAmount();
+            for (LocalDate day = first; !day.isAfter(last); day = day.plusDays(1)) {
+                int ago = (int) java.time.temporal.ChronoUnit.DAYS.between(day, today);
+                for (int m = 0; m < metrics.length; m++) {
+                    double value = figure(metrics[m], ago, day, held);
+                    if (!Double.isNaN(value)) {
+                        f[m] = nz(f[m]) + value;
+                    }
                 }
-                f[m] = total;
             }
-            rows.add(new Row(first.format(DAY_KEY), first.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH),
-                    first.getYear() + (i == 0 ? " · so far" : ""), f[0] + f[1], f));
+            Row row = new Row(first.format(DAY_KEY), first.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH),
+                    first.getYear() + (i == 0 ? " · so far" : ""), nz(f[0]) + nz(f[1]), f);
+            if (allUnknown(row)) {
+                continue;
+            }
+            rows.add(row);
         }
         return rows;
     }

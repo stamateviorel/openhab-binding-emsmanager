@@ -184,6 +184,16 @@ class LedgerPublisherTest {
         assertEquals(1, todays, "today listed twice: " + rows);
     }
 
+    /** Same rule as the day table: a month nothing can answer is absent, not a row of zeros. */
+    @Test
+    public void onlyMonthsWithSomethingBehindThemAreListed() throws Exception {
+        publisher("months", "", "month", null).publish(LocalDate.of(2026, 9, 12));
+
+        JsonArray rows = rows();
+        assertEquals(1, rows.size(), "the fixture knows about September and nothing else: " + rows);
+        assertEquals("September", rows.get(0).getAsJsonObject().get("l").getAsString());
+    }
+
     @Test
     public void theActionsViewLeavesNoStaleFiguresBehindIt() throws Exception {
         publisher("actions", "").publish(LocalDate.of(2026, 9, 12));
