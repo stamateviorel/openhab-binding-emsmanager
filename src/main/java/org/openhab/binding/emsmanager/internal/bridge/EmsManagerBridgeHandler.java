@@ -135,6 +135,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private org.openhab.binding.emsmanager.internal.ledger.@Nullable ActionJournal journal;
     private org.openhab.binding.emsmanager.internal.ledger.@Nullable JournalPublisher journalPublisher;
     private volatile CapacityTariffTracker.@Nullable Persisted savedPeak;
+    private double lastPublishedMarkup = Double.NaN;
     // Guards tick() against the periodic and debounced invocations overlapping —
     // controller state (EWMA, capacity tracker, dedupe) is not re-entrant.
     private final Object tickLock = new Object();
@@ -627,6 +628,25 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     }
 
     /**
+     * Every euro this binding reports rests on the tariff markup, and the markup is a configured guess
+     * at grid fees, levies and VAT rather than anything measured. Publishing it makes the assumption
+     * readable from the dashboard and from a rule, instead of living only in a .things comment.
+     */
+    private void publishTariffAssumption() {
+        double markup = tariffMarkupEurPerKWh();
+        if (Math.abs(markup - lastPublishedMarkup) < 1e-9) {
+            return;
+        }
+        lastPublishedMarkup = markup;
+        try {
+            itemRegistry.getItem(ITEM_TARIFF_MARKUP);
+            eventPublisher.post(ItemEventFactory.createStateEvent(ITEM_TARIFF_MARKUP, new DecimalType(markup), null));
+        } catch (org.openhab.core.items.ItemNotFoundException e) {
+            // the site has not declared it; the page hides what does not exist
+        }
+    }
+
+    /**
      * The markup the tariff Thing adds to spot prices. The published schedule already contains it,
      * and the comparison has to strip it once or every other tariff is judged against fees twice.
      */
@@ -1080,6 +1100,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             if (journalPub != null) {
                 journalPub.publish(java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
             }
+            publishTariffAssumption();
 
             if (n == 1 || n % 12 == 0) {
                 logger.info(

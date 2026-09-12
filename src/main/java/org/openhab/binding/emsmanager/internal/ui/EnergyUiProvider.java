@@ -173,6 +173,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_JOURNAL_LABEL = "EMS_Journal_Label";
     private static final String I_JOURNAL_ROWS = "EMS_Journal_Rows_JSON";
     private static final String I_STANDING_ROWS = "EMS_Standing_Rows_JSON";
+    private static final String I_TARIFF_MARKUP = "EMS_Tariff_Markup_EurPerKWh";
     private static final String I_BROWSE_SCALE = "EMS_Browse_Scale";
     private static final String I_BROWSE_BACK = "EMS_Browse_Back";
     private static final String I_BROWSE_LABEL = "EMS_Browse_Label";
@@ -404,6 +405,11 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 UIComponent actions = cardRow(journalCard());
                 actions.addConfig("visible", actionsView);
                 root.add(actions);
+            }
+            if (has(I_TARIFF_MARKUP)) {
+                UIComponent note = item(moneyAssumption(), "full");
+                note.addConfig("visible", "=['days','months'].indexOf(items." + I_LEDGER_VIEW + ".state)>=0");
+                root.add(note);
             }
         } else {
             UIComponent browser = browserCard();
@@ -679,6 +685,20 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                         "padding", "14px", "font-size", "12px", "opacity", "0.6"));
         slot.add(empty);
         return card;
+    }
+
+    /**
+     * Every euro on this page is the market price plus a configured markup standing in for grid fees,
+     * levies and VAT. That markup is an estimate, and a column of euros that does not say so invites
+     * being read as a bill.
+     */
+    private UIComponent moneyAssumption() {
+        UIComponent note = new UIComponent("Label");
+        note.addConfig("text", "=\'Cost and savings use the market price plus €\'+(items." + I_TARIFF_MARKUP
+                + ".numericState||0).toFixed(2)+\'/kWh assumed for grid fees, levies and VAT.\'");
+        note.addConfig("style", java.util.Map.of("display", "block", "padding", "0 6px 10px 6px", "font-size", "11px",
+                "opacity", "0.55"));
+        return note;
     }
 
     /**
