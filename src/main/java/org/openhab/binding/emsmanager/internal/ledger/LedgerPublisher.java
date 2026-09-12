@@ -76,14 +76,22 @@ public final class LedgerPublisher {
     private final @Nullable ThingRegistry thingRegistry;
     private final LongTermStatsController stats;
     private final ZoneId zone;
+    private final @Nullable DailySeriesSource series;
 
     public LedgerPublisher(EventPublisher eventPublisher, ItemRegistry itemRegistry,
             @Nullable ThingRegistry thingRegistry, LongTermStatsController stats, ZoneId zone) {
+        this(eventPublisher, itemRegistry, thingRegistry, stats, zone, null);
+    }
+
+    public LedgerPublisher(EventPublisher eventPublisher, ItemRegistry itemRegistry,
+            @Nullable ThingRegistry thingRegistry, LongTermStatsController stats, ZoneId zone,
+            @Nullable DailySeriesSource series) {
         this.eventPublisher = eventPublisher;
         this.itemRegistry = itemRegistry;
         this.thingRegistry = thingRegistry;
         this.stats = stats;
         this.zone = zone;
+        this.series = series;
     }
 
     /** One row of the table, already scaled and formatted. */
@@ -137,8 +145,9 @@ public final class LedgerPublisher {
                 int year = today.getYear() - back;
                 LocalDate from = LocalDate.of(year, 1, 1);
                 LocalDate to = back == 0 ? today : LocalDate.of(year, 12, 31);
-                return new Window(span, String.valueOf(year),
-                        (int) java.time.temporal.ChronoUnit.DAYS.between(to, today),
+                // the current year's window ends today, and today is already the first row
+                int first = (int) java.time.temporal.ChronoUnit.DAYS.between(to, today);
+                return new Window(span, String.valueOf(year), back == 0 ? Math.max(first, 1) : first,
                         (int) java.time.temporal.ChronoUnit.DAYS.between(from, today), back == 0);
             }
             LocalDate first = today.withDayOfMonth(1).minusMonths(back);
@@ -152,29 +161,66 @@ public final class LedgerPublisher {
         }
     }
 
-    /** One row per day in the window, newest first. */
+    /**
+     * One row per day in the window, newest first. A day neither the ring nor the rollup can answer is
+     * left out rather than drawn as a row of zeros: the house ran that day, and saying it used nothing
+     * is worse than saying nothing.
+     */
     private List<Row> dayRows(Window window, LocalDate today) {
         List<Row> rows = new ArrayList<>();
+        DailySeriesSource source = series;
+        if (source != null) {
+            source.load(today.minusDays(Math.min(window.toDaysAgo(), DailySeriesSource.MAX_DAYS)), today);
+        }
         if (window.includesToday()) {
             rows.add(dayRow(0, today));
         }
         for (int ago = window.fromDaysAgo(); ago <= window.toDaysAgo() && rows.size() < MAX_ROWS; ago++) {
-            rows.add(dayRow(ago, today.minusDays(ago)));
+            Row row = dayRow(ago, today.minusDays(ago));
+            if (allUnknown(row)) {
+                continue;
+            }
+            rows.add(row);
         }
         return rows;
     }
 
     private Row dayRow(int daysAgo, LocalDate date) {
-        double sun = amount(SUN, daysAgo);
-        double grid = amount(GRID, daysAgo);
-        double sold = amount(SOLD, daysAgo);
-        double cost = amount(COST, daysAgo);
-        double saved = amount(SAVED, daysAgo);
+        int held = heldDays();
+        double sun = figure(SUN, daysAgo, date, held);
+        double grid = figure(GRID, daysAgo, date, held);
+        double sold = figure(SOLD, daysAgo, date, held);
+        double cost = figure(COST, daysAgo, date, held);
+        double saved = figure(SAVED, daysAgo, date, held);
         String sub = daysAgo == 0 ? "so far today"
                 : date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
         return new Row(date.format(DAY_KEY),
                 date.getDayOfMonth() + " " + date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH), sub,
-                sun + grid, new double[] { sun, grid, sold, cost, saved });
+                nz(sun) + nz(grid), new double[] { sun, grid, sold, cost, saved });
+    }
+
+    /** The ring where it still reaches, the rollup behind it, NaN where neither knows. */
+    private double figure(String metric, int daysAgo, LocalDate date, int held) {
+        if (daysAgo <= held) {
+            return amount(metric, daysAgo);
+        }
+        DailySeriesSource source = series;
+        Double stored = source == null ? null : source.valueOn(metric, date);
+        return stored == null ? Double.NaN : stored;
+    }
+
+    private static boolean allUnknown(Row row) {
+        for (double figure : row.figures()) {
+            if (!Double.isNaN(figure)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** NaN reads as nothing when something has to be summed or measured. */
+    private static double nz(double value) {
+        return Double.isNaN(value) ? 0.0 : value;
     }
 
     /** One row per calendar month the rings still reach. */
@@ -283,7 +329,9 @@ public final class LedgerPublisher {
             default -> "day by day";
         };
         String scope = "months".equals(view) ? "as far back as the records go" : window.title();
-        return scope + " · " + what + " · " + rows + (rows == 1 ? " row" : " rows");
+        // a table silently cut off at its cap reads as the whole answer
+        String capped = rows >= MAX_ROWS ? " · newest " + MAX_ROWS + " shown" : "";
+        return scope + " · " + what + " · " + rows + (rows == 1 ? " row" : " rows") + capped;
     }
 
     /**
@@ -304,7 +352,7 @@ public final class LedgerPublisher {
     private String json(List<Row> rows, int sortedBy) {
         double max = 0.0;
         for (Row r : rows) {
-            max = Math.max(max, Math.abs(sizeOf(r, sortedBy)));
+            max = Math.max(max, Math.abs(nz(sizeOf(r, sortedBy))));
         }
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < rows.size(); i++) {
@@ -314,12 +362,14 @@ public final class LedgerPublisher {
             }
             sb.append("{\"k\":\"").append(escape(r.key())).append("\",\"l\":\"").append(escape(r.label()))
                     .append("\",\"s\":\"").append(escape(r.sub())).append("\",\"bar\":")
-                    .append(max <= 0 ? 0 : Math.round(100.0 * Math.abs(sizeOf(r, sortedBy)) / max)).append(",\"f\":[");
+                    .append(max <= 0 ? 0 : Math.round(100.0 * Math.abs(nz(sizeOf(r, sortedBy))) / max))
+                    .append(",\"f\":[");
             for (int f = 0; f < r.figures().length; f++) {
                 if (f > 0) {
                     sb.append(',');
                 }
-                sb.append(round(r.figures()[f]));
+                // null, not 0: the page draws a dash for it, and a 0 would be a claim
+                sb.append(Double.isNaN(r.figures()[f]) ? "null" : String.valueOf(round(r.figures()[f])));
             }
             sb.append("]}");
         }
@@ -328,15 +378,21 @@ public final class LedgerPublisher {
 
     private void publishTotals(List<Row> rows, String view) {
         double[] totals = new double[5];
+        boolean[] complete = { true, true, true, true, true };
         for (Row r : rows) {
             for (int i = 0; i < totals.length && i < r.figures().length; i++) {
-                totals[i] += r.figures()[i];
+                if (Double.isNaN(r.figures()[i])) {
+                    complete[i] = false;
+                } else {
+                    totals[i] += r.figures()[i];
+                }
             }
         }
         String[] items = TOTAL_ITEMS;
         for (int i = 0; i < items.length; i++) {
-            // a circuits view has no grid/sold/cost/saved of its own, and a zero there would be a lie
-            if ("circuits".equals(view) && i > 0) {
+            // a circuits view has no grid/sold/cost/saved of its own, and a zero there would be a lie;
+            // so would a month's cost totalled over the handful of days the record still holds
+            if (("circuits".equals(view) && i > 0) || !complete[i]) {
                 publishUndef(items[i]);
             } else {
                 publishNumber(items[i], round(totals[i]));

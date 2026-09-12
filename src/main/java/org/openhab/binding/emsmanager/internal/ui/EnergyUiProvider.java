@@ -631,7 +631,8 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         String[] narrowCell = { "", "", "ledger-hide-s", "", "ledger-hide-s" };
         for (int i = 0; i < narrowCell.length; i++) {
             UIComponent value = new UIComponent("Label");
-            value.addConfig("text", "=loop.row.f[" + i + "].toFixed(1)");
+            // a figure the record cannot answer is published as null and drawn as a dash; 0 would be a claim
+            value.addConfig("text", "=loop.row.f[" + i + "]==null?'—':loop.row.f[" + i + "].toFixed(1)");
             List<String> classes = new ArrayList<>();
             classes.add("ledger-num");
             if (!narrowCell[i].isEmpty()) {

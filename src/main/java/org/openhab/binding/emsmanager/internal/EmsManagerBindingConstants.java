@@ -249,6 +249,9 @@ public final class EmsManagerBindingConstants {
     public static final String ITEM_EMS_STAT_FEEDIN_KWH = "EMS_Stat_FeedIn_kWh";
     public static final String ITEM_EMS_STAT_SUPPLY_KWH = "EMS_Stat_Supply_kWh";
     public static final String ITEM_EMS_STAT_CO2_KG = "EMS_Stat_CO2_kg";
+    public static final String ITEM_EMS_STAT_COST_EUR = "EMS_Stat_Cost_EUR";
+    public static final String ITEM_EMS_STAT_SAVINGS_EUR = "EMS_Stat_Savings_EUR";
+    public static final String ITEM_EMS_STAT_EARNINGS_EUR = "EMS_Stat_Earnings_EUR";
 
     // Cross-Thing channel-mirror items.
     public static final String ITEM_TARIFF_SCHEDULE_24H_CSV = "EMS_Tariff_Schedule24h_CSV";

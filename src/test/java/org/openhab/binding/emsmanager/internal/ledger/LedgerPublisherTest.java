@@ -53,6 +53,12 @@ class LedgerPublisherTest {
     private static final double[] SUN = { 50.0, 4.0, 30.0, 10.0 };
 
     private LedgerPublisher publisher(String view, String sort) throws Exception {
+        return publisher(view, sort, "month", null);
+    }
+
+    private LedgerPublisher publisher(String view, String sort, String span,
+            org.openhab.binding.emsmanager.internal.ledger.@org.eclipse.jdt.annotation.Nullable DailySeriesSource series)
+            throws Exception {
         EventPublisher events = mock(EventPublisher.class);
         doAnswer(call -> {
             Event e = call.getArgument(0);
@@ -62,7 +68,7 @@ class LedgerPublisherTest {
             return null;
         }).when(events).post(any(Event.class));
 
-        Map<String, String> states = Map.of("EMS_Ledger_View", view, "EMS_Ledger_Span", "month", "EMS_Ledger_Back", "0",
+        Map<String, String> states = Map.of("EMS_Ledger_View", view, "EMS_Ledger_Span", span, "EMS_Ledger_Back", "0",
                 "EMS_Ledger_Sort", sort);
         ItemRegistry items = mock(ItemRegistry.class);
         when(items.getItem(anyString())).thenAnswer(call -> {
@@ -79,7 +85,7 @@ class LedgerPublisherTest {
             case "EMS_SelfConsumption_kWh" -> rollup(SUN);
             default -> rollup(new double[] { 0, 0, 0, 0 });
         });
-        return new LedgerPublisher(events, items, null, stats, ZoneId.of("Europe/Brussels"));
+        return new LedgerPublisher(events, items, null, stats, ZoneId.of("Europe/Brussels"), series);
     }
 
     /** A ring holding one value per completed day, newest first. */
@@ -128,6 +134,54 @@ class LedgerPublisherTest {
         assertEquals(100, topBar, "the row ranked first is the longest bar: " + bars);
         assertEquals(bars, bars.stream().sorted(java.util.Comparator.reverseOrder()).toList(),
                 "bars descend with the ranking: " + bars);
+    }
+
+    /**
+     * The ring holds 40 days. Before this, a Year view drew every older day as a row of zeros, which
+     * reads as "the house used nothing in July" rather than "the record does not go back that far".
+     */
+    @Test
+    public void aDayNothingCanAnswerIsLeftOutRatherThanDrawnAsZeros() throws Exception {
+        publisher("days", "", "year", null).publish(LocalDate.of(2026, 9, 12));
+
+        JsonArray rows = rows();
+        for (var element : rows) {
+            // today's own row belongs there even at one minute past midnight, when it really is zero
+            if ("so far today".equals(element.getAsJsonObject().get("s").getAsString())) {
+                continue;
+            }
+            var figures = element.getAsJsonObject().getAsJsonArray("f");
+            boolean anyKnown = false;
+            for (var f : figures) {
+                anyKnown |= !f.isJsonNull() && f.getAsDouble() != 0.0;
+            }
+            assertTrue(anyKnown, "a completed day is shown only if something is known about it: " + element);
+        }
+        // a year's worth of empty days used to fill the table to its 60-row cap
+        assertTrue(rows.size() < 10,
+                "the table stops where the record stops, it does not run to the cap: " + rows.size());
+        String oldest = rows.get(rows.size() - 1).getAsJsonObject().get("k").getAsString();
+        assertTrue(LocalDate.parse(oldest).isAfter(LocalDate.of(2026, 9, 1)),
+                "nothing older than the fixture's ring is shown, got " + oldest);
+    }
+
+    /** A column with a hole in it cannot be totalled, and a total over part of a month is a wrong number. */
+    @Test
+    public void aTotalIsWithheldWhereTheColumnHasAHole() throws Exception {
+        publisher("days", "", "month", null).publish(LocalDate.of(2026, 9, 12));
+
+        assertNotNull(published.get("EMS_Ledger_Total_Cost_EUR"));
+    }
+
+    /** Today is the first row of a current window; the day loop must not then walk over it again. */
+    @Test
+    public void todayAppearsOnceInAYearThatIsStillRunning() throws Exception {
+        publisher("days", "", "year", null).publish(LocalDate.of(2026, 9, 12));
+
+        JsonArray rows = rows();
+        long todays = rows.asList().stream()
+                .filter(e -> "2026-09-12".equals(e.getAsJsonObject().get("k").getAsString())).count();
+        assertEquals(1, todays, "today listed twice: " + rows);
     }
 
     @Test

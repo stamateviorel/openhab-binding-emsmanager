@@ -79,6 +79,8 @@ public final class StatisticsRollupController implements Controller {
     /** Snapshot just before midnight so the value lands inside the right calendar day. */
     private static final LocalTime SNAPSHOT_TIME = LocalTime.of(23, 58);
     private static final String CACHE_FILE = "emsmanager-rollup-cache.json";
+
+    private final @org.eclipse.jdt.annotation.Nullable LongTermStatsController money;
     private static final Gson GSON = new Gson();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StatisticsRollupController.class);
@@ -89,9 +91,19 @@ public final class StatisticsRollupController implements Controller {
     private LocalDate lastSnapshotDay = LocalDate.MIN;
 
     public StatisticsRollupController(EventPublisher eventPublisher, ItemRegistry itemRegistry, boolean enabled) {
+        this(eventPublisher, itemRegistry, enabled, null);
+    }
+
+    /**
+     * @param money the running day accumulators the cost figures live in. Without it the money series
+     *            is simply not written, and the Past tab draws a dash rather than a zero for it.
+     */
+    public StatisticsRollupController(EventPublisher eventPublisher, ItemRegistry itemRegistry, boolean enabled,
+            @org.eclipse.jdt.annotation.Nullable LongTermStatsController money) {
         this.eventPublisher = eventPublisher;
         this.itemRegistry = itemRegistry;
         this.enabled = enabled;
+        this.money = money;
         loadFromDisk();
     }
 
@@ -143,6 +155,22 @@ public final class StatisticsRollupController implements Controller {
         publishKwh(ITEM_EMS_STAT_SOLAR_KWH, selfConsumption + feedIn);
         publishKwh(ITEM_EMS_STAT_HOUSE_KWH, selfConsumption + supply);
         publishNumber(ITEM_EMS_STAT_CO2_KG, co2Net);
+
+        // The euros are only ever a running accumulator; there is no _Day item to read them off.
+        publishDayAmount(ITEM_EMS_STAT_COST_EUR, "EMS_Cost_EUR");
+        publishDayAmount(ITEM_EMS_STAT_SAVINGS_EUR, "EMS_Savings_EUR");
+        publishDayAmount(ITEM_EMS_STAT_EARNINGS_EUR, "EMS_Earnings_EUR");
+    }
+
+    private void publishDayAmount(String statItem, String metric) {
+        LongTermStatsController source = money;
+        if (source == null) {
+            return;
+        }
+        DailyRollup rollup = source.rollupOf(metric);
+        if (rollup != null) {
+            publishNumber(statItem, rollup.dayAmount());
+        }
     }
 
     private void publishKwh(String itemName, double kwh) {

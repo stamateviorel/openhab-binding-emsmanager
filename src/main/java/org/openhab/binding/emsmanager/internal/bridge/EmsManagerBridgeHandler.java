@@ -336,8 +336,14 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         controllerScheduler.register(new HistoryBrowserController(eventPublisher, itemRegistry, longTermStats));
         // Not a Controller: controllers all run before the dispatch loop, so a page fed from one would
         // be a tick stale for ever. This is called at the end of the tick instead.
+        PersistenceServiceRegistry ledgerPersistence = persistenceRegistry;
+        // reads the once-a-day rollup tier and nothing else, so the Past tab can reach past the ring
+        org.openhab.binding.emsmanager.internal.ledger.@Nullable DailySeriesSource dailySeries = ledgerPersistence == null
+                ? null
+                : new org.openhab.binding.emsmanager.internal.ledger.DailySeriesSource(ledgerPersistence,
+                        java.time.ZoneId.systemDefault());
         this.ledger = new org.openhab.binding.emsmanager.internal.ledger.LedgerPublisher(eventPublisher, itemRegistry,
-                thingRegistry, longTermStats, java.time.ZoneId.systemDefault());
+                thingRegistry, longTermStats, java.time.ZoneId.systemDefault(), dailySeries);
         org.openhab.binding.emsmanager.internal.ledger.ActionJournal actionJournal = journal;
         if (actionJournal != null) {
             this.journalPublisher = new org.openhab.binding.emsmanager.internal.ledger.JournalPublisher(eventPublisher,
@@ -381,7 +387,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // clean EMS_Stat_* series (one point/day) for fast month/year charts.
         controllerScheduler
                 .register(new org.openhab.binding.emsmanager.internal.controller.analytics.StatisticsRollupController(
-                        eventPublisher, itemRegistry, config.statisticsRollupEnabled));
+                        eventPublisher, itemRegistry, config.statisticsRollupEnabled, longTermStats));
 
         // Seed the battery reserve-target item on first init if it's still NULL,
         // so downstream consumers have a sane default.
