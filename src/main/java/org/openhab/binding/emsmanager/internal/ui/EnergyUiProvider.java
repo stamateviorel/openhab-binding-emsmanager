@@ -956,28 +956,33 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             level.addConfig("smooth", Boolean.FALSE);
             series.add(level);
         }
-        chartControls(page, soc ? 2 : 1);
+        chartControls(page, soc ? 2 : 1, true);
         return page;
     }
 
     /**
-     * Today, circuit by circuit, hour by hour: stacked bars of the energy each metered circuit took
-     * in each hour, from the day counters the device meters persist. The live power Items are not
-     * persisted on a typical site, the counters are; the difference of a counter across an hour is
-     * that hour's energy.
+     * The month, circuit by circuit: one stacked bar per day of the energy each metered circuit took.
+     * <p>
+     * The device meters persist a counter that resets at midnight, so a day's energy is that day's
+     * HIGHEST reading - not a difference. A difference across a bucket boundary picks up the reset
+     * itself and draws the day as a large negative bar, which is what the first version of this chart
+     * did. The live power Items are not persisted on a typical site; the counters are.
      */
     private RootUIComponent buildCircuitsChartPage(SiteModel site) {
         RootUIComponent page = new RootUIComponent(P_CIRCUITS, "oh-chart-page");
         page.addConfig("label", "By circuit");
         page.addConfig("sidebar", Boolean.FALSE);
-        page.addConfig("chartType", "day");
-        page.addConfig("period", "D");
+        page.addConfig("chartType", "month");
+        page.addConfig("period", "M");
         page.updateTimestamp();
 
         page.addSlot("grid").add(chartGrid("10%", "72%"));
         UIComponent xAxis = new UIComponent("oh-category-axis");
         xAxis.addConfig("gridIndex", Integer.valueOf(0));
-        xAxis.addConfig("categoryType", "hour");
+        // categoryType names the SPAN THE AXIS COVERS, not the bucket size: "month" is days-of-a-month.
+        // ("hour" would be minutes-of-an-hour - that mistake put every circuit's whole day into one
+        // column at x=0 and, because the bucket straddled the midnight counter reset, drew it negative.)
+        xAxis.addConfig("categoryType", "month");
         page.addSlot("xAxis").add(xAxis);
         page.addSlot("yAxis").add(valueAxis(0, "kWh"));
 
@@ -986,7 +991,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         for (SiteModel.Circuit c : site.circuits()) {
             String kwh = c.energyItem();
             if (kwh != null && has(kwh)) {
-                series.add(hourlyEnergyBars(c.label(), kwh, EnergyFlowCard.colourOf(c)));
+                series.add(dailyEnergyBars(c.label(), kwh, EnergyFlowCard.colourOf(c)));
                 any = true;
             }
         }
@@ -996,12 +1001,14 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             for (String circuit : trackedCircuits()) {
                 String kwh = "EMS_DM_" + circuit + "_kWh";
                 if (has(kwh)) {
-                    series.add(hourlyEnergyBars(prettyCircuit(circuit), kwh,
+                    series.add(dailyEnergyBars(prettyCircuit(circuit), kwh,
                             CIRCUIT_COLORS[index++ % CIRCUIT_COLORS.length]));
                 }
             }
         }
-        chartControls(page, 1);
+        // A category axis has no continuous range to zoom, and a dataZoom bound to one leaves the whole
+        // chart blank - no axis, no bars, no error in the console.
+        chartControls(page, 1, false);
         return page;
     }
 
@@ -1032,13 +1039,15 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     }
 
     /** One circuit as a stacked bar per hour: the counter's change over the hour. */
-    private UIComponent hourlyEnergyBars(String name, String kwhItem, String colour) {
+    private UIComponent dailyEnergyBars(String name, String kwhItem, String colour) {
         UIComponent series = new UIComponent("oh-aggregate-series");
         series.addConfig("name", name);
         series.addConfig("item", kwhItem);
         series.addConfig("type", "bar");
-        series.addConfig("dimension1", "hour");
-        series.addConfig("aggregationFunction", "diff_last");
+        // must match the axis's span: the days inside the month the axis covers
+        series.addConfig("dimension1", "date");
+        // the counter resets each midnight, so the day's last (= highest) reading IS the day's energy
+        series.addConfig("aggregationFunction", "max");
         series.addConfig("stack", "circuits");
         series.addConfig("color", colour);
         series.addConfig("barBorderRadius", Integer.valueOf(2));
@@ -1083,14 +1092,15 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
      * Legend, axis tooltip, and inside + slider data-zoom. The slider is a draggable time scrollbar
      * — the native way to navigate across days in a chart tab (openHAB tabs have no prev/next).
      */
-    private void chartControls(RootUIComponent page, int axes) {
+    private void chartControls(RootUIComponent page, int axes, boolean zoomable) {
         List<Integer> axisIndexes = new ArrayList<>();
         for (int n = 0; n < axes; n++) {
             axisIndexes.add(Integer.valueOf(n));
         }
         UIComponent legend = new UIComponent("oh-chart-legend");
         legend.addConfig("show", Boolean.TRUE);
-        legend.addConfig("top", Integer.valueOf(0));
+        // at the top a dozen circuits paginate straight over the period navigation
+        legend.addConfig("bottom", Integer.valueOf(28));
         legend.addConfig("type", "scroll");
         page.addSlot("legend").add(legend);
         UIComponent tooltip = new UIComponent("oh-chart-tooltip");
@@ -1099,6 +1109,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         tooltip.addConfig("confine", Boolean.TRUE);
         tooltip.addConfig("axisPointer", java.util.Map.of("type", "cross"));
         page.addSlot("tooltip").add(tooltip);
+        if (!zoomable) {
+            return;
+        }
         List<UIComponent> zoom = page.addSlot("dataZoom");
         UIComponent inside = new UIComponent("oh-chart-datazoom");
         inside.addConfig("type", "inside");
