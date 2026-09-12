@@ -94,8 +94,16 @@ public final class LedgerPublisher {
         this.series = series;
     }
 
-    /** One row of the table, already scaled and formatted. */
-    private record Row(String key, String label, String sub, double primary, double[] figures) {
+    /**
+     * One row of the table, already scaled and formatted.
+     *
+     * @param partial per figure: true where the number shown is a sum over fewer days than the row
+     *            covers. The figure is still worth showing; a FOOTER total over it is not.
+     */
+    private record Row(String key, String label, String sub, double primary, double[] figures, boolean[] partial) {
+        Row(String key, String label, String sub, double primary, double[] figures) {
+            this(key, label, sub, primary, figures, new boolean[figures.length]);
+        }
     }
 
     public void publish(LocalDate today) {
@@ -127,7 +135,7 @@ public final class LedgerPublisher {
             };
             rows = sorted(rows, sort);
             publishText("EMS_Ledger_Label", label(view, window, rows.size()));
-            publishText("EMS_Ledger_Cols_JSON", columns(view));
+            publishText("EMS_Ledger_Cols_JSON", columns(view, window.includesToday()));
             publishText("EMS_Ledger_Rows_JSON", json(rows, columnOf(sort)));
             publishTotals(rows, view);
         } catch (Throwable t) {
@@ -267,8 +275,12 @@ public final class LedgerPublisher {
             }
             String sub = first.getYear() + (i == 0 ? " · so far"
                     : leastCovered < daysInRow ? " · " + leastCovered + " of " + daysInRow + " days" : "");
+            boolean[] partial = new boolean[metrics.length];
+            for (int m = 0; m < metrics.length; m++) {
+                partial[m] = daysKnown[m] < daysInRow;
+            }
             Row row = new Row(first.format(DAY_KEY), first.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH),
-                    sub, nz(f[0]) + nz(f[1]), f);
+                    sub, nz(f[0]) + nz(f[1]), f, partial);
             if (allUnknown(row)) {
                 continue;
             }
@@ -288,19 +300,39 @@ public final class LedgerPublisher {
             if (!(thing.getHandler() instanceof DeviceMeterHandler meter)) {
                 continue;
             }
-            double total = 0.0;
+            // Each device meter keeps its own ring. A window older than that ring used to total to a
+            // confident 0.0 - every circuit reading "0.0" for a house that demonstrably ran - and the
+            // second column showed today's running figure whatever period the page was pointed at.
+            double total = Double.NaN;
+            int covered = 0;
+            int wanted = 0;
             if (window.includesToday()) {
-                total += meter.kwhDaysAgo(0);
+                total = nz(total) + meter.kwhDaysAgo(0);
+                covered++;
+                wanted++;
             }
-            for (int ago = window.fromDaysAgo(); ago <= Math.min(window.toDaysAgo(), meter.daysHeld()); ago++) {
-                total += meter.kwhDaysAgo(ago);
+            for (int ago = window.fromDaysAgo(); ago <= window.toDaysAgo(); ago++) {
+                wanted++;
+                if (ago <= meter.daysHeld()) {
+                    total = nz(total) + meter.kwhDaysAgo(ago);
+                    covered++;
+                }
             }
-            String label = thing.getLabel();
-            rows.add(new Row(meter.deviceId(), label == null || label.isBlank() ? meter.name() : label,
-                    meter.category(), total, new double[] { total, meter.kwhDaysAgo(0), 0, 0, 0 }));
+            double today = window.includesToday() ? meter.kwhDaysAgo(0) : Double.NaN;
+            String note = covered < wanted && covered > 0
+                    ? meter.category() + " · " + covered + " of " + wanted + " days"
+                    : meter.category();
+            boolean[] partial = { covered < wanted, !window.includesToday(), false, false, false };
+            rows.add(new Row(meter.deviceId(), label(thing, meter), note, nz(total),
+                    new double[] { total, today, Double.NaN, Double.NaN, Double.NaN }, partial));
         }
         rows.sort(Comparator.comparingDouble((Row r) -> r.primary()).reversed());
         return rows;
+    }
+
+    private static String label(Thing thing, DeviceMeterHandler meter) {
+        String label = thing.getLabel();
+        return label == null || label.isBlank() ? meter.name() : label;
     }
 
     private int heldDays() {
@@ -340,10 +372,19 @@ public final class LedgerPublisher {
         boolean descending = parts.length < 2 || !"asc".equals(parts[1]);
         List<Row> copy = new ArrayList<>(rows);
         final int index = column;
-        copy.sort(Comparator.comparingDouble((Row r) -> r.figures()[index]));
-        if (descending) {
-            java.util.Collections.reverse(copy);
-        }
+        // A figure the record cannot answer is not a small number, and Double.compare sorts NaN high:
+        // reversing for descending then floated every unknown row above the real maximum, so ranking
+        // by cost put nineteen dashes where the most expensive day should have been.
+        copy.sort((a, b) -> {
+            double x = a.figures()[index];
+            double y = b.figures()[index];
+            boolean xn = Double.isNaN(x);
+            boolean yn = Double.isNaN(y);
+            if (xn || yn) {
+                return xn && yn ? 0 : (xn ? 1 : -1);
+            }
+            return descending ? Double.compare(y, x) : Double.compare(x, y);
+        });
         return copy;
     }
 
@@ -363,9 +404,12 @@ public final class LedgerPublisher {
      * The column headings for this view, in order. The page renders a fixed six and hides the ones
      * this list does not name, so a view with fewer columns does not show empty ones.
      */
-    private String columns(String view) {
-        return "circuits".equals(view) ? "[\"Circuit\",\"kWh\",\"Today\"]"
-                : "[\"When\",\"Sun\",\"Grid\",\"Sold\",\"Cost\",\"Saved\"]";
+    private String columns(String view, boolean includesToday) {
+        if ("circuits".equals(view)) {
+            // a "Today" column on a page showing last August has nothing to put in it
+            return includesToday ? "[\"Circuit\",\"kWh\",\"Today\"]" : "[\"Circuit\",\"kWh\"]";
+        }
+        return "[\"When\",\"Sun\",\"Grid\",\"Sold\",\"Cost\",\"Saved\"]";
     }
 
     /**
@@ -402,11 +446,19 @@ public final class LedgerPublisher {
     }
 
     private void publishTotals(List<Row> rows, String view) {
+        if (rows.isEmpty()) {
+            // Rows are dropped precisely because nothing is known about them. Summing their absence to
+            // zero turns "no record" into "the house used nothing", under a table saying the opposite.
+            for (String item : TOTAL_ITEMS) {
+                publishUndef(item);
+            }
+            return;
+        }
         double[] totals = new double[5];
         boolean[] complete = { true, true, true, true, true };
         for (Row r : rows) {
             for (int i = 0; i < totals.length && i < r.figures().length; i++) {
-                if (Double.isNaN(r.figures()[i])) {
+                if (Double.isNaN(r.figures()[i]) || (i < r.partial().length && r.partial()[i])) {
                     complete[i] = false;
                 } else {
                     totals[i] += r.figures()[i];

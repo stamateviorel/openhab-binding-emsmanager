@@ -135,7 +135,10 @@ public final class ActionJournal {
         if (!outcome.worthRecording()) {
             return null;
         }
-        Entry latest = latestPerAsset.get(asset);
+        // keyed by asset AND kind: a charger is commanded with amps and pause in the same tick, and an
+        // index keyed by asset alone made those two take turns evicting each other, so neither ever
+        // coalesced and every repeat cost a ring slot and a disk write
+        Entry latest = latestPerAsset.get(asset + '|' + what);
         if (latest != null && latest.outcome == outcome && latest.what.equals(what) && latest.value.equals(value)
                 && now - latest.firstAt < COALESCE_WINDOW_MS) {
             latest.lastAt = now;
@@ -146,10 +149,10 @@ public final class ActionJournal {
         }
         Entry entry = new Entry(now, asset, what, value, controller, reason, outcome);
         entries.addFirst(entry);
-        latestPerAsset.put(asset, entry);
+        latestPerAsset.put(asset + '|' + what, entry);
         while (entries.size() > MAX_ENTRIES) {
             Entry dropped = entries.removeLast();
-            latestPerAsset.remove(dropped.asset, dropped);
+            latestPerAsset.remove(dropped.asset + '|' + dropped.what, dropped);
         }
         dirty = true;
         // a genuinely new action is rare enough to be worth the disk write it costs
@@ -251,7 +254,7 @@ public final class ActionJournal {
                 e.lastAt = o.has("last") ? o.get("last").getAsLong() : e.firstAt;
                 e.count = o.has("n") ? o.get("n").getAsInt() : 1;
                 entries.addLast(e);
-                latestPerAsset.putIfAbsent(e.asset, e);
+                latestPerAsset.putIfAbsent(e.asset + '|' + e.what, e);
             }
             LOGGER.info("ActionJournal: restored {} entries", entries.size());
         } catch (Throwable t) {

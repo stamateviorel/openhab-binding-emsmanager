@@ -128,7 +128,11 @@ public final class JournalPublisher {
             default -> "actions";
         };
         String capped = shown > MAX_ROWS ? " · newest " + MAX_ROWS + " shown" : "";
-        return "Since " + since + " · " + shown + " " + what + capped;
+        return "Since " + since + " · " + shown + " " + (shown == 1 ? singular(what) : what) + capped;
+    }
+
+    private static String singular(String what) {
+        return "actions".equals(what) ? "action" : what;
     }
 
     /**

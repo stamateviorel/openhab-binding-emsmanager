@@ -59,6 +59,12 @@ class LedgerPublisherTest {
     private LedgerPublisher publisher(String view, String sort, String span,
             org.openhab.binding.emsmanager.internal.ledger.@org.eclipse.jdt.annotation.Nullable DailySeriesSource series)
             throws Exception {
+        return publisher(view, sort, span, series, "0");
+    }
+
+    private LedgerPublisher publisher(String view, String sort, String span,
+            org.openhab.binding.emsmanager.internal.ledger.@org.eclipse.jdt.annotation.Nullable DailySeriesSource series,
+            String back) throws Exception {
         EventPublisher events = mock(EventPublisher.class);
         doAnswer(call -> {
             Event e = call.getArgument(0);
@@ -68,7 +74,7 @@ class LedgerPublisherTest {
             return null;
         }).when(events).post(any(Event.class));
 
-        Map<String, String> states = Map.of("EMS_Ledger_View", view, "EMS_Ledger_Span", span, "EMS_Ledger_Back", "0",
+        Map<String, String> states = Map.of("EMS_Ledger_View", view, "EMS_Ledger_Span", span, "EMS_Ledger_Back", back,
                 "EMS_Ledger_Sort", sort);
         ItemRegistry items = mock(ItemRegistry.class);
         when(items.getItem(anyString())).thenAnswer(call -> {
@@ -192,6 +198,50 @@ class LedgerPublisherTest {
         JsonArray rows = rows();
         assertEquals(1, rows.size(), "the fixture knows about September and nothing else: " + rows);
         assertEquals("September", rows.get(0).getAsJsonObject().get("l").getAsString());
+    }
+
+    /**
+     * A figure the record cannot answer is not a small number. Double.compare sorts NaN high, so
+     * ranking descending used to float every dash above the real maximum.
+     */
+    @Test
+    public void rankingNeverPutsAnUnknownAboveARealNumber() throws Exception {
+        publisher("days", "cost:desc", "year", null).publish(LocalDate.of(2026, 9, 12));
+
+        JsonArray rows = rows();
+        boolean seenUnknown = false;
+        for (var e : rows) {
+            var cell = e.getAsJsonObject().getAsJsonArray("f").get(3);
+            if (cell.isJsonNull()) {
+                seenUnknown = true;
+            } else {
+                assertFalse(seenUnknown, "a real figure appeared below a dash: " + rows);
+            }
+        }
+    }
+
+    /** Rows are dropped because nothing is known about them; summing their absence to zero is a claim. */
+    @Test
+    public void aPeriodWithNoRecordsWithholdsItsTotalsRatherThanPublishingZero() throws Exception {
+        // a year the fixture's ring cannot reach at all, so every row is dropped as unanswerable
+        publisher("days", "", "year", null, "1").publish(LocalDate.of(2026, 9, 12));
+
+        assertEquals("[]", published.get("EMS_Ledger_Rows_JSON"));
+        for (String item : new String[] { "EMS_Ledger_Total_SelfConsumption_kWh", "EMS_Ledger_Total_Supply_kWh",
+                "EMS_Ledger_Total_FeedIn_kWh", "EMS_Ledger_Total_Cost_EUR", "EMS_Ledger_Total_Savings_EUR" }) {
+            assertEquals("UNDEF", published.get(item), item + " claimed a zero for a period with no records");
+        }
+    }
+
+    /** A month summed over 7 of its 31 days is a fine row and a wrong footer total. */
+    @Test
+    public void aPartialColumnIsNotTotalledInTheFooter() throws Exception {
+        publisher("months", "", "month", null).publish(LocalDate.of(2026, 9, 12));
+
+        JsonArray rows = rows();
+        assertEquals(1, rows.size(), String.valueOf(rows));
+        assertEquals("UNDEF", published.get("EMS_Ledger_Total_SelfConsumption_kWh"),
+                "September so far covers 12 of 30 days, so its footer total is not a month");
     }
 
     @Test
