@@ -14,6 +14,7 @@ package org.openhab.binding.emsmanager.internal.ems;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.emsmanager.internal.asset.AssetWriteOutcome;
 import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.ItemNotFoundException;
 import org.openhab.core.items.ItemRegistry;
@@ -29,6 +30,12 @@ import org.openhab.core.types.Command;
  * {@link PowerProfile.Controllable} load receives its commanded watt value. Used only when the
  * energy-management engine is explicitly taken out of shadow; otherwise the plan is log-only.
  *
+ * <p>
+ * This is the only write path in the binding that does not go through an
+ * {@link org.openhab.binding.emsmanager.internal.asset.AssetHandler}, so it journals its own writes:
+ * a second way to command an item that the action journal cannot see would make the journal a
+ * half-truth the first time {@code emsApply} is switched on.
+ *
  * @author Stamate Viorel - Initial contribution
  */
 @NonNullByDefault
@@ -36,10 +43,17 @@ public class EmsActuator {
 
     private final EventPublisher eventPublisher;
     private final ItemRegistry itemRegistry;
+    private final org.openhab.binding.emsmanager.internal.ledger.@Nullable ActionJournal journal;
 
     public EmsActuator(EventPublisher eventPublisher, ItemRegistry itemRegistry) {
+        this(eventPublisher, itemRegistry, null);
+    }
+
+    public EmsActuator(EventPublisher eventPublisher, ItemRegistry itemRegistry,
+            org.openhab.binding.emsmanager.internal.ledger.@Nullable ActionJournal journal) {
         this.eventPublisher = eventPublisher;
         this.itemRegistry = itemRegistry;
+        this.journal = journal;
     }
 
     /** Map an action to the command it sends (pure, for testing). HOLD deliberately maps to none. */
@@ -67,9 +81,19 @@ public class EmsActuator {
         try {
             itemRegistry.getItem(action.itemName());
         } catch (ItemNotFoundException e) {
+            record(action, command, AssetWriteOutcome.REFUSED);
             return false;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(action.itemName(), command));
+        record(action, command, AssetWriteOutcome.WROTE);
         return true;
+    }
+
+    private void record(EmsAction action, Command command, AssetWriteOutcome outcome) {
+        org.openhab.binding.emsmanager.internal.ledger.ActionJournal open = journal;
+        if (open != null) {
+            open.record(action.itemName(), action.kind().name(), command.toFullString(), "ems-engine", action.reason(),
+                    outcome);
+        }
     }
 }

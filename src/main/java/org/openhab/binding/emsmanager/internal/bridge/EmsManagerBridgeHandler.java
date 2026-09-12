@@ -223,7 +223,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                 config.normalEcoCapA);
         EvElectrical evElec = new EvElectrical(config.evPhases, config.evPhaseVoltage, config.evMaxChargeCurrentA);
         this.evElectrical = evElec;
-        EmsActuator actuator = config.emsApply ? new EmsActuator(eventPublisher, itemRegistry) : null;
+        // built before anything that writes, so no write path can come into being without it
+        org.openhab.binding.emsmanager.internal.ledger.ActionJournal openJournal = new org.openhab.binding.emsmanager.internal.ledger.ActionJournal();
+        this.journal = openJournal;
+        EmsActuator actuator = config.emsApply ? new EmsActuator(eventPublisher, itemRegistry, openJournal) : null;
         shadowEms = config.emsShadowEnabled
                 ? new ShadowEmsRunner(metadataRegistry, itemRegistry, config.emsSimpleLoadThresholdW,
                         config.mainBreakerAmpsPerPhase, config.capacityMinBillableW, config.gridSafetyMarginW,
@@ -335,10 +338,11 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // be a tick stale for ever. This is called at the end of the tick instead.
         this.ledger = new org.openhab.binding.emsmanager.internal.ledger.LedgerPublisher(eventPublisher, itemRegistry,
                 thingRegistry, longTermStats, java.time.ZoneId.systemDefault());
-        org.openhab.binding.emsmanager.internal.ledger.ActionJournal actionJournal = new org.openhab.binding.emsmanager.internal.ledger.ActionJournal();
-        this.journal = actionJournal;
-        this.journalPublisher = new org.openhab.binding.emsmanager.internal.ledger.JournalPublisher(eventPublisher,
-                itemRegistry, actionJournal, java.time.ZoneId.systemDefault());
+        org.openhab.binding.emsmanager.internal.ledger.ActionJournal actionJournal = journal;
+        if (actionJournal != null) {
+            this.journalPublisher = new org.openhab.binding.emsmanager.internal.ledger.JournalPublisher(eventPublisher,
+                    itemRegistry, actionJournal, java.time.ZoneId.systemDefault());
+        }
         // Battery sizing service (heavy; manually triggered).
         PersistenceServiceRegistry localPersistenceRegistry = persistenceRegistry;
         if (localPersistenceRegistry != null) {
