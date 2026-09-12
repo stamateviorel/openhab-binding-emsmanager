@@ -102,13 +102,32 @@ class EnergyFlowCardTest {
         assertEquals(1, count(chart, "oh-aggregate-series"), "the boiler has a counter, the car does not");
     }
 
+    /**
+     * A chart page renders completely blank - silently - as soon as it has a second grid or a second value axis.
+     * This tab shipped empty for a week because of it, so the shape is the test.
+     */
     @Test
-    void thePowerChartGetsABatteryLevelPanelWhenTheSiteHasOne() {
-        EnergyUiProvider with = siteWith(Set.of("Grid_load", "Solar_load", "Battery_percentage"), bridgeAndMeters(),
-                links());
-        assertEquals(2, count(page(with, "emsmanager_energy_charts"), "oh-chart-grid"));
-        EnergyUiProvider without = siteWith(Set.of("Grid_load", "Solar_load"), bridgeAndMeters(), links());
-        assertEquals(1, count(page(without, "emsmanager_energy_charts"), "oh-chart-grid"));
+    void aChartPageKeepsToOneGridAndOneValueAxis() {
+        EnergyUiProvider p = siteWith(
+                Set.of("Grid_load", "Solar_load", "Battery_percentage", "House_load_sum", "EMS_DM_Boiler_kWh"),
+                bridgeAndMeters(), links());
+        for (String uid : List.of("emsmanager_energy_charts", "emsmanager_energy_circuits")) {
+            RootUIComponent page = page(p, uid);
+            assertNotNull(page, uid);
+            assertEquals(1, count(page, "oh-chart-grid"), uid + " must have exactly one grid");
+            assertEquals(1, count(page, "oh-value-axis"), uid + " must have exactly one value axis");
+        }
+    }
+
+    /** A dataZoom on a category axis blanks the chart the same silent way. */
+    @Test
+    void theCategoryAxisChartHasNoDataZoom() {
+        EnergyUiProvider p = siteWith(Set.of("Grid_load", "Solar_load", "EMS_DM_Boiler_kWh", "EMS_DM_Boiler_W"),
+                bridgeAndMeters(), links());
+        RootUIComponent circuits = page(p, "emsmanager_energy_circuits");
+        assertNotNull(circuits);
+        assertEquals(1, count(circuits, "oh-category-axis"));
+        assertEquals(0, count(circuits, "oh-chart-datazoom"), "a category axis has no range to zoom");
     }
 
     private static @Nullable UIComponent find(@Nullable UIComponent c, String type) {

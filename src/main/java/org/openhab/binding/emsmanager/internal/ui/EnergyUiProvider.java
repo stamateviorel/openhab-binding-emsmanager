@@ -899,24 +899,14 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         page.updateTimestamp();
 
         org.openhab.binding.emsmanager.internal.config.EmsBridgeConfig bridge = site.bridge();
-        boolean soc = bridge != null && has(bridge.batteryPercentageItem);
 
-        List<UIComponent> grids = page.addSlot("grid");
-        grids.add(chartGrid("10%", soc ? "52%" : "72%"));
-        if (soc) {
-            grids.add(chartGrid("72%", "16%"));
-        }
-        List<UIComponent> xAxes = page.addSlot("xAxis");
-        List<UIComponent> yAxes = page.addSlot("yAxis");
-        xAxes.add(timeAxis(0));
-        yAxes.add(valueAxis(0, "W"));
-        if (soc) {
-            xAxes.add(timeAxis(1));
-            UIComponent pct = valueAxis(1, "%");
-            pct.addConfig("min", Integer.valueOf(0));
-            pct.addConfig("max", Integer.valueOf(100));
-            yAxes.add(pct);
-        }
+        // ONE grid and ONE value axis. A chart page renders completely blank - no axes, no series and
+        // nothing in the console - as soon as it is given a second grid OR a second y-axis, which is
+        // how this whole tab shipped empty. The battery's percentage therefore does not belong here;
+        // it is a dial on the Now page, where a percentage reads better anyway.
+        page.addSlot("grid").add(chartGrid("10%", "68%"));
+        page.addSlot("xAxis").add(timeAxis(0));
+        page.addSlot("yAxis").add(valueAxis(0, "W"));
 
         List<UIComponent> series = page.addSlot("series");
         if (has(ITEM_FORECAST_SERIES)) {
@@ -950,13 +940,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 }
             }
         }
-        if (soc) {
-            UIComponent level = powerLine("Battery level", bridge.batteryPercentageItem, EnergyFlowCard.BATTERY, false,
-                    true, 1);
-            level.addConfig("smooth", Boolean.FALSE);
-            series.add(level);
-        }
-        chartControls(page, soc ? 2 : 1, true);
+        chartControls(page, 1, true);
         return page;
     }
 
@@ -1107,7 +1091,6 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         tooltip.addConfig("trigger", "axis");
         // kept inside the chart, or a phone shows half a tooltip off the screen
         tooltip.addConfig("confine", Boolean.TRUE);
-        tooltip.addConfig("axisPointer", java.util.Map.of("type", "cross"));
         page.addSlot("tooltip").add(tooltip);
         if (!zoomable) {
             return;
