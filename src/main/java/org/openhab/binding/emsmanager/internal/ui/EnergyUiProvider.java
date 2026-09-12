@@ -169,6 +169,9 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_LEDGER_LABEL = "EMS_Ledger_Label";
     private static final String I_LEDGER_ROWS = "EMS_Ledger_Rows_JSON";
     private static final String I_LEDGER_COLS = "EMS_Ledger_Cols_JSON";
+    private static final String I_JOURNAL_FILTER = "EMS_Journal_Filter";
+    private static final String I_JOURNAL_LABEL = "EMS_Journal_Label";
+    private static final String I_JOURNAL_ROWS = "EMS_Journal_Rows_JSON";
     private static final String I_BROWSE_SCALE = "EMS_Browse_Scale";
     private static final String I_BROWSE_BACK = "EMS_Browse_Back";
     private static final String I_BROWSE_LABEL = "EMS_Browse_Label";
@@ -378,11 +381,23 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
 
         if (has(I_LEDGER_ROWS)) {
             root.add(cardRow(ledgerQueryCard()));
+            // a visible expression, not a display one: Framework7's own display-flex utility carries
+            // !important and wins any style the column sets
+            String ledgerViews = "=items." + I_LEDGER_VIEW + ".state!=='actions'";
             UIComponent totals = ledgerTotals();
             if (totals != null) {
-                root.add(item(totals, "full"));
+                UIComponent cell = item(totals, "full");
+                cell.addConfig("visible", ledgerViews);
+                root.add(cell);
             }
-            root.add(cardRow(ledgerTableCard()));
+            UIComponent table = cardRow(ledgerTableCard());
+            table.addConfig("visible", ledgerViews);
+            root.add(table);
+            if (has(I_JOURNAL_ROWS)) {
+                UIComponent actions = cardRow(journalCard());
+                actions.addConfig("visible", "=items." + I_LEDGER_VIEW + ".state==='actions'");
+                root.add(actions);
+            }
         } else {
             UIComponent browser = browserCard();
             if (browser != null) {
@@ -403,16 +418,17 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         List<UIComponent> slot = body.addSlot("default");
 
         UIComponent title = new UIComponent("Label");
-        title.addConfig("text", "=items." + I_LEDGER_LABEL + ".state");
+        title.addConfig("text", "=items." + I_LEDGER_VIEW + ".state==='actions'?items." + I_JOURNAL_LABEL
+                + ".state:items." + I_LEDGER_LABEL + ".state");
         title.addConfig("style", java.util.Map.of("display", "block", "font-size", "16px", "font-weight", "700"));
         slot.add(title);
 
-        slot.add(choiceRow(I_LEDGER_VIEW,
-                new String[][] { { "days", "Days" }, { "months", "Months" }, { "circuits", "Circuits" } }));
+        slot.add(choiceRow(I_LEDGER_VIEW, new String[][] { { "days", "Days" }, { "months", "Months" },
+                { "circuits", "Circuits" }, { "actions", "Actions" } }));
 
         UIComponent when = new UIComponent("div");
         when.addConfig("style", java.util.Map.of("gap", "8px", "align-items", "center", "flex-wrap", "wrap", "display",
-                "=items." + I_LEDGER_VIEW + ".state==='months'?'none':'flex'"));
+                "=['months','actions'].indexOf(items." + I_LEDGER_VIEW + ".state)>=0?'none':'flex'"));
         List<UIComponent> whenSlot = when.addSlot("default");
         whenSlot.add(segmented(I_LEDGER_SPAN,
                 new String[][] { { "month", "Month" }, { "year", "Year" }, { "all", "All" } }));
@@ -431,6 +447,15 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                 java.util.Map.of("display", "=(items." + I_LEDGER_BACK + ".numericState||0)>0?'inline-flex':'none'"));
         whenSlot.add(now);
         slot.add(when);
+
+        if (has(I_JOURNAL_FILTER)) {
+            UIComponent filter = new UIComponent("div");
+            filter.addConfig("style", java.util.Map.of("gap", "8px", "align-items", "center", "display",
+                    "=items." + I_LEDGER_VIEW + ".state==='actions'?'flex':'none'"));
+            filter.addSlot("default").add(segmented(I_JOURNAL_FILTER,
+                    new String[][] { { "all", "All" }, { "writes", "Sent" }, { "blocked", "Held" } }));
+            slot.add(filter);
+        }
 
         card.addSlot("default").add(body);
         return card;
@@ -617,6 +642,66 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                     java.util.Map.of("visibility", "=" + rowCols + "[" + (i + 1) + "]?'visible':'hidden'"));
             cells.add(value);
         }
+        return row;
+    }
+
+    /**
+     * The EMS's own actions, newest first.
+     * <p>
+     * A log line per dispatch rather than a table of figures, because what matters about an action is
+     * a sentence — what changed, who asked for it and why — and none of that is a number.
+     */
+    private UIComponent journalCard() {
+        UIComponent card = new UIComponent("f7-card");
+        List<UIComponent> slot = card.addSlot("default");
+
+        UIComponent repeater = new UIComponent("oh-repeater");
+        repeater.addConfig("sourceType", "array");
+        repeater.addConfig("for", "act");
+        repeater.addConfig("fragment", Boolean.TRUE);
+        repeater.addConfig("in", "=JSON.parse(items." + I_JOURNAL_ROWS + ".state&&items." + I_JOURNAL_ROWS
+                + ".state.charAt(0)==='['?items." + I_JOURNAL_ROWS + ".state:'[]')");
+        repeater.addSlot("default").add(journalRow());
+        slot.add(repeater);
+
+        UIComponent empty = new UIComponent("Label");
+        empty.addConfig("text", "The EMS has not commanded anything yet.");
+        empty.addConfig("style",
+                java.util.Map.of("display", "=(items." + I_JOURNAL_ROWS + ".state||'[]')==='[]'?'block':'none'",
+                        "padding", "14px", "font-size", "12px", "opacity", "0.6"));
+        slot.add(empty);
+        return card;
+    }
+
+    /** One dispatched action, bound to the repeater's loop variable. */
+    private UIComponent journalRow() {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("class", List.of("journal-row"));
+        List<UIComponent> cells = row.addSlot("default");
+
+        UIComponent time = new UIComponent("Label");
+        time.addConfig("text", "=loop.act.t");
+        time.addConfig("class", List.of("journal-time"));
+        cells.add(time);
+
+        UIComponent main = new UIComponent("div");
+        main.addConfig("class", List.of("journal-main"));
+        List<UIComponent> mainSlot = main.addSlot("default");
+        UIComponent what = new UIComponent("Label");
+        what.addConfig("text", "=loop.act.l");
+        what.addConfig("class", List.of("journal-what"));
+        mainSlot.add(what);
+        UIComponent why = new UIComponent("Label");
+        why.addConfig("text", "=loop.act.d+' · '+loop.act.s");
+        why.addConfig("class", List.of("journal-why"));
+        mainSlot.add(why);
+        cells.add(main);
+
+        UIComponent mark = new UIComponent("Label");
+        mark.addConfig("text", "=loop.act.o");
+        mark.addConfig("class", List.of("journal-mark"));
+        mark.addConfig("style", java.util.Map.of("background", "=loop.act.c"));
+        cells.add(mark);
         return row;
     }
 
@@ -1320,6 +1405,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             .ledger-sub{font-size:10px;opacity:.55}
             .ledger-bar{height:3px;border-radius:2px;background:#f0a83c;margin-top:3px;transition:width .5s ease}
             @media(max-width:520px){.ledger-head,.ledger-row{grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,1fr))}.ledger-hide-s{display:none}}
+            .journal-row{display:flex;gap:10px;align-items:flex-start;padding:9px 14px;border-bottom:1px solid rgba(127,127,127,.10);font-size:13px}
+            .journal-row:last-child{border-bottom:none}
+            .journal-time{flex:0 0 42px;font-size:12px;opacity:.55;font-variant-numeric:tabular-nums;padding-top:1px}
+            .journal-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+            .journal-what{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .journal-why{font-size:10px;opacity:.6;overflow:hidden;text-overflow:ellipsis}
+            .journal-mark{flex:0 0 auto;font-size:10px;font-weight:600;letter-spacing:.03em;padding:2px 7px;border-radius:9px;white-space:nowrap;color:#fff}
             .figure .item-inner{padding:0;min-height:0}
             .figure .item-inner:after{display:none}
             .accordion-list .item-title{font-weight:600;font-size:14px}

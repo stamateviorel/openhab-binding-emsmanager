@@ -21,7 +21,7 @@ import org.openhab.binding.emsmanager.internal.core.SetpointRequest;
  * battery, or a per-EVSE power item) as a typed read source.
  *
  * <p>
- * Implements AssetHandler.apply as a no-op since meters aren't controllable;
+ * Implements the write contract as a refusal since meters aren't controllable;
  * they are read-only inputs to the EnergyContext builder.
  *
  * @author Stamate Viorel - Initial contribution
@@ -47,9 +47,9 @@ public final class MeterRefHandler implements AssetHandler {
     }
 
     @Override
-    public boolean apply(SetpointRequest req, EnergyContext ctx, boolean shadow) {
+    public AssetWriteOutcome write(SetpointRequest req, EnergyContext ctx, boolean shadow) {
         // Meters are not controllable. Any request hitting a meter-ref is
         // a programming error; phase 1+ should reject in the scheduler.
-        return false;
+        return AssetWriteOutcome.REFUSED;
     }
 }

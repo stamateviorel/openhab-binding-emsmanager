@@ -132,6 +132,8 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private @Nullable ScheduledFuture<?> debouncedTickFuture;
     private @Nullable ItemWatch itemWatch;
     private org.openhab.binding.emsmanager.internal.ledger.@Nullable LedgerPublisher ledger;
+    private org.openhab.binding.emsmanager.internal.ledger.@Nullable ActionJournal journal;
+    private org.openhab.binding.emsmanager.internal.ledger.@Nullable JournalPublisher journalPublisher;
     private volatile CapacityTariffTracker.@Nullable Persisted savedPeak;
     // Guards tick() against the periodic and debounced invocations overlapping —
     // controller state (EWMA, capacity tracker, dedupe) is not re-entrant.
@@ -333,6 +335,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         // be a tick stale for ever. This is called at the end of the tick instead.
         this.ledger = new org.openhab.binding.emsmanager.internal.ledger.LedgerPublisher(eventPublisher, itemRegistry,
                 thingRegistry, longTermStats, java.time.ZoneId.systemDefault());
+        org.openhab.binding.emsmanager.internal.ledger.ActionJournal actionJournal = new org.openhab.binding.emsmanager.internal.ledger.ActionJournal();
+        this.journal = actionJournal;
+        this.journalPublisher = new org.openhab.binding.emsmanager.internal.ledger.JournalPublisher(eventPublisher,
+                itemRegistry, actionJournal, java.time.ZoneId.systemDefault());
         // Battery sizing service (heavy; manually triggered).
         PersistenceServiceRegistry localPersistenceRegistry = persistenceRegistry;
         if (localPersistenceRegistry != null) {
@@ -542,6 +548,12 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         capacityTracker = null;
         optimizer = null;
         ledger = null;
+        org.openhab.binding.emsmanager.internal.ledger.ActionJournal openJournal = journal;
+        if (openJournal != null) {
+            openJournal.flush();
+        }
+        journal = null;
+        journalPublisher = null;
         super.dispose();
         logger.info("EMS Manager bridge disposed.");
     }
@@ -1025,15 +1037,23 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
                 }
                 boolean controllerShadow = isControllerShadow(req.controllerName());
                 boolean effectiveShadow = shadowMode || controllerShadow;
+                org.openhab.binding.emsmanager.internal.asset.AssetWriteOutcome outcome;
                 try {
-                    if (handler.apply(req, ctx, effectiveShadow)) {
-                        dispatched++;
-                    } else if (effectiveShadow) {
-                        shadowSkipped++;
-                    }
+                    outcome = handler.write(req, ctx, effectiveShadow);
                 } catch (Throwable t) {
+                    outcome = org.openhab.binding.emsmanager.internal.asset.AssetWriteOutcome.FAILED;
                     logger.warn("Asset handler '{}' threw on request from '{}'", req.assetId(), req.controllerName(),
                             t);
+                }
+                if (outcome == org.openhab.binding.emsmanager.internal.asset.AssetWriteOutcome.WROTE) {
+                    dispatched++;
+                } else if (outcome == org.openhab.binding.emsmanager.internal.asset.AssetWriteOutcome.SHADOWED) {
+                    shadowSkipped++;
+                }
+                org.openhab.binding.emsmanager.internal.ledger.ActionJournal openJournal = journal;
+                if (openJournal != null) {
+                    openJournal.record(req.assetId(), req.kind().name(), spoken(req), req.controllerName(),
+                            req.reason(), outcome);
                 }
             }
 
@@ -1045,6 +1065,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             org.openhab.binding.emsmanager.internal.ledger.LedgerPublisher ledgerPublisher = ledger;
             if (ledgerPublisher != null) {
                 ledgerPublisher.publish(java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
+            }
+            org.openhab.binding.emsmanager.internal.ledger.JournalPublisher journalPub = journalPublisher;
+            if (journalPub != null) {
+                journalPub.publish(java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
             }
 
             if (n == 1 || n % 12 == 0) {
@@ -1282,5 +1306,16 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
 
     private static String fmt(double d) {
         return Double.isNaN(d) ? "NaN" : String.format("%.0f", d);
+    }
+
+    /** A request's value as the journal should read it back: the unit belongs to the kind. */
+    static String spoken(SetpointRequest req) {
+        return switch (req.kind()) {
+            case ONOFF -> req.value() >= 0.5 ? "ON" : "OFF";
+            case AMPS -> Math.round(req.value()) + " A";
+            case WATTS_BATTERY -> Math.round(req.value()) + " W";
+            case PAUSE -> req.value() >= 0.5 ? "paused" : "resumed";
+            case CHARGE_START -> "start charging";
+        };
     }
 }

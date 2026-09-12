@@ -54,6 +54,30 @@ class BoilerAssetHandlerTest {
         verify(publisher, times(1)).post(any());
     }
 
+    /**
+     * The four ways a write does not happen used to be one {@code false}, which is why the site had a
+     * dispatch log and no dispatch history.
+     */
+    @Test
+    void eachWayOfNotWritingSaysWhichOneItWas() {
+        assertEquals(AssetWriteOutcome.UNCHANGED, handler(300_000L).write(ask(true, "a"), boiler(true), false),
+                "already on, so nobody is asking for anything");
+
+        BoilerAssetHandler dwelling = handler(300_000L);
+        assertEquals(AssetWriteOutcome.WROTE, dwelling.write(ask(true, "a"), boiler(false), false));
+        assertEquals(AssetWriteOutcome.HELD, dwelling.write(ask(false, "b"), boiler(true), false),
+                "wanted, and blocked by the dwell rather than by the state");
+
+        assertEquals(AssetWriteOutcome.REFUSED,
+                handler(0L).write(new SetpointRequest("boiler", SetpointRequest.Kind.AMPS, 16, 100, "c", "wrong kind"),
+                        boiler(true), false));
+        assertEquals(AssetWriteOutcome.SHADOWED, handler(0L).write(ask(true, "d"), boiler(false), true));
+    }
+
+    private static BoilerAssetHandler handler(long dwellMs) {
+        return new BoilerAssetHandler(mock(EventPublisher.class), "Boiler", dwellMs);
+    }
+
     @Test
     void aZeroDwellKeepsTheOldBehaviour() {
         EventPublisher publisher = mock(EventPublisher.class);

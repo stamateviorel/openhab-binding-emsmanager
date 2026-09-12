@@ -68,6 +68,9 @@ public final class LedgerPublisher {
     private static final String COST = "EMS_Cost_EUR";
     private static final String SAVED = "EMS_Savings_EUR";
 
+    private static final String[] TOTAL_ITEMS = { "EMS_Ledger_Total_SelfConsumption_kWh", "EMS_Ledger_Total_Supply_kWh",
+            "EMS_Ledger_Total_FeedIn_kWh", "EMS_Ledger_Total_Cost_EUR", "EMS_Ledger_Total_Savings_EUR" };
+
     private final EventPublisher eventPublisher;
     private final ItemRegistry itemRegistry;
     private final @Nullable ThingRegistry thingRegistry;
@@ -96,6 +99,17 @@ public final class LedgerPublisher {
             seedNumber("EMS_Ledger_Back", 0);
             int back = (int) readNumber("EMS_Ledger_Back");
             String sort = readText("EMS_Ledger_Sort", "");
+
+            if ("actions".equals(view)) {
+                // the journal owns this view; leaving a stale day table published behind it would put
+                // two answers in the item registry for the same question
+                publishText("EMS_Ledger_Cols_JSON", "[]");
+                publishText("EMS_Ledger_Rows_JSON", "[]");
+                for (String item : TOTAL_ITEMS) {
+                    publishUndef(item);
+                }
+                return;
+            }
 
             Window window = Window.of(span, Math.max(0, back), today);
             List<Row> rows = switch (view) {
@@ -306,8 +320,7 @@ public final class LedgerPublisher {
                 totals[i] += r.figures()[i];
             }
         }
-        String[] items = { "EMS_Ledger_Total_SelfConsumption_kWh", "EMS_Ledger_Total_Supply_kWh",
-                "EMS_Ledger_Total_FeedIn_kWh", "EMS_Ledger_Total_Cost_EUR", "EMS_Ledger_Total_Savings_EUR" };
+        String[] items = TOTAL_ITEMS;
         for (int i = 0; i < items.length; i++) {
             // a circuits view has no grid/sold/cost/saved of its own, and a zero there would be a lie
             if ("circuits".equals(view) && i > 0) {

@@ -60,10 +60,10 @@ public final class BoilerAssetHandler implements AssetHandler {
     }
 
     @Override
-    public boolean apply(SetpointRequest req, EnergyContext ctx, boolean shadow) {
+    public AssetWriteOutcome write(SetpointRequest req, EnergyContext ctx, boolean shadow) {
         if (req.kind() != SetpointRequest.Kind.ONOFF) {
             LOGGER.warn("BoilerAssetHandler: unsupported kind {} from {}", req.kind(), req.controllerName());
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
         boolean wantOn = req.value() >= 0.5;
         String desired = wantOn ? "ON" : "OFF";
@@ -71,7 +71,7 @@ public final class BoilerAssetHandler implements AssetHandler {
         long now = System.currentTimeMillis();
 
         if (!dedupe.shouldSend(boilerItemName, desired, current, now)) {
-            return false;
+            return AssetWriteOutcome.UNCHANGED;
         }
         if (!dwell.mayLeave(current, now)) {
             if (!holdLogged) {
@@ -80,19 +80,19 @@ public final class BoilerAssetHandler implements AssetHandler {
                         current, dwell.remainingSeconds(current, now), desired, req.controllerName(), req.reason());
                 holdLogged = true;
             }
-            return false;
+            return AssetWriteOutcome.HELD;
         }
         holdLogged = false;
         if (shadow) {
             LOGGER.info("[SHADOW] would write {} ← {} ({}: {})", boilerItemName, desired, req.controllerName(),
                     req.reason());
-            return false;
+            return AssetWriteOutcome.SHADOWED;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(boilerItemName, OnOffType.from(wantOn)));
         dedupe.markSent(boilerItemName, desired, now);
         dwell.switched(desired, now);
         LOGGER.info("BoilerAssetHandler: sent {} ← {} ({}: {})", boilerItemName, desired, req.controllerName(),
                 req.reason());
-        return true;
+        return AssetWriteOutcome.WROTE;
     }
 }

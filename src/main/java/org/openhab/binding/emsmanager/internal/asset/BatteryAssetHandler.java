@@ -94,17 +94,17 @@ public final class BatteryAssetHandler implements AssetHandler {
     }
 
     @Override
-    public boolean apply(SetpointRequest req, EnergyContext ctx, boolean shadow) {
+    public AssetWriteOutcome write(SetpointRequest req, EnergyContext ctx, boolean shadow) {
         if (req.kind() != SetpointRequest.Kind.WATTS_BATTERY) {
             LOGGER.warn("BatteryAssetHandler: unsupported kind {} from {}", req.kind(), req.controllerName());
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
 
         switch (config.controlMode) {
             case "auto":
-                return write((int) Math.round(req.value()), req, shadow);
+                return writeSetpoint((int) Math.round(req.value()), req, shadow);
             case "fixed":
-                return write((int) Math.round(config.fixedSetpointW), req, shadow);
+                return writeSetpoint((int) Math.round(config.fixedSetpointW), req, shadow);
             case "readonly":
             default:
                 if (shadow) {
@@ -114,17 +114,17 @@ public final class BatteryAssetHandler implements AssetHandler {
                     LOGGER.debug("[NO-OP][battery:{}] {} → would set {} W ({}) — controlMode rejects writes",
                             config.controlMode, req.controllerName(), Math.round(req.value()), req.reason());
                 }
-                return false;
+                return shadow ? AssetWriteOutcome.SHADOWED : AssetWriteOutcome.REFUSED;
         }
     }
 
-    private boolean write(int requestedW, SetpointRequest req, boolean shadow) {
+    private AssetWriteOutcome writeSetpoint(int requestedW, SetpointRequest req, boolean shadow) {
         @Nullable
         String item = config.setpointItemName;
         if (item == null || item.isBlank()) {
             LOGGER.warn("BatteryAssetHandler: controlMode={} but setpointItemName not configured — rejecting write",
                     config.controlMode);
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
         int target = Math.max(config.minSetpointW, Math.min(config.maxSetpointW, requestedW));
         String desired = String.valueOf(target);
@@ -133,19 +133,19 @@ public final class BatteryAssetHandler implements AssetHandler {
         String current = fromItem != null ? fromItem : (previous != null ? previous : "UNKNOWN");
         long now = System.currentTimeMillis();
         if (!dedupe.shouldSend(item, desired, current, now)) {
-            return false;
+            return AssetWriteOutcome.UNCHANGED;
         }
         String why = "fixed".equals(config.controlMode) ? "fixed setpoint" : req.reason();
         if (shadow) {
             LOGGER.info("[SHADOW][battery:{}] would write {} ← {} W ({}: {})", config.controlMode, item, target,
                     req.controllerName(), why);
-            return false;
+            return AssetWriteOutcome.SHADOWED;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(item, new DecimalType(target)));
         dedupe.markSent(item, desired, now);
         lastSent = desired;
         LOGGER.info("BatteryAssetHandler: sent {} ← {} W ({}: {})", item, target, req.controllerName(), why);
-        return true;
+        return AssetWriteOutcome.WROTE;
     }
 
     /** The setpoint item's numeric state as an integer string, or null when there is no registry / no number. */

@@ -94,7 +94,7 @@ public final class ChargerAssetHandler implements AssetHandler {
     }
 
     @Override
-    public boolean apply(SetpointRequest req, EnergyContext ctx, boolean shadow) {
+    public AssetWriteOutcome write(SetpointRequest req, EnergyContext ctx, boolean shadow) {
         CarSnapshot car = ctx.cars().get(carKey);
         switch (req.kind()) {
             case PAUSE:
@@ -106,38 +106,38 @@ public final class ChargerAssetHandler implements AssetHandler {
             default:
                 LOGGER.warn("ChargerAssetHandler[{}]: unsupported kind {} from {}", carKey, req.kind(),
                         req.controllerName());
-                return false;
+                return AssetWriteOutcome.REFUSED;
         }
     }
 
-    private boolean applyPause(SetpointRequest req, @org.eclipse.jdt.annotation.Nullable CarSnapshot car,
+    private AssetWriteOutcome applyPause(SetpointRequest req, @org.eclipse.jdt.annotation.Nullable CarSnapshot car,
             boolean shadow) {
         if (pauseItemName.isBlank()) {
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
         boolean wantPaused = req.value() >= 0.5;
         String desired = wantPaused ? "ON" : "OFF";
         String current = (car != null && car.paused()) ? "ON" : "OFF";
         long now = System.currentTimeMillis();
         if (!dedupe.shouldSend(pauseItemName, desired, current, now)) {
-            return false;
+            return AssetWriteOutcome.UNCHANGED;
         }
         if (shadow) {
             LOGGER.info("[SHADOW] would write {} ← {} ({}: {})", pauseItemName, desired, req.controllerName(),
                     req.reason());
-            return false;
+            return AssetWriteOutcome.SHADOWED;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(pauseItemName, OnOffType.from(wantPaused)));
         dedupe.markSent(pauseItemName, desired, now);
         LOGGER.info("ChargerAssetHandler[{}]: sent {} ← {} ({}: {})", carKey, pauseItemName, desired,
                 req.controllerName(), req.reason());
-        return true;
+        return AssetWriteOutcome.WROTE;
     }
 
-    private boolean applyAmps(SetpointRequest req, @org.eclipse.jdt.annotation.Nullable CarSnapshot car,
+    private AssetWriteOutcome applyAmps(SetpointRequest req, @org.eclipse.jdt.annotation.Nullable CarSnapshot car,
             boolean shadow) {
         if (currentLimitItemName.isBlank()) {
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
         if (Double.isNaN(req.value())) {
             // Math.round(NaN) is 0, which would read as "pause" at the charger.
@@ -146,7 +146,7 @@ public final class ChargerAssetHandler implements AssetHandler {
                 LOGGER.warn("ChargerAssetHandler[{}]: {} asked for NaN A — dropped (logged once)", carKey,
                         req.controllerName());
             }
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
         int requested = (int) Math.round(req.value());
         int amps = clampAmps(requested, Math.min(breakerLimitA, evMaxChargeCurrentA));
@@ -161,18 +161,18 @@ public final class ChargerAssetHandler implements AssetHandler {
         String current = (car != null) ? String.valueOf((int) Math.round(car.currentLimitA())) : "0";
         long now = System.currentTimeMillis();
         if (!dedupe.shouldSend(currentLimitItemName, desired, current, now)) {
-            return false;
+            return AssetWriteOutcome.UNCHANGED;
         }
         if (shadow) {
             LOGGER.info("[SHADOW] would write {} ← {} A ({}: {})", currentLimitItemName, amps, req.controllerName(),
                     req.reason());
-            return false;
+            return AssetWriteOutcome.SHADOWED;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(currentLimitItemName, new DecimalType(amps)));
         dedupe.markSent(currentLimitItemName, desired, now);
         LOGGER.info("ChargerAssetHandler[{}]: sent {} ← {} A ({}: {})", carKey, currentLimitItemName, amps,
                 req.controllerName(), req.reason());
-        return true;
+        return AssetWriteOutcome.WROTE;
     }
 
     /** 0 means pause; anything else is at least the IEC 61851 minimum and at most {@code capA}. */
@@ -183,10 +183,10 @@ public final class ChargerAssetHandler implements AssetHandler {
         return Math.max(CapabilityCheck.MIN_CHARGING_CURRENT_A, Math.min(capA, requested));
     }
 
-    private boolean applyChargeStart(SetpointRequest req, @org.eclipse.jdt.annotation.Nullable CarSnapshot car,
-            boolean shadow) {
+    private AssetWriteOutcome applyChargeStart(SetpointRequest req,
+            @org.eclipse.jdt.annotation.Nullable CarSnapshot car, boolean shadow) {
         if (chargingItemName.isBlank()) {
-            return false;
+            return AssetWriteOutcome.REFUSED;
         }
         // We use this item's last-sent state as the dedupe; the OCPP binding sets
         // it to OFF after a Charging cycle ends. autoupdate=false → state lags.
@@ -196,16 +196,16 @@ public final class ChargerAssetHandler implements AssetHandler {
         String current = "UNKNOWN";
         long now = System.currentTimeMillis();
         if (!dedupe.shouldSend(chargingItemName, desired, current, now)) {
-            return false;
+            return AssetWriteOutcome.UNCHANGED;
         }
         if (shadow) {
             LOGGER.info("[SHADOW] would write {} ← ON ({}: {})", chargingItemName, req.controllerName(), req.reason());
-            return false;
+            return AssetWriteOutcome.SHADOWED;
         }
         eventPublisher.post(ItemEventFactory.createCommandEvent(chargingItemName, OnOffType.ON));
         dedupe.markSent(chargingItemName, desired, now);
         LOGGER.info("ChargerAssetHandler[{}]: sent {} ← ON ({}: {})", carKey, chargingItemName, req.controllerName(),
                 req.reason());
-        return true;
+        return AssetWriteOutcome.WROTE;
     }
 }

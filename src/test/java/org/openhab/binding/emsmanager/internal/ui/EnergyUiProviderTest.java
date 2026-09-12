@@ -200,6 +200,43 @@ class EnergyUiProviderTest {
         assertTrue(source.contains("'[]'"), "the source must fall back to an empty array: " + source);
     }
 
+    /**
+     * The actions view is the only part of the Past tab not made of kWh, so it gets its own table
+     * rather than being squeezed into the numeric one.
+     */
+    @Test
+    public void theActionsViewIsFedFromTheJournalAndNotFromTheLedger() {
+        RootUIComponent past = page(providerWith(Set.of("EMS_Ledger_Rows_JSON", "EMS_Ledger_Cols_JSON",
+                "EMS_Ledger_View", "EMS_Ledger_Span", "EMS_Ledger_Back", "EMS_Ledger_Label", "EMS_Journal_Rows_JSON",
+                "EMS_Journal_Label", "EMS_Journal_Filter")), "emsmanager_energy_past");
+        assertNotNull(past);
+
+        List<UIComponent> repeaters = new ArrayList<>();
+        collectOfType(past, "oh-repeater", repeaters);
+        assertEquals(2, repeaters.size(), "the figures table and the actions table");
+        String journal = repeaters.stream().map(r -> String.valueOf(r.getConfig().get("in")))
+                .filter(in -> in.contains("EMS_Journal_Rows_JSON")).findFirst().orElse("");
+        assertTrue(journal.contains("'[]'"), "a repeater handed anything but an array renders nothing: " + journal);
+    }
+
+    /**
+     * A hidden card has to be hidden by {@code visible}: a display expression inside style loses to
+     * Framework7's own display-flex utility class, which carries !important.
+     */
+    @Test
+    public void theTwoTablesNeverShowAtOnce() {
+        RootUIComponent past = page(providerWith(Set.of("EMS_Ledger_Rows_JSON", "EMS_Ledger_Cols_JSON",
+                "EMS_Ledger_View", "EMS_Ledger_Span", "EMS_Ledger_Back", "EMS_Ledger_Label", "EMS_Journal_Rows_JSON",
+                "EMS_Journal_Label", "EMS_Journal_Filter")), "emsmanager_energy_past");
+        assertNotNull(past);
+
+        List<UIComponent> columns = new ArrayList<>();
+        collectOfType(past, "oh-grid-col", columns);
+        long gated = columns.stream().map(c -> String.valueOf(c.getConfig().get("visible")))
+                .filter(v -> v.contains("EMS_Ledger_View")).count();
+        assertTrue(gated >= 2, "the ledger table and the journal table are each gated on the view");
+    }
+
     @Test
     public void aSiteWithNoMetersIsToldSoRatherThanShownAnEmptyPage() {
         RootUIComponent history = page(providerWith(Set.of()), "emsmanager_energy_past");

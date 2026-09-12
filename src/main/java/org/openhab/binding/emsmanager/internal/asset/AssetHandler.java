@@ -30,13 +30,21 @@ public interface AssetHandler {
     String assetId();
 
     /**
-     * Apply a setpoint request. Returns true iff a real write was issued;
-     * false if dedup skipped, capability check refused, or {@code shadow}
-     * is on. Implementations MUST honour {@code shadow} = no real writes.
+     * Apply a setpoint request and say what became of it. Implementations MUST
+     * honour {@code shadow} = no real writes.
      *
      * @param req current request
      * @param ctx tick context (for capability checks)
      * @param shadow when true, the asset handler logs only — no writes
      */
-    boolean apply(SetpointRequest req, EnergyContext ctx, boolean shadow);
+    AssetWriteOutcome write(SetpointRequest req, EnergyContext ctx, boolean shadow);
+
+    /**
+     * Whether a real write was issued. Kept because most callers only need the
+     * yes/no, and because collapsing four distinct refusals into {@code false}
+     * is exactly what the journal exists to undo.
+     */
+    default boolean apply(SetpointRequest req, EnergyContext ctx, boolean shadow) {
+        return write(req, ctx, shadow) == AssetWriteOutcome.WROTE;
+    }
 }
