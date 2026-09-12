@@ -59,8 +59,12 @@ public final class JournalPublisher {
     private final ActionJournal journal;
     private final ZoneId zone;
 
+    /** A request nothing has repeated for this long is over, whatever it was. */
+    private static final long STANDING_TTL_MS = 10L * 60L * 1000L;
+
     private String lastRows = "";
     private String lastLabel = "";
+    private String lastStanding = "";
 
     public JournalPublisher(EventPublisher eventPublisher, ItemRegistry itemRegistry, ActionJournal journal,
             ZoneId zone) {
@@ -76,7 +80,7 @@ public final class JournalPublisher {
             List<ActionJournal.Entry> all = journal.entries();
             List<ActionJournal.Entry> kept = all.stream().filter(e -> keeps(filter, e.outcome)).toList();
             String rows = json(kept, today);
-            String label = label(kept.size(), all, filter);
+            String label = label(kept.size(), all, filter, journal.standing().size());
             // the page only redraws on a state change, and an unchanged table every five seconds is
             // an event-bus post nobody reads
             if (!rows.equals(lastRows)) {
@@ -88,6 +92,13 @@ public final class JournalPublisher {
                 lastLabel = label;
             }
             publishNumber("EMS_Journal_Count", all.size());
+
+            journal.expireStanding(STANDING_TTL_MS);
+            String now = standingJson(journal.standing(), today);
+            if (!now.equals(lastStanding)) {
+                publishText("EMS_Standing_Rows_JSON", now);
+                lastStanding = now;
+            }
         } catch (Throwable t) {
             LOGGER.debug("Journal publish failed: {}", t.toString());
         }
@@ -102,9 +113,12 @@ public final class JournalPublisher {
         };
     }
 
-    private String label(int shown, List<ActionJournal.Entry> all, String filter) {
+    private String label(int shown, List<ActionJournal.Entry> all, String filter, int standing) {
         if (all.isEmpty()) {
-            return "Nothing has been dispatched yet";
+            // "nothing dispatched" on its own reads as "the EMS is idle", which is a different thing
+            String asking = standing == 0 ? ""
+                    : " · " + standing + (standing == 1 ? " request standing" : " requests standing");
+            return "Nothing has changed yet" + asking;
         }
         ZonedDateTime oldest = ZonedDateTime.ofInstant(Instant.ofEpochMilli(all.get(all.size() - 1).firstAt), zone);
         String since = oldest.getDayOfMonth() + " " + oldest.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
@@ -175,6 +189,42 @@ public final class JournalPublisher {
             case FAILED -> "failed";
             default -> "no change";
         };
+    }
+
+    /**
+     * What each asset is being asked for right now.
+     *
+     * <p>
+     * The count deliberately does not reach the page. It climbs every five seconds, and a row that
+     * changes every five seconds is an event-bus post nobody reads; the time it has been standing says
+     * the same thing and holds still.
+     */
+    private String standingJson(List<ActionJournal.Entry> standing, LocalDate today) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (ActionJournal.Entry e : standing) {
+            if (!first) {
+                sb.append(',');
+            }
+            first = false;
+            ZonedDateTime at = ZonedDateTime.ofInstant(Instant.ofEpochMilli(e.firstAt), zone);
+            String when = at.toLocalDate().equals(today) ? at.format(CLOCK)
+                    : day(at.toLocalDate(), today) + " " + at.format(CLOCK);
+            sb.append("{\"k\":\"").append(escape(e.asset + e.what)).append("\",\"l\":\"").append(escape(headline(e)))
+                    .append("\",\"s\":\"").append(escape(e.controller + (e.reason.isBlank() ? "" : " · " + e.reason)))
+                    .append("\",\"o\":\"").append(escape(standingWord(e.outcome))).append("\",\"c\":\"")
+                    .append(colour(e.outcome)).append("\",\"t\":\"since ").append(escape(when)).append("\"}");
+        }
+        return sb.append(']').toString();
+    }
+
+    /**
+     * "Already there" is the one that matters here and the one the history drops: it is the difference
+     * between an EMS that has stopped asking and an EMS whose request is landing on an asset that is
+     * not moving.
+     */
+    private static String standingWord(AssetWriteOutcome outcome) {
+        return outcome == AssetWriteOutcome.UNCHANGED ? "already there" : outcomeWord(outcome);
     }
 
     private static String colour(AssetWriteOutcome outcome) {

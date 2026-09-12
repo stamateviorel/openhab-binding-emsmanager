@@ -172,6 +172,7 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_JOURNAL_FILTER = "EMS_Journal_Filter";
     private static final String I_JOURNAL_LABEL = "EMS_Journal_Label";
     private static final String I_JOURNAL_ROWS = "EMS_Journal_Rows_JSON";
+    private static final String I_STANDING_ROWS = "EMS_Standing_Rows_JSON";
     private static final String I_BROWSE_SCALE = "EMS_Browse_Scale";
     private static final String I_BROWSE_BACK = "EMS_Browse_Back";
     private static final String I_BROWSE_LABEL = "EMS_Browse_Label";
@@ -393,9 +394,15 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             UIComponent table = cardRow(ledgerTableCard());
             table.addConfig("visible", ledgerViews);
             root.add(table);
+            String actionsView = "=items." + I_LEDGER_VIEW + ".state==='actions'";
+            if (has(I_STANDING_ROWS)) {
+                UIComponent standing = cardRow(standingCard());
+                standing.addConfig("visible", actionsView);
+                root.add(standing);
+            }
             if (has(I_JOURNAL_ROWS)) {
                 UIComponent actions = cardRow(journalCard());
-                actions.addConfig("visible", "=items." + I_LEDGER_VIEW + ".state==='actions'");
+                actions.addConfig("visible", actionsView);
                 root.add(actions);
             }
         } else {
@@ -672,6 +679,68 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
                         "padding", "14px", "font-size", "12px", "opacity", "0.6"));
         slot.add(empty);
         return card;
+    }
+
+    /**
+     * What the EMS is asking for right now, whether or not anything changed.
+     * <p>
+     * The log below this only records changes, which is right for a history and goes silent exactly
+     * when a standing request is producing nothing — a discharge asked for every five seconds against
+     * a battery sitting at zero leaves no trace at all. This card is the part that does not go quiet.
+     */
+    private UIComponent standingCard() {
+        UIComponent card = new UIComponent("f7-card");
+        List<UIComponent> slot = card.addSlot("default");
+
+        UIComponent header = new UIComponent("div");
+        header.addConfig("class", List.of("card-header"));
+        UIComponent title = new UIComponent("Label");
+        title.addConfig("text", "Asking for right now");
+        header.addSlot("default").add(title);
+        slot.add(header);
+
+        UIComponent repeater = new UIComponent("oh-repeater");
+        repeater.addConfig("sourceType", "array");
+        repeater.addConfig("for", "req");
+        repeater.addConfig("fragment", Boolean.TRUE);
+        repeater.addConfig("in", "=JSON.parse(items." + I_STANDING_ROWS + ".state&&items." + I_STANDING_ROWS
+                + ".state.charAt(0)==='['?items." + I_STANDING_ROWS + ".state:'[]')");
+        repeater.addSlot("default").add(standingRow());
+        slot.add(repeater);
+
+        UIComponent empty = new UIComponent("Label");
+        empty.addConfig("text", "The EMS is not commanding anything at the moment.");
+        empty.addConfig("style",
+                java.util.Map.of("display", "=(items." + I_STANDING_ROWS + ".state||'[]')==='[]'?'block':'none'",
+                        "padding", "4px 14px 14px 14px", "font-size", "12px", "opacity", "0.6"));
+        slot.add(empty);
+        return card;
+    }
+
+    private UIComponent standingRow() {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("class", List.of("journal-row"));
+        List<UIComponent> cells = row.addSlot("default");
+
+        UIComponent main = new UIComponent("div");
+        main.addConfig("class", List.of("journal-main"));
+        List<UIComponent> mainSlot = main.addSlot("default");
+        UIComponent what = new UIComponent("Label");
+        what.addConfig("text", "=loop.req.l");
+        what.addConfig("class", List.of("journal-what"));
+        mainSlot.add(what);
+        UIComponent why = new UIComponent("Label");
+        why.addConfig("text", "=loop.req.t+' · '+loop.req.s");
+        why.addConfig("class", List.of("journal-why"));
+        mainSlot.add(why);
+        cells.add(main);
+
+        UIComponent mark = new UIComponent("Label");
+        mark.addConfig("text", "=loop.req.o");
+        mark.addConfig("class", List.of("journal-mark"));
+        mark.addConfig("style", java.util.Map.of("background", "=loop.req.c"));
+        cells.add(mark);
+        return row;
     }
 
     /** One dispatched action, bound to the repeater's loop variable. */

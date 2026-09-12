@@ -19,6 +19,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
@@ -49,6 +50,13 @@ import com.google.gson.JsonObject;
  * dropped ({@link AssetWriteOutcome#UNCHANGED}). Of the rest, a repeat of the same outcome on the
  * same asset coalesces into the entry already there and bumps its count, so a battery in readonly
  * mode refusing a setpoint every five seconds is one line that says so, not a day of noise.
+ *
+ * <p>
+ * Dropping "already there" is right for a history and wrong for the present, because it goes silent
+ * exactly when a standing request is not producing anything: the EMS can ask for a 2 kW discharge
+ * every five seconds for an hour, the battery can sit at zero, and a log of changes has nothing to
+ * say about it. So every request, dropped or kept, also updates {@link #standing()} — what each asset
+ * is being asked for right now, since when, and how that request is being answered.
  *
  * @author Stamate Viorel - Initial contribution
  */
@@ -97,6 +105,7 @@ public final class ActionJournal {
 
     private final Deque<Entry> entries = new ArrayDeque<>();
     private final Map<String, Entry> latestPerAsset = new HashMap<>();
+    private final Map<String, Entry> standing = new LinkedHashMap<>();
     private final Path file;
     private final LongSupplier clock;
 
@@ -121,10 +130,11 @@ public final class ActionJournal {
      */
     public synchronized @Nullable Entry record(String asset, String what, String value, String controller,
             String reason, AssetWriteOutcome outcome) {
+        long now = clock.getAsLong();
+        updateStanding(asset, what, value, controller, reason, outcome, now);
         if (!outcome.worthRecording()) {
             return null;
         }
-        long now = clock.getAsLong();
         Entry latest = latestPerAsset.get(asset);
         if (latest != null && latest.outcome == outcome && latest.what.equals(what) && latest.value.equals(value)
                 && now - latest.firstAt < COALESCE_WINDOW_MS) {
@@ -145,6 +155,35 @@ public final class ActionJournal {
         // a genuinely new action is rare enough to be worth the disk write it costs
         write(now);
         return entry;
+    }
+
+    /**
+     * What each asset is being asked for right now. Unlike the history this keeps "already there",
+     * because "the EMS is asking and the asset already holds it" is the answer to why nothing is
+     * happening.
+     */
+    private void updateStanding(String asset, String what, String value, String controller, String reason,
+            AssetWriteOutcome outcome, long now) {
+        String key = asset + '|' + what;
+        Entry current = standing.get(key);
+        if (current != null && current.outcome == outcome && current.value.equals(value)) {
+            current.lastAt = now;
+            current.count++;
+            return;
+        }
+        Entry fresh = new Entry(now, asset, what, value, controller, reason, outcome);
+        standing.put(key, fresh);
+    }
+
+    /** One line per asset the EMS is currently commanding, oldest standing first. */
+    public synchronized List<Entry> standing() {
+        return new ArrayList<>(standing.values());
+    }
+
+    /** Drops standing requests nothing has repeated lately, so a finished one does not linger. */
+    public synchronized void expireStanding(long olderThanMs) {
+        long cutoff = clock.getAsLong() - olderThanMs;
+        standing.values().removeIf(e -> e.lastAt < cutoff);
     }
 
     /** Newest first. A copy, so a publisher can walk it while the dispatch loop runs. */

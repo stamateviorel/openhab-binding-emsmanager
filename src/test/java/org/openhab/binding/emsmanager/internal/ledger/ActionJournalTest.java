@@ -126,6 +126,42 @@ class ActionJournalTest {
         assertEquals(2, j.size(), "a hold this morning and a hold this evening are two different events");
     }
 
+    /**
+     * The history drops "already there", which is right for a history and silent exactly when a request
+     * is producing nothing. The standing view is the part that must not go quiet.
+     */
+    @Test
+    public void aRequestThatChangesNothingIsStillVisibleAsAStandingRequest() {
+        ActionJournal j = journal();
+
+        for (int i = 0; i < 500; i++) {
+            clock.addAndGet(5_000);
+            j.record("battery", "WATTS_BATTERY", "2000 W", "battery-tou", "evening peak", AssetWriteOutcome.UNCHANGED);
+        }
+
+        assertEquals(0, j.size(), "nothing changed, so there is no history to write");
+        List<ActionJournal.Entry> standing = j.standing();
+        assertEquals(1, standing.size());
+        assertEquals("2000 W", standing.get(0).value);
+        assertEquals(AssetWriteOutcome.UNCHANGED, standing.get(0).outcome);
+        assertEquals(500, standing.get(0).count, "and it says how long it has been asking");
+    }
+
+    @Test
+    public void aStandingRequestIsPerAssetAndEndsWhenItStops() {
+        ActionJournal j = journal();
+        j.record("battery", "WATTS_BATTERY", "2000 W", "battery-tou", "peak", AssetWriteOutcome.UNCHANGED);
+        j.record("car3", "AMPS", "16 A", "ev-coordinator", "sun", AssetWriteOutcome.WROTE);
+        assertEquals(2, j.standing().size());
+
+        clock.addAndGet(11L * 60L * 1000L);
+        j.record("battery", "WATTS_BATTERY", "2000 W", "battery-tou", "peak", AssetWriteOutcome.UNCHANGED);
+        j.expireStanding(10L * 60L * 1000L);
+
+        assertEquals(1, j.standing().size(), "the car stopped being commanded ten minutes ago");
+        assertEquals("battery", j.standing().get(0).asset);
+    }
+
     @Test
     public void theRingStopsGrowing() {
         ActionJournal j = journal();

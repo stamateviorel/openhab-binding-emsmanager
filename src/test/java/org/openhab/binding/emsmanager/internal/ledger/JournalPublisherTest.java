@@ -79,7 +79,21 @@ class JournalPublisherTest {
         publisher(journal()).publish(LocalDate.of(2026, 9, 12));
 
         assertEquals("[]", published.get("EMS_Journal_Rows_JSON"));
-        assertEquals("Nothing has been dispatched yet", published.get("EMS_Journal_Label"));
+        assertEquals("Nothing has changed yet", published.get("EMS_Journal_Label"));
+    }
+
+    /** "Nothing dispatched" on its own reads as "the EMS is idle", which is a different claim. */
+    @Test
+    public void aQuietHistoryUnderAStandingRequestSaysSo() throws Exception {
+        ActionJournal j = journal();
+        j.record("battery", "WATTS_BATTERY", "2000 W", "battery-tou", "peak", AssetWriteOutcome.UNCHANGED);
+
+        publisher(j).publish(LocalDate.of(2026, 9, 12));
+
+        assertEquals("Nothing has changed yet · 1 request standing", published.get("EMS_Journal_Label"));
+        String standing = published.get("EMS_Standing_Rows_JSON");
+        assertNotNull(standing);
+        assertTrue(standing.contains("already there"), standing);
     }
 
     @Test
