@@ -180,19 +180,24 @@ class EnergyUiProviderTest {
     }
 
     /** The breakdown is discovered from the meters that exist, and the roll-ups are left out of it. */
+    /**
+     * The circuit breakdown is no longer baked into the page: the binding measures it and ships rows, so what the
+     * page must guarantee is that it asks for them and can render nothing without breaking.
+     */
     @Test
-    public void theBreakdownListsEachMeasuredCircuitButNotTheRollUps() {
-        RootUIComponent devices = page(
-                providerWith(Set.of("EMS_DM_Airco_W", "EMS_DM_Airco_kWh", "EMS_DM_Boiler_W", "EMS_DM_Boiler_kWh",
-                        "EMS_DM_Cars_W", "EMS_DM_Cars_kWh", "EMS_DM_Lights_W", "EMS_DM_Lights_kWh")),
+    public void thePastTabRendersWhateverTheLedgerPublishes() {
+        RootUIComponent past = page(providerWith(Set.of("EMS_Ledger_Rows_JSON", "EMS_Ledger_Cols_JSON",
+                "EMS_Ledger_View", "EMS_Ledger_Span", "EMS_Ledger_Back", "EMS_Ledger_Label")),
                 "emsmanager_energy_past");
+        assertNotNull(past);
 
-        List<String> items = itemsOn(devices);
-        assertTrue(items.contains("EMS_DM_Airco_kWh"));
-        assertTrue(items.contains("EMS_DM_Boiler_kWh"));
-        assertFalse(items.contains("EMS_DM_Cars_kWh"), "a total next to its own parts reads as double counting");
-        assertFalse(items.contains("EMS_DM_Lights_kWh"));
-        assertTrue(blockTitles(devices).contains("Today, circuit by circuit"));
+        List<UIComponent> repeaters = new ArrayList<>();
+        collectOfType(past, "oh-repeater", repeaters);
+        assertEquals(1, repeaters.size(), "one table, fed from one Item");
+        String source = String.valueOf(repeaters.get(0).getConfig().get("in"));
+        assertTrue(source.contains("EMS_Ledger_Rows_JSON"), source);
+        // a repeater handed anything but an array renders nothing at all, silently
+        assertTrue(source.contains("'[]'"), "the source must fall back to an empty array: " + source);
     }
 
     @Test
@@ -418,17 +423,16 @@ class EnergyUiProviderTest {
 
     @Test
     void repeatedThingsFoldWithTheirEssentialsInTheHeader() {
-        RootUIComponent past = page(providerWith(Set.of("EMS_SelfConsumption_kWh_Day", "EMS_Supply_kWh_Day",
-                "EMS_Cost_EUR_Day", "EMS_SelfConsumption_kWh_Month", "EMS_Supply_kWh_Month")),
-                "emsmanager_energy_past");
+        RootUIComponent control = page(providerWith(Set.of("EMS_Boiler_User_Override", "PeakShaving_Enabled",
+                "EMS_BatterySizing_Run", "EMS_BatterySizing_OptimalKwh", "EMS_TariffComparison_Cheapest")),
+                "emsmanager_energy_control");
         List<UIComponent> sections = new ArrayList<>();
-        collectOfType(past, "f7-list-item", sections);
-        assertEquals(2, sections.size(), "a section per period the site keeps");
-        UIComponent today = sections.get(0);
-        assertEquals("Today", today.getConfig().get("title"));
-        assertTrue(String.valueOf(today.getConfig().get("after")).contains("EMS_Cost_EUR_Day"),
-                "the header says how the period stands before it is opened");
-        assertNotNull(find(today, "f7-accordion-content"), "the detail is behind the header");
+        collectOfType(control, "f7-list-item", sections);
+        assertFalse(sections.isEmpty(), "repeated groups fold");
+        UIComponent first = sections.get(0);
+        assertNotNull(first.getConfig().get("title"));
+        assertEquals(Boolean.TRUE, first.getConfig().get("accordionItem"));
+        assertNotNull(find(first, "f7-accordion-content"), "the detail is behind the header");
     }
 
     private static @Nullable UIComponent find(@Nullable UIComponent c, String type) {

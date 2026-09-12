@@ -131,6 +131,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
     private static final long DEBOUNCE_MS = 500L;
     private @Nullable ScheduledFuture<?> debouncedTickFuture;
     private @Nullable ItemWatch itemWatch;
+    private org.openhab.binding.emsmanager.internal.ledger.@Nullable LedgerPublisher ledger;
     private volatile CapacityTariffTracker.@Nullable Persisted savedPeak;
     // Guards tick() against the periodic and debounced invocations overlapping —
     // controller state (EWMA, capacity tracker, dedupe) is not re-entrant.
@@ -328,6 +329,10 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         controllerScheduler.register(longTermStats);
         // the browser answers the same history for whichever period the dashboard is pointed at
         controllerScheduler.register(new HistoryBrowserController(eventPublisher, itemRegistry, longTermStats));
+        // Not a Controller: controllers all run before the dispatch loop, so a page fed from one would
+        // be a tick stale for ever. This is called at the end of the tick instead.
+        this.ledger = new org.openhab.binding.emsmanager.internal.ledger.LedgerPublisher(eventPublisher, itemRegistry,
+                thingRegistry, longTermStats, java.time.ZoneId.systemDefault());
         // Battery sizing service (heavy; manually triggered).
         PersistenceServiceRegistry localPersistenceRegistry = persistenceRegistry;
         if (localPersistenceRegistry != null) {
@@ -536,6 +541,7 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
         capacityTariff = null;
         capacityTracker = null;
         optimizer = null;
+        ledger = null;
         super.dispose();
         logger.info("EMS Manager bridge disposed.");
     }
@@ -1035,6 +1041,11 @@ public class EmsManagerBridgeHandler extends BaseBridgeHandler {
             publishPhase2Channels(ctx, decisions);
             publishCarReasons(ctx, decisions);
             publishMirrorItems(ctx);
+
+            org.openhab.binding.emsmanager.internal.ledger.LedgerPublisher ledgerPublisher = ledger;
+            if (ledgerPublisher != null) {
+                ledgerPublisher.publish(java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
+            }
 
             if (n == 1 || n % 12 == 0) {
                 logger.info(

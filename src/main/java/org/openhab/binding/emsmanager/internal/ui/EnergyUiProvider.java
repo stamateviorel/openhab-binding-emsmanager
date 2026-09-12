@@ -162,6 +162,13 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
     private static final String I_PEAK_ENGAGE = "PeakShaving_Manual_Engage";
     private static final String I_PEAK_RESET = "PeakShaving_Manual_Reset";
     private static final String I_DM_TRACKED = "EMS_DeviceMeter_Tracked_W";
+    private static final String I_LEDGER_VIEW = "EMS_Ledger_View";
+    private static final String I_LEDGER_SPAN = "EMS_Ledger_Span";
+    private static final String I_LEDGER_BACK = "EMS_Ledger_Back";
+    private static final String I_LEDGER_SORT = "EMS_Ledger_Sort";
+    private static final String I_LEDGER_LABEL = "EMS_Ledger_Label";
+    private static final String I_LEDGER_ROWS = "EMS_Ledger_Rows_JSON";
+    private static final String I_LEDGER_COLS = "EMS_Ledger_Cols_JSON";
     private static final String I_BROWSE_SCALE = "EMS_Browse_Scale";
     private static final String I_BROWSE_BACK = "EMS_Browse_Back";
     private static final String I_BROWSE_LABEL = "EMS_Browse_Label";
@@ -258,15 +265,26 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         SiteModel site = SiteModel.from(thingRegistry, linkRegistry);
         this.site = site;
         List<RootUIComponent> out = new ArrayList<>();
-        out.add(buildTabsPage());
-        out.add(buildPastPage());
-        out.add(buildFuturePage(site));
-        out.add(buildNowPage(providers, site));
-        out.add(buildControlPage(consumers, site));
-        out.add(buildCarsPage(site));
-        out.add(buildChartsPage(providers, consumers, site));
-        out.add(buildCircuitsChartPage(site));
+        // Built one at a time on purpose: a throw while building ONE page propagated out of the
+        // constructor and the whole Energy section vanished from the sidebar - every tab lost for one
+        // bad card. A page that cannot be built is now simply absent, and says so in the log.
+        add(out, "tabs", this::buildTabsPage);
+        add(out, P_PAST, this::buildPastPage);
+        add(out, P_FUTURE, () -> buildFuturePage(site));
+        add(out, P_NOW, () -> buildNowPage(providers, site));
+        add(out, P_CONTROL, () -> buildControlPage(consumers, site));
+        add(out, P_CARS, () -> buildCarsPage(site));
+        add(out, P_CHARTS, () -> buildChartsPage(providers, consumers, site));
+        add(out, P_CIRCUITS, () -> buildCircuitsChartPage(site));
         return out;
+    }
+
+    private void add(List<RootUIComponent> pages, String what, java.util.function.Supplier<RootUIComponent> build) {
+        try {
+            pages.add(build.get());
+        } catch (RuntimeException e) {
+            logger.error("Energy page '{}' could not be built and is left out of the section", what, e);
+        }
     }
 
     /** On any energy: tag change, rebuild + notify the registry so MainUI re-fetches — live config. */
@@ -358,92 +376,248 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
         RootUIComponent page = layoutPage(P_PAST, "Past");
         List<UIComponent> root = shell(page);
 
-        UIComponent browser = browserCard();
-        if (browser != null) {
-            root.add(cardRow(browser));
-        }
-
-        // Every period on one scale, so the bars compare as well as describe.
-        List<String> totals = new ArrayList<>();
-        for (String[] period : PERIODS) {
-            for (String metric : List.of("EMS_SelfConsumption_kWh", "EMS_Supply_kWh")) {
-                String item = metric + period[0];
-                if (has(item)) {
-                    totals.add(item);
-                }
+        if (has(I_LEDGER_ROWS)) {
+            root.add(cardRow(ledgerQueryCard()));
+            UIComponent totals = ledgerTotals();
+            if (totals != null) {
+                root.add(item(totals, "full"));
             }
-        }
-        List<UIComponent> sections = new ArrayList<>();
-        if (!totals.isEmpty()) {
-            String scale = largestOf(totals);
-            for (String[] period : PERIODS) {
-                UIComponent bar = periodBar(period[0], period[1], scale);
-                if (bar == null) {
-                    continue;
-                }
-                List<UIComponent> content = new ArrayList<>();
-                UIComponent barBox = new UIComponent("div");
-                barBox.addConfig("style", java.util.Map.of("padding", "0 14px"));
-                barBox.addSlot("default").add(bar);
-                content.add(barBox);
-                UIComponent money = figureCard(null,
-                        figureIfPresent("EMS_Cost_EUR" + period[0], "paid for power", "money_euro", "red"),
-                        figureIfPresent("EMS_Savings_EUR" + period[0], "saved by the roof", "sun_max", "orange"),
-                        figureIfPresent("EMS_Earnings_EUR" + period[0], "earned selling", "arrow_up_right_circle",
-                                "green"),
-                        figureIfPresent("EMS_FeedIn_kWh" + period[0], "sold", "arrow_up_right", "green"));
-                if (money != null) {
-                    content.add(money);
-                }
-                sections.add(section(period[1], periodSummary(period[0]), null,
-                        "_Day".equals(period[0]) ? "true" : null, content));
+            root.add(cardRow(ledgerTableCard()));
+        } else {
+            UIComponent browser = browserCard();
+            if (browser != null) {
+                root.add(cardRow(browser));
             }
-        }
-        if (!sections.isEmpty()) {
-            root.add(cardRow(accordion(sections)));
-        }
-
-        // Circuits as bars, longest first by value at a glance: this is the "what should I look at" card.
-        List<String> meters = new ArrayList<>();
-        for (String circuit : trackedCircuits()) {
-            String kwh = "EMS_DM_" + circuit + "_kWh";
-            if (has(kwh)) {
-                meters.add(kwh);
-            }
-        }
-        if (!meters.isEmpty()) {
-            String scale = largestOf(meters);
-            List<UIComponent> bars = new ArrayList<>();
-            int hue = 0;
-            for (String kwh : meters) {
-                String circuit = kwh.substring("EMS_DM_".length(), kwh.length() - "_kWh".length());
-                bars.add(barRow(kwh, prettyCircuit(circuit), CIRCUIT_COLORS[hue % CIRCUIT_COLORS.length], scale));
-                hue++;
-            }
-            UIComponent barBox = new UIComponent("div");
-            barBox.addConfig("style", java.util.Map.of("padding", "4px 14px 8px 14px"));
-            barBox.addSlot("default").addAll(bars);
-            List<UIComponent> content = new ArrayList<>();
-            content.add(barBox);
-            UIComponent coverage = figureCard(null,
-                    figureIfPresent(I_DM_TRACKED, "measured", "checkmark_seal_fill", "green"),
-                    figureIfPresent(I_DM_UNTRACKED, "not measured", "questionmark_circle", "orange"));
-            if (coverage != null) {
-                content.add(coverage);
-            }
-            String measuredShare = has(I_DM_TRACKED) && has(I_DM_UNTRACKED) ? "=Math.round(100*(items." + I_DM_TRACKED
-                    + ".numericState||0)/(((items." + I_DM_TRACKED + ".numericState||0)+(items." + I_DM_UNTRACKED
-                    + ".numericState||0))||1))+'% of the building measured'" : null;
-            UIComponent circuitsCard = new UIComponent("f7-card");
-            circuitsCard.addConfig("title", "Today, circuit by circuit");
-            UIComponent list = new UIComponent("f7-list");
-            list.addConfig("accordionList", Boolean.TRUE);
-            list.addConfig("class", List.of("no-margin"));
-            list.addSlot("default").add(section("Circuits, biggest first", measuredShare, null, null, content));
-            circuitsCard.addSlot("default").add(list);
-            root.add(cardRow(circuitsCard));
         }
         return page;
+    }
+
+    /**
+     * What am I looking at, and for when. Everything below this card is a pure function of it.
+     */
+    private UIComponent ledgerQueryCard() {
+        UIComponent card = new UIComponent("f7-card");
+        UIComponent body = new UIComponent("div");
+        body.addConfig("style",
+                java.util.Map.of("padding", "12px 14px", "display", "flex", "flex-direction", "column", "gap", "8px"));
+        List<UIComponent> slot = body.addSlot("default");
+
+        UIComponent title = new UIComponent("Label");
+        title.addConfig("text", "=items." + I_LEDGER_LABEL + ".state");
+        title.addConfig("style", java.util.Map.of("display", "block", "font-size", "16px", "font-weight", "700"));
+        slot.add(title);
+
+        slot.add(choiceRow(I_LEDGER_VIEW,
+                new String[][] { { "days", "Days" }, { "months", "Months" }, { "circuits", "Circuits" } }));
+
+        UIComponent when = new UIComponent("div");
+        when.addConfig("style", java.util.Map.of("gap", "8px", "align-items", "center", "flex-wrap", "wrap", "display",
+                "=items." + I_LEDGER_VIEW + ".state==='months'?'none':'flex'"));
+        List<UIComponent> whenSlot = when.addSlot("default");
+        whenSlot.add(segmented(I_LEDGER_SPAN,
+                new String[][] { { "month", "Month" }, { "year", "Year" }, { "all", "All" } }));
+        // a computed numeric command is dropped when it evaluates falsy, so every one of these is a string
+        whenSlot.add(navButton("chevron_left", "=''+((items." + I_LEDGER_BACK + ".numericState||0)+1)", null));
+        whenSlot.add(navButton("chevron_right", "=''+Math.max(0,(items." + I_LEDGER_BACK + ".numericState||0)-1)",
+                "=(items." + I_LEDGER_BACK + ".numericState||0)>0"));
+        UIComponent now = new UIComponent("oh-button");
+        now.addConfig("text", "Now");
+        now.addConfig("small", Boolean.TRUE);
+        now.addConfig("outline", Boolean.TRUE);
+        now.addConfig("action", "command");
+        now.addConfig("actionItem", I_LEDGER_BACK);
+        now.addConfig("actionCommand", "0");
+        now.addConfig("style",
+                java.util.Map.of("display", "=(items." + I_LEDGER_BACK + ".numericState||0)>0?'inline-flex':'none'"));
+        whenSlot.add(now);
+        slot.add(when);
+
+        card.addSlot("default").add(body);
+        return card;
+    }
+
+    /** A labelled row of exclusive choices that commands one Item. */
+    private UIComponent choiceRow(String item, String[][] options) {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("style", java.util.Map.of("display", "flex", "gap", "8px", "align-items", "center"));
+        row.addSlot("default").add(segmented(item, options));
+        return row;
+    }
+
+    private UIComponent segmented(String item, String[][] options) {
+        UIComponent segmented = new UIComponent("f7-segmented");
+        segmented.addConfig("raised", Boolean.TRUE);
+        segmented.addConfig("style", java.util.Map.of("margin", "0", "flex", "1 1 auto"));
+        List<UIComponent> buttons = segmented.addSlot("default");
+        for (String[] option : options) {
+            UIComponent button = new UIComponent("oh-button");
+            button.addConfig("text", option[1]);
+            button.addConfig("small", Boolean.TRUE);
+            button.addConfig("fill", "=items." + item + ".state === '" + option[0] + "'");
+            button.addConfig("action", "command");
+            button.addConfig("actionItem", item);
+            button.addConfig("actionCommand", option[0]);
+            buttons.add(button);
+        }
+        return segmented;
+    }
+
+    private UIComponent navButton(String glyph, String command, @org.eclipse.jdt.annotation.Nullable String visible) {
+        UIComponent button = new UIComponent("oh-button");
+        button.addConfig("iconF7", glyph);
+        button.addConfig("small", Boolean.TRUE);
+        button.addConfig("round", Boolean.TRUE);
+        button.addConfig("action", "command");
+        button.addConfig("actionItem", I_LEDGER_BACK);
+        button.addConfig("actionCommand", command);
+        if (visible != null) {
+            button.addConfig("style", java.util.Map.of("display", visible + "?'inline-flex':'none'"));
+        }
+        return button;
+    }
+
+    /** The five figures for whatever the query bar selects. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent ledgerTotals() {
+        UIComponent card = fiveFigures(figureCard(null, figureIfPresent("EMS_Ledger_Total_SelfConsumption_kWh",
+                "=items." + I_LEDGER_VIEW + ".state==='circuits'?'metered in total':'sun used'", "sun_max", "orange"),
+                figureIfPresent("EMS_Ledger_Total_Supply_kWh", "from the grid", "arrow_down_left_circle", "purple"),
+                figureIfPresent("EMS_Ledger_Total_FeedIn_kWh", "sold", "arrow_up_right_circle", "green"),
+                figureIfPresent("EMS_Ledger_Total_Cost_EUR", "cost", "money_euro", "red"),
+                figureIfPresent("EMS_Ledger_Total_Savings_EUR", "saved", "checkmark_seal", "green")));
+        return card;
+    }
+
+    /** Five figures do not divide by four: half a phone, a third of a tablet, a fifth of a desktop. */
+    private @org.eclipse.jdt.annotation.Nullable UIComponent fiveFigures(
+            @org.eclipse.jdt.annotation.Nullable UIComponent card) {
+        if (card == null) {
+            return null;
+        }
+        String[] totals = { "EMS_Ledger_Total_SelfConsumption_kWh", "EMS_Ledger_Total_Supply_kWh",
+                "EMS_Ledger_Total_FeedIn_kWh", "EMS_Ledger_Total_Cost_EUR", "EMS_Ledger_Total_Savings_EUR" };
+        for (UIComponent row : card.getSlots().get("default")) {
+            List<UIComponent> columns = row.getSlots().get("default");
+            for (int i = 0; i < columns.size(); i++) {
+                UIComponent column = columns.get(i);
+                column.addConfig("medium", "33");
+                column.addConfig("large", "20");
+                if (i < totals.length) {
+                    // A view with no honest value for a figure leaves it out rather than printing
+                    // UNDEF. `visible` is the real conditional: a display expression inside `style`
+                    // loses to the f7 display-flex utility class, which carries !important.
+                    column.addConfig("visible",
+                            "=items." + totals[i] + ".state!=='UNDEF'&&items." + totals[i] + ".state!=='NULL'");
+                }
+            }
+        }
+        return card;
+    }
+
+    /**
+     * The table. Rows arrive as one JSON string the binding sorted and scaled, because an expression
+     * cannot sort and a bar scaled from a widget constant freezes at mount.
+     */
+    private UIComponent ledgerTableCard() {
+        UIComponent card = new UIComponent("f7-card");
+        List<UIComponent> slot = card.addSlot("default");
+
+        // The binding names the columns for the current view; the page draws a fixed six and hides the
+        // ones it did not name, so a view with three columns shows three.
+        String cols = "JSON.parse(items." + I_LEDGER_COLS + ".state&&items." + I_LEDGER_COLS
+                + ".state.charAt(0)==='['?items." + I_LEDGER_COLS + ".state:'[]')";
+        String[] sortKeys = { "", "sun", "grid", "sold", "cost", "saved" };
+        String[] narrow = { "", "", "", "ledger-hide-s", "", "ledger-hide-s" };
+        UIComponent head = new UIComponent("div");
+        head.addConfig("class", List.of("ledger-head"));
+        List<UIComponent> headSlot = head.addSlot("default");
+        for (int i = 0; i < sortKeys.length; i++) {
+            List<String> classes = new ArrayList<>();
+            if (i > 0) {
+                classes.add("ledger-num");
+            }
+            if (!narrow[i].isEmpty()) {
+                classes.add(narrow[i]);
+            }
+            UIComponent cell = new UIComponent("oh-button");
+            cell.addConfig("text", "=" + cols + "[" + i + "]||''");
+            cell.addConfig("small", Boolean.TRUE);
+            cell.addConfig("class", classes);
+            cell.addConfig("style",
+                    java.util.Map.of("height", "auto", "min-width", "0", "padding", "0", "font-size", "10px",
+                            "letter-spacing", "0.05em", "justify-content", i == 0 ? "flex-start" : "flex-end",
+                            "visibility", "=" + cols + "[" + i + "]?'visible':'hidden'"));
+            if (i > 0) {
+                String key = sortKeys[i];
+                cell.addConfig("action", "command");
+                cell.addConfig("actionItem", I_LEDGER_SORT);
+                cell.addConfig("actionCommand",
+                        "=items." + I_LEDGER_SORT + ".state==='" + key + ":desc'?'" + key + ":asc':'" + key + ":desc'");
+            }
+            headSlot.add(cell);
+        }
+        slot.add(head);
+
+        UIComponent repeater = new UIComponent("oh-repeater");
+        repeater.addConfig("sourceType", "array");
+        repeater.addConfig("for", "row");
+        repeater.addConfig("fragment", Boolean.TRUE);
+        // a repeater given anything but an array renders nothing at all, silently, so the state is
+        // guarded here as well as published as "[]" rather than NULL
+        repeater.addConfig("in", "=JSON.parse(items." + I_LEDGER_ROWS + ".state&&items." + I_LEDGER_ROWS
+                + ".state!=='-'&&items." + I_LEDGER_ROWS + ".state!=='NULL'?items." + I_LEDGER_ROWS + ".state:'[]')");
+        repeater.addSlot("default").add(ledgerRow());
+        slot.add(repeater);
+
+        UIComponent empty = new UIComponent("Label");
+        empty.addConfig("text", "Nothing recorded for this period yet.");
+        empty.addConfig("style",
+                java.util.Map.of("display", "=(items." + I_LEDGER_ROWS + ".state||'[]')==='[]'?'block':'none'",
+                        "padding", "14px", "font-size", "12px", "opacity", "0.6"));
+        slot.add(empty);
+        return card;
+    }
+
+    /** One row of the ledger, bound to the repeater's loop variable. */
+    private UIComponent ledgerRow() {
+        UIComponent row = new UIComponent("div");
+        row.addConfig("class", List.of("ledger-row"));
+        List<UIComponent> cells = row.addSlot("default");
+
+        UIComponent when = new UIComponent("div");
+        when.addConfig("class", List.of("ledger-when"));
+        List<UIComponent> whenSlot = when.addSlot("default");
+        UIComponent label = new UIComponent("Label");
+        label.addConfig("text", "=loop.row.l");
+        label.addConfig("style", java.util.Map.of("font-weight", "600", "white-space", "nowrap", "overflow", "hidden",
+                "text-overflow", "ellipsis"));
+        whenSlot.add(label);
+        UIComponent sub = new UIComponent("Label");
+        sub.addConfig("text", "=loop.row.s");
+        sub.addConfig("class", List.of("ledger-sub"));
+        whenSlot.add(sub);
+        UIComponent bar = new UIComponent("div");
+        bar.addConfig("class", List.of("ledger-bar"));
+        bar.addConfig("style", java.util.Map.of("width", "=loop.row.bar+'%'"));
+        whenSlot.add(bar);
+        cells.add(when);
+
+        String rowCols = "JSON.parse(items." + I_LEDGER_COLS + ".state&&items." + I_LEDGER_COLS
+                + ".state.charAt(0)==='['?items." + I_LEDGER_COLS + ".state:'[]')";
+        String[] narrowCell = { "", "", "ledger-hide-s", "", "ledger-hide-s" };
+        for (int i = 0; i < narrowCell.length; i++) {
+            UIComponent value = new UIComponent("Label");
+            value.addConfig("text", "=loop.row.f[" + i + "].toFixed(1)");
+            List<String> classes = new ArrayList<>();
+            classes.add("ledger-num");
+            if (!narrowCell[i].isEmpty()) {
+                classes.add(narrowCell[i]);
+            }
+            value.addConfig("class", classes);
+            value.addConfig("style",
+                    java.util.Map.of("visibility", "=" + rowCols + "[" + (i + 1) + "]?'visible':'hidden'"));
+            cells.add(value);
+        }
+        return row;
     }
 
     /**
@@ -1137,6 +1311,15 @@ public class EnergyUiProvider extends AbstractProvider<RootUIComponent> implemen
             .item-title{font-weight:500;font-size:14px}
             .bar{transition:width .5s ease,height .5s ease}
             li{list-style:none}
+            .ledger-head,.ledger-row{display:grid;grid-template-columns:minmax(0,2.1fr) repeat(5,minmax(0,1fr));gap:6px;align-items:center;padding:5px 14px;font-variant-numeric:tabular-nums}
+            .ledger-head{font-size:10px;letter-spacing:.05em;text-transform:uppercase;opacity:.55;padding-top:8px;padding-bottom:6px;border-bottom:1px solid rgba(127,127,127,.18)}
+            .ledger-row{border-bottom:1px solid rgba(127,127,127,.10);font-size:13px}
+            .ledger-row:last-child{border-bottom:none}
+            .ledger-num{text-align:right}
+            .ledger-when{display:flex;flex-direction:column;min-width:0}
+            .ledger-sub{font-size:10px;opacity:.55}
+            .ledger-bar{height:3px;border-radius:2px;background:#f0a83c;margin-top:3px;transition:width .5s ease}
+            @media(max-width:520px){.ledger-head,.ledger-row{grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,1fr))}.ledger-hide-s{display:none}}
             .figure .item-inner{padding:0;min-height:0}
             .figure .item-inner:after{display:none}
             .accordion-list .item-title{font-weight:600;font-size:14px}

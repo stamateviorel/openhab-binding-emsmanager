@@ -129,6 +129,25 @@ public final class DeviceMeterHandler extends BaseThingHandler {
         return getConfigAs(DeviceMeterConfig.class).color;
     }
 
+    /**
+     * A completed day's energy from this meter's own ring, 1 being yesterday; today's running partial
+     * for 0. The ring is the binding's own record - reading it costs nothing, where the same figure
+     * from persistence is tens of thousands of points per circuit per day.
+     */
+    public double kwhDaysAgo(int daysAgo) {
+        if (daysAgo <= 0) {
+            return kwhToday;
+        }
+        Double[] days = ring.toArray(new Double[0]);
+        int index = days.length - daysAgo;
+        return index < 0 || index >= days.length ? 0.0 : days[index];
+    }
+
+    /** How many completed days this meter actually holds. */
+    public int daysHeld() {
+        return ring.size();
+    }
+
     public double currentW() {
         return currentW;
     }
