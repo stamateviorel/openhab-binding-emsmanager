@@ -244,17 +244,31 @@ public final class LedgerPublisher {
             }
             double[] f = { Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN };
             String[] metrics = { SUN, GRID, SOLD, COST, SAVED };
+            int[] daysKnown = new int[metrics.length];
+            int daysInRow = 0;
             for (LocalDate day = first; !day.isAfter(last); day = day.plusDays(1)) {
+                daysInRow++;
                 int ago = (int) java.time.temporal.ChronoUnit.DAYS.between(day, today);
                 for (int m = 0; m < metrics.length; m++) {
                     double value = figure(metrics[m], ago, day, held);
                     if (!Double.isNaN(value)) {
                         f[m] = nz(f[m]) + value;
+                        daysKnown[m]++;
                     }
                 }
             }
+            // a column short a few days still adds up to a number, and a number nobody is told is
+            // partial gets read as the month's total
+            int leastCovered = daysInRow;
+            for (int m = 0; m < metrics.length; m++) {
+                if (daysKnown[m] > 0) {
+                    leastCovered = Math.min(leastCovered, daysKnown[m]);
+                }
+            }
+            String sub = first.getYear() + (i == 0 ? " · so far"
+                    : leastCovered < daysInRow ? " · " + leastCovered + " of " + daysInRow + " days" : "");
             Row row = new Row(first.format(DAY_KEY), first.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH),
-                    first.getYear() + (i == 0 ? " · so far" : ""), nz(f[0]) + nz(f[1]), f);
+                    sub, nz(f[0]) + nz(f[1]), f);
             if (allUnknown(row)) {
                 continue;
             }
